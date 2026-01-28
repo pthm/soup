@@ -30,6 +30,8 @@ type Game struct {
 	flowField       *systems.FlowFieldSystem
 	flowRenderer    *renderer.FlowRenderer
 	waterBackground *renderer.WaterBackground
+	sunRenderer     *renderer.SunRenderer
+	light           renderer.LightState
 	tick          int32
 	paused        bool
 	stepsPerFrame int
@@ -62,6 +64,8 @@ func NewGame() *Game {
 		flowField:       systems.NewFlowFieldSystem(bounds, 8000),
 		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
 		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
+		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
+		light:           renderer.LightState{PosX: 0.75, PosY: 0.12, Intensity: 1.0},
 		stepsPerFrame: 1,
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
@@ -272,6 +276,59 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 	return floraPos, faunaPos
 }
 
+func (g *Game) collectOccluders() []renderer.Occluder {
+	var occluders []renderer.Occluder
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		pos, _, org, cells := query.Get()
+
+		if org.Dead || cells.Count == 0 {
+			continue
+		}
+
+		// Calculate organism bounds
+		minX, minY := pos.X, pos.Y
+		maxX, maxY := pos.X, pos.Y
+
+		for i := uint8(0); i < cells.Count; i++ {
+			cell := &cells.Cells[i]
+			if !cell.Alive {
+				continue
+			}
+			cellX := pos.X + float32(cell.GridX)*org.CellSize
+			cellY := pos.Y + float32(cell.GridY)*org.CellSize
+			if cellX < minX {
+				minX = cellX
+			}
+			if cellX > maxX {
+				maxX = cellX
+			}
+			if cellY < minY {
+				minY = cellY
+			}
+			if cellY > maxY {
+				maxY = cellY
+			}
+		}
+
+		// Add cell size padding
+		minX -= org.CellSize / 2
+		minY -= org.CellSize / 2
+		maxX += org.CellSize / 2
+		maxY += org.CellSize / 2
+
+		occluders = append(occluders, renderer.Occluder{
+			X:      minX,
+			Y:      minY,
+			Width:  maxX - minX,
+			Height: maxY - minY,
+		})
+	}
+
+	return occluders
+}
+
 func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organism) {
 	var floraOrgs, faunaOrgs []*components.Organism
 
@@ -434,6 +491,12 @@ func (g *Game) Draw() {
 
 	// Draw flow field particles (on top of water)
 	g.flowRenderer.Draw(g.flowField.Particles, g.tick)
+
+	// Collect occluders from organisms for shadow casting
+	occluders := g.collectOccluders()
+
+	// Draw sun with shadows
+	g.sunRenderer.Draw(g.light, occluders)
 
 	// Draw all organisms
 	query := g.allOrgFilter.Query()
