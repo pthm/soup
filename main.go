@@ -10,6 +10,7 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
 	"github.com/pthm-cable/soup/traits"
 )
@@ -26,6 +27,9 @@ type Game struct {
 	energy        *systems.EnergySystem
 	cells         *systems.CellSystem
 	behavior      *systems.BehaviorSystem
+	flowField       *systems.FlowFieldSystem
+	flowRenderer    *renderer.FlowRenderer
+	waterBackground *renderer.WaterBackground
 	tick          int32
 	paused        bool
 	stepsPerFrame int
@@ -55,6 +59,9 @@ func NewGame() *Game {
 		energy:        systems.NewEnergySystem(world),
 		cells:         systems.NewCellSystem(world),
 		behavior:      systems.NewBehaviorSystem(world),
+		flowField:       systems.NewFlowFieldSystem(bounds, 8000),
+		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
+		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
 		stepsPerFrame: 1,
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
@@ -227,6 +234,9 @@ func (g *Game) Update() {
 	// Run simulation steps
 	for step := 0; step < g.stepsPerFrame; step++ {
 		g.tick++
+
+		// Update flow field particles
+		g.flowField.Update(g.tick)
 
 		// Collect position data for behavior system
 		floraPos, faunaPos := g.collectPositions()
@@ -418,7 +428,12 @@ func (g *Game) cleanupDead() {
 
 func (g *Game) Draw() {
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{R: 15, G: 20, B: 25, A: 255})
+
+	// Draw animated water background
+	g.waterBackground.Draw(float32(g.tick) * 0.016) // Convert tick to approximate seconds
+
+	// Draw flow field particles (on top of water)
+	g.flowRenderer.Draw(g.flowField.Particles, g.tick)
 
 	// Draw all organisms
 	query := g.allOrgFilter.Query()
@@ -709,7 +724,7 @@ func (g *Game) drawUI() {
 	// Draw stats
 	rl.DrawText("Primordial Soup", 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Flora: %d | Fauna: %d | Cells: %d", floraCount, faunaCount, totalCells), 10, 35, 16, rl.LightGray)
-	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx", g.tick, g.stepsPerFrame), 10, 55, 16, rl.LightGray)
+	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | Particles: %d", g.tick, g.stepsPerFrame, len(g.flowField.Particles)), 10, 55, 16, rl.LightGray)
 
 	statusText := "Running"
 	if g.paused {
@@ -728,6 +743,8 @@ func main() {
 	rl.SetTargetFPS(60)
 
 	game := NewGame()
+	defer game.flowRenderer.Unload()
+	defer game.waterBackground.Unload()
 
 	for !rl.WindowShouldClose() {
 		game.Update()

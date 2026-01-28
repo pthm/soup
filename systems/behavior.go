@@ -221,8 +221,8 @@ func (s *BehaviorSystem) flockWithHerd(pos *components.Position, vel *components
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, bounds Bounds) (float32, float32) {
 	const flowScale = 0.003
-	const timeScale = 0.0005
-	const baseStrength = 0.8
+	const timeScale = 0.0001 // Slowed down to match flow particles
+	const baseStrength = 0.4  // Reduced for gentler movement
 
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*timeScale)
 	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*timeScale)
@@ -233,8 +233,8 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 	flowY := float32(math.Sin(flowAngle) * flowMagnitude * baseStrength)
 
 	// Add downward drift
-	flowY += 0.1
-	flowX += float32(math.Sin(float64(s.tick)*0.001)) * 0.05
+	flowY += 0.05
+	flowX += float32(math.Sin(float64(s.tick)*0.0002)) * 0.02
 
 	// Floating flora: very weak flow effect
 	if traits.IsFlora(org.Traits) && org.Traits.Has(traits.Floating) {
