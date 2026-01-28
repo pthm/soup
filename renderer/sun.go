@@ -4,6 +4,8 @@ import (
 	"math"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
+
+	"github.com/pthm-cable/soup/systems"
 )
 
 // LightState holds sun/light configuration.
@@ -12,11 +14,6 @@ type LightState struct {
 	PosX, PosY float32
 	// Light intensity (0-1)
 	Intensity float32
-}
-
-// Occluder represents something that blocks light.
-type Occluder struct {
-	X, Y, Width, Height float32
 }
 
 // SunRenderer renders 2D lighting with shadow casting.
@@ -34,7 +31,7 @@ func NewSunRenderer(width, height int32) *SunRenderer {
 }
 
 // Draw renders the sun glow and shadows.
-func (r *SunRenderer) Draw(light LightState, occluders []Occluder) {
+func (r *SunRenderer) Draw(light LightState, occluders []systems.Occluder) {
 	sunX := light.PosX * r.width
 	sunY := light.PosY * r.height
 	maxDist := float32(math.Sqrt(float64(r.width*r.width + r.height*r.height)))
@@ -73,7 +70,7 @@ func (r *SunRenderer) drawRadialLight(x, y, maxRadius, intensity float32) {
 }
 
 // drawShadow draws a shadow polygon cast by an occluder.
-func (r *SunRenderer) drawShadow(lightX, lightY float32, occ Occluder, maxDist float32) {
+func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, maxDist float32) {
 	// Get the four corners of the occluder
 	corners := []struct{ x, y float32 }{
 		{occ.X, occ.Y},                             // top-left

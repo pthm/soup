@@ -27,8 +27,8 @@ func (s *EnergySystem) Update(w *ecs.World) {
 	for query.Next() {
 		org, cells := query.Get()
 
-		// Base energy drain
-		energyDrain := float32(0.008) + 0.002*float32(cells.Count)
+		// Base energy drain (reduced for better balance)
+		energyDrain := float32(0.005) + 0.001*float32(cells.Count)
 
 		// Check for mutations
 		hasDisease := false
@@ -69,9 +69,8 @@ func (s *EnergySystem) Update(w *ecs.World) {
 
 		org.MaxSpeed = baseSpeed
 
-		// Flora generates energy (photosynthesis)
+		// Flora has reduced energy drain (photosynthesis handled separately)
 		if traits.IsFlora(org.Traits) {
-			org.Energy += 0.15
 			energyDrain *= 0.2
 		}
 

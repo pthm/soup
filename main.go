@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"strings"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -13,6 +15,13 @@ import (
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
 	"github.com/pthm-cable/soup/traits"
+)
+
+var (
+	initialSpeed = flag.Int("speed", 1, "Initial simulation speed (1-10)")
+	logInterval  = flag.Int("log", 0, "Log world state every N ticks (0 = disabled)")
+	logFile      = flag.String("logfile", "", "Write logs to file instead of stdout")
+	logWriter    *os.File
 )
 
 const (
@@ -36,6 +45,17 @@ type Game struct {
 	paused        bool
 	stepsPerFrame int
 
+	// New systems
+	shadowMap      *systems.ShadowMap
+	photosynthesis *systems.PhotosynthesisSystem
+	feeding        *systems.FeedingSystem
+	spores         *systems.SporeSystem
+	breeding       *systems.BreedingSystem
+	splitting      *systems.SplittingSystem
+	particles      *systems.ParticleSystem
+	particleRenderer *renderer.ParticleRenderer
+	allocation     *systems.AllocationSystem
+
 	// Mappers for creating entities with components
 	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
 	faunaMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna]
@@ -54,6 +74,9 @@ func NewGame() *Game {
 		Height: screenHeight,
 	}
 
+	// Create shadow map first as other systems depend on it
+	shadowMap := systems.NewShadowMap(screenWidth, screenHeight)
+
 	g := &Game{
 		world:         world,
 		bounds:        bounds,
@@ -67,6 +90,18 @@ func NewGame() *Game {
 		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
 		light:           renderer.LightState{PosX: 0.75, PosY: 0.12, Intensity: 1.0},
 		stepsPerFrame: 1,
+
+		// New systems
+		shadowMap:      shadowMap,
+		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
+		feeding:        systems.NewFeedingSystem(world),
+		spores:         systems.NewSporeSystem(bounds),
+		breeding:       systems.NewBreedingSystem(world),
+		splitting:      systems.NewSplittingSystem(),
+		particles:      systems.NewParticleSystem(),
+		allocation:     systems.NewAllocationSystem(world),
+		particleRenderer: renderer.NewParticleRenderer(),
+
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
 		floraFilter:   ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
@@ -81,17 +116,17 @@ func NewGame() *Game {
 
 func (g *Game) seedUniverse() {
 	// Create rooted flora along the bottom
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 60; i++ {
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
-			g.bounds.Height-4,
+			g.bounds.Height-3,
 			traits.Flora|traits.Rooted,
 			80,
 		)
 	}
 
 	// Create floating flora
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 40; i++ {
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-250)+100,
@@ -100,14 +135,11 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create herbivores
-	for i := 0; i < 12; i++ {
-		t := traits.Herbivore
+	// Create herbivores (all get Breeding)
+	for i := 0; i < 50; i++ {
+		t := traits.Herbivore | traits.Breeding
 		if rand.Float32() > 0.5 {
 			t = t.Add(traits.Herding)
-		}
-		if rand.Float32() > 0.7 {
-			t = t.Add(traits.Breeding)
 		}
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
@@ -117,14 +149,11 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create carnivores
-	for i := 0; i < 6; i++ {
-		t := traits.Carnivore
+	// Create carnivores (all get Breeding)
+	for i := 0; i < 20; i++ {
+		t := traits.Carnivore | traits.Breeding
 		if rand.Float32() > 0.3 {
 			t = t.Add(traits.Herding)
-		}
-		if rand.Float32() > 0.4 {
-			t = t.Add(traits.Breeding)
 		}
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
@@ -134,12 +163,12 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create carrion eaters
-	for i := 0; i < 3; i++ {
+	// Create carrion eaters (with Breeding)
+	for i := 0; i < 15; i++ {
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carrion|traits.Herding,
+			traits.Carrion|traits.Herding|traits.Breeding,
 			80,
 		)
 	}
@@ -161,7 +190,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		Traits:           t,
 		Energy:           energy,
 		MaxEnergy:        150,
-		CellSize:         4,
+		CellSize:         2.5,
 		MaxSpeed:         1.5,
 		MaxForce:         0.03,
 		PerceptionRadius: 100,
@@ -170,7 +199,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		GrowthTimer:      0,
 		GrowthInterval:   120,
 		SporeTimer:       0,
-		SporeInterval:    600,
+		SporeInterval:    300, // Reduced from 600
 		BreedingCooldown: 0,
 	}
 
@@ -239,23 +268,177 @@ func (g *Game) Update() {
 	for step := 0; step < g.stepsPerFrame; step++ {
 		g.tick++
 
-		// Update flow field particles
+		// Update flow field particles (visual, independent)
 		g.flowField.Update(g.tick)
+
+		// Update shadow map (foundation for light-based systems)
+		sunX := g.light.PosX * g.bounds.Width
+		sunY := g.light.PosY * g.bounds.Height
+		occluders := g.collectOccluders()
+		g.shadowMap.Update(g.tick, sunX, sunY, occluders)
 
 		// Collect position data for behavior system
 		floraPos, faunaPos := g.collectPositions()
 		floraOrgs, faunaOrgs := g.collectOrganisms()
 
+		// Update allocation modes (determines how organisms spend energy)
+		g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs)
+
 		// Run systems
 		g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs)
 		g.physics.Update(g.world)
-		g.energy.Update(g.world)
+		g.feeding.Update()        // Fauna consume food
+		g.photosynthesis.Update() // Flora energy
+		g.energy.Update(g.world)  // Energy drain
 		g.cells.Update(g.world)
 
-		// Growth and cleanup
+		// Breeding (fauna reproduction)
+		g.breeding.Update(g.world, g.createOrganism)
+
+		// Spores (flora reproduction)
+		g.spores.Update(g.tick, g.createOrganism)
+
+		// Growth, spore spawning, and splitting
 		g.updateGrowth()
+
+		// Effect particles
+		g.particles.Update()
+
+		// Cleanup
 		g.cleanupDead()
+
+		// Periodic logging
+		if *logInterval > 0 && g.tick%int32(*logInterval) == 0 {
+			g.logWorldState()
+		}
 	}
+}
+
+func (g *Game) logWorldState() {
+	var floraCount, faunaCount, deadCount int
+	var floraEnergy, faunaEnergy float32
+	var herbivoreCount, carnivoreCount, carrionCount int
+	var minFaunaEnergy, maxFaunaEnergy float32 = 9999, 0
+	var minFloraEnergy, maxFloraEnergy float32 = 9999, 0
+	var totalFloraCells, totalFaunaCells int
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		_, _, org, cells := query.Get()
+
+		if org.Dead {
+			deadCount++
+			continue
+		}
+
+		if traits.IsFlora(org.Traits) {
+			floraCount++
+			floraEnergy += org.Energy
+			totalFloraCells += int(cells.Count)
+			if org.Energy < minFloraEnergy {
+				minFloraEnergy = org.Energy
+			}
+			if org.Energy > maxFloraEnergy {
+				maxFloraEnergy = org.Energy
+			}
+		} else {
+			faunaCount++
+			faunaEnergy += org.Energy
+			totalFaunaCells += int(cells.Count)
+			if org.Energy < minFaunaEnergy {
+				minFaunaEnergy = org.Energy
+			}
+			if org.Energy > maxFaunaEnergy {
+				maxFaunaEnergy = org.Energy
+			}
+
+			if org.Traits.Has(traits.Herbivore) {
+				herbivoreCount++
+			}
+			if org.Traits.Has(traits.Carnivore) {
+				carnivoreCount++
+			}
+			if org.Traits.Has(traits.Carrion) {
+				carrionCount++
+			}
+		}
+	}
+
+	avgFloraEnergy := float32(0)
+	avgFaunaEnergy := float32(0)
+	if floraCount > 0 {
+		avgFloraEnergy = floraEnergy / float32(floraCount)
+	}
+	if faunaCount > 0 {
+		avgFaunaEnergy = faunaEnergy / float32(faunaCount)
+	}
+	if minFaunaEnergy == 9999 {
+		minFaunaEnergy = 0
+	}
+	if minFloraEnergy == 9999 {
+		minFloraEnergy = 0
+	}
+
+	logf("=== Tick %d ===", g.tick)
+	logf("Flora: %d (cells: %d, energy: %.1f avg, %.1f-%.1f range)",
+		floraCount, totalFloraCells, avgFloraEnergy, minFloraEnergy, maxFloraEnergy)
+	logf("Fauna: %d (cells: %d, energy: %.1f avg, %.1f-%.1f range)",
+		faunaCount, totalFaunaCells, avgFaunaEnergy, minFaunaEnergy, maxFaunaEnergy)
+	logf("  Herbivores: %d, Carnivores: %d, Carrion: %d",
+		herbivoreCount, carnivoreCount, carrionCount)
+	logf("Dead: %d, Spores: %d, Particles: %d",
+		deadCount, g.spores.Count(), g.particles.Count())
+
+	// Count breeding-eligible fauna and trait diversity
+	breedingEligible := 0
+	var modeGrow, modeBreed, modeSurvive, modeStore int
+	var withSpeed, withHerding, withFarSight, omnivores int
+	var withPredatorEyes, withPreyEyes int
+	query2 := g.allOrgFilter.Query()
+	for query2.Next() {
+		_, _, org, cells := query2.Get()
+		if org.Dead || traits.IsFlora(org.Traits) {
+			continue
+		}
+		// Count allocation modes
+		switch org.AllocationMode {
+		case components.ModeGrow:
+			modeGrow++
+		case components.ModeBreed:
+			modeBreed++
+		case components.ModeSurvive:
+			modeSurvive++
+		case components.ModeStore:
+			modeStore++
+		}
+		// Count trait diversity
+		if org.Traits.Has(traits.Speed) {
+			withSpeed++
+		}
+		if org.Traits.Has(traits.Herding) {
+			withHerding++
+		}
+		if org.Traits.Has(traits.FarSight) {
+			withFarSight++
+		}
+		if org.Traits.Has(traits.PredatorEyes) {
+			withPredatorEyes++
+		}
+		if org.Traits.Has(traits.PreyEyes) {
+			withPreyEyes++
+		}
+		if traits.IsOmnivore(org.Traits) {
+			omnivores++
+		}
+		if org.Traits.Has(traits.Breeding) && org.AllocationMode == components.ModeBreed && org.Energy >= org.MaxEnergy*0.35 && cells.Count >= 1 && org.BreedingCooldown == 0 {
+			breedingEligible++
+		}
+	}
+	logf("Breeding eligible: %d", breedingEligible)
+	logf("Modes: Grow=%d, Breed=%d, Survive=%d, Store=%d", modeGrow, modeBreed, modeSurvive, modeStore)
+	logf("Traits: Speed=%d, Herding=%d, FarSight=%d, PredEyes=%d, PreyEyes=%d, Omnivore=%d",
+		withSpeed, withHerding, withFarSight, withPredatorEyes, withPreyEyes, omnivores)
+	logf("")
 }
 
 func (g *Game) collectPositions() ([]components.Position, []components.Position) {
@@ -276,8 +459,8 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 	return floraPos, faunaPos
 }
 
-func (g *Game) collectOccluders() []renderer.Occluder {
-	var occluders []renderer.Occluder
+func (g *Game) collectOccluders() []systems.Occluder {
+	var occluders []systems.Occluder
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
@@ -318,7 +501,7 @@ func (g *Game) collectOccluders() []renderer.Occluder {
 		maxX += org.CellSize / 2
 		maxY += org.CellSize / 2
 
-		occluders = append(occluders, renderer.Occluder{
+		occluders = append(occluders, systems.Occluder{
 			X:      minX,
 			Y:      minY,
 			Width:  maxX - minX,
@@ -348,44 +531,108 @@ func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organis
 }
 
 func (g *Game) updateGrowth() {
+	// Collect deferred actions to avoid modifying world during query
+	type splitRequest struct {
+		pos       *components.Position
+		vel       *components.Velocity
+		org       *components.Organism
+		cells     *components.CellBuffer
+	}
+	var pendingSplits []splitRequest
+
+	type sporeRequest struct {
+		x, y   float32
+		traits traits.Trait
+	}
+	var pendingSpores []sporeRequest
+
 	query := g.allOrgFilter.Query()
 	for query.Next() {
-		_, _, org, cells := query.Get()
+		pos, vel, org, cells := query.Get()
 
 		if org.Dead {
+			// Emit death particles
+			g.particles.EmitDeath(pos.X, pos.Y)
 			continue
 		}
 
+		// Check for disease and emit particles
+		for i := uint8(0); i < cells.Count; i++ {
+			if cells.Cells[i].Mutation == traits.Disease {
+				cellX := pos.X + float32(cells.Cells[i].GridX)*org.CellSize
+				cellY := pos.Y + float32(cells.Cells[i].GridY)*org.CellSize
+				g.particles.EmitDisease(cellX, cellY)
+				break // Only emit once per organism per tick
+			}
+		}
+
 		org.GrowthTimer++
-		if org.GrowthTimer >= org.GrowthInterval && org.Energy > 50 {
+		// Only grow if in Grow mode and below target cell count
+		canGrow := org.AllocationMode == components.ModeGrow && cells.Count < org.TargetCells
+		if org.GrowthTimer >= org.GrowthInterval && org.Energy > 40 && canGrow {
 			org.GrowthTimer = 0
-			g.tryGrow(org, cells)
+			g.tryGrow(pos, org, cells)
+
+			// Queue splitting for after query completes
+			if g.shouldTrySplit(cells) {
+				pendingSplits = append(pendingSplits, splitRequest{pos, vel, org, cells})
+			}
 		}
 
 		// Spore timer (flora only)
 		if traits.IsFlora(org.Traits) {
 			org.SporeTimer++
+			// Queue spore spawn for after query completes
+			if org.SporeTimer >= org.SporeInterval && org.Energy > 30 {
+				org.SporeTimer = 0
+				org.Energy -= 10 // Reduced cost from 20
+				pendingSpores = append(pendingSpores, sporeRequest{pos.X, pos.Y - org.CellSize, org.Traits})
+			}
 		}
+	}
+
+	// Process deferred splits (after query iteration completes)
+	for _, req := range pendingSplits {
+		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, g.createOrganism, g.particles)
+	}
+
+	// Process deferred spore spawns
+	for _, req := range pendingSpores {
+		g.spores.SpawnSpore(req.x, req.y, req.traits)
 	}
 }
 
-func (g *Game) tryGrow(org *components.Organism, cells *components.CellBuffer) {
+// shouldTrySplit checks if an organism should attempt to split.
+func (g *Game) shouldTrySplit(cells *components.CellBuffer) bool {
+	if cells.Count < 4 {
+		return false
+	}
+	for i := uint8(0); i < cells.Count; i++ {
+		if cells.Cells[i].Mutation == traits.Splitting {
+			return true
+		}
+	}
+	return false
+}
+
+type gridPos struct{ x, y int8 }
+
+func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, cells *components.CellBuffer) {
 	if cells.Count >= 32 || org.Energy < 30 {
 		return
 	}
 
 	// Find valid growth positions
-	type pos struct{ x, y int8 }
-	occupied := make(map[pos]bool)
+	occupied := make(map[gridPos]bool)
 	for i := uint8(0); i < cells.Count; i++ {
-		occupied[pos{cells.Cells[i].GridX, cells.Cells[i].GridY}] = true
+		occupied[gridPos{cells.Cells[i].GridX, cells.Cells[i].GridY}] = true
 	}
 
-	var candidates []pos
-	directions := []pos{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+	var candidates []gridPos
+	directions := []gridPos{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
 	for i := uint8(0); i < cells.Count; i++ {
 		for _, d := range directions {
-			np := pos{cells.Cells[i].GridX + d.x, cells.Cells[i].GridY + d.y}
+			np := gridPos{cells.Cells[i].GridX + d.x, cells.Cells[i].GridY + d.y}
 			if !occupied[np] {
 				candidates = append(candidates, np)
 			}
@@ -396,8 +643,13 @@ func (g *Game) tryGrow(org *components.Organism, cells *components.CellBuffer) {
 		return
 	}
 
-	// Pick random position
-	newPos := candidates[rand.Intn(len(candidates))]
+	// Pick position - weighted for flora (phototropism), random for fauna
+	var newPos gridPos
+	if traits.IsFlora(org.Traits) {
+		newPos = g.selectFloraGrowthPosition(orgPos, org, candidates)
+	} else {
+		newPos = candidates[rand.Intn(len(candidates))]
+	}
 
 	// Pick random trait
 	var newTrait traits.Trait
@@ -427,28 +679,112 @@ func (g *Game) tryGrow(org *components.Organism, cells *components.CellBuffer) {
 	org.Energy -= 30
 }
 
+// selectFloraGrowthPosition uses phototropism to weight growth toward light.
+func (g *Game) selectFloraGrowthPosition(orgPos *components.Position, org *components.Organism, candidates []gridPos) gridPos {
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	sunX := g.light.PosX * g.bounds.Width
+	sunY := g.light.PosY * g.bounds.Height
+
+	// Calculate weights for each candidate
+	weights := make([]float32, len(candidates))
+	totalWeight := float32(0)
+
+	for i, c := range candidates {
+		// World position of candidate
+		worldX := orgPos.X + float32(c.x)*org.CellSize
+		worldY := orgPos.Y + float32(c.y)*org.CellSize
+
+		// Base weight from light intensity
+		light := g.shadowMap.SampleLight(worldX, worldY)
+		weight := light
+
+		// Direction to sun
+		toSunX, toSunY := g.shadowMap.SunDirection(worldX, worldY, sunX, sunY)
+
+		// Growth direction (normalized)
+		growthDX := float32(c.x)
+		growthDY := float32(c.y)
+		growthMag := float32(math.Sqrt(float64(growthDX*growthDX + growthDY*growthDY)))
+		if growthMag > 0 {
+			growthDX /= growthMag
+			growthDY /= growthMag
+		}
+
+		// Dot product: direction bonus for growing toward sun
+		dot := growthDX*toSunX + growthDY*toSunY
+		weight += dot * 0.3
+
+		// Rooted flora prefer growing upward, penalize downward
+		if org.Traits.Has(traits.Rooted) {
+			if c.y < 0 { // Growing up
+				weight *= 1.5
+			} else if c.y > 0 { // Growing down
+				weight -= 0.3
+			}
+		}
+
+		// Minimum weight
+		if weight < 0.01 {
+			weight = 0.01
+		}
+
+		weights[i] = weight
+		totalWeight += weight
+	}
+
+	// Weighted random selection
+	r := rand.Float32() * totalWeight
+	cumulative := float32(0)
+	for i, w := range weights {
+		cumulative += w
+		if r <= cumulative {
+			return candidates[i]
+		}
+	}
+
+	// Fallback
+	return candidates[len(candidates)-1]
+}
+
 func pickFloraTraitWeighted() traits.Trait {
 	r := rand.Float32()
-	if r < 0.05 {
+	// Flora can gain Floating trait through growth
+	if r < 0.03 {
 		return traits.Floating
 	}
-	return 0 // No special trait
+	return 0 // Most flora cells are simple
 }
 
 func pickFaunaTraitWeighted() traits.Trait {
+	// Use weighted selection from traits package + diet evolution
+	// This allows organisms to evolve new capabilities through growth
 	r := rand.Float32()
 	total := float32(0)
 
+	// Fauna-compatible traits with weights (allows diet evolution for diversity)
 	weights := []struct {
 		t traits.Trait
 		w float32
 	}{
-		{traits.Herding, 0.15},
-		{traits.Breeding, 0.10},
-		{traits.PredatorEyes, 0.06},
-		{traits.PreyEyes, 0.08},
-		{traits.FarSight, 0.05},
-		{traits.Speed, 0.06},
+		// Behavior traits (common)
+		{traits.Herding, 0.12},
+		{traits.Breeding, 0.08},
+
+		// Vision traits (moderate)
+		{traits.PreyEyes, 0.06},
+		{traits.PredatorEyes, 0.04},
+		{traits.FarSight, 0.04},
+
+		// Physical traits
+		{traits.Speed, 0.05},
+
+		// Diet evolution (rare but important for diversity)
+		{traits.Herbivore, 0.03},  // Can become omnivore
+		{traits.Carnivore, 0.02},  // Can become predator
+		{traits.Carrion, 0.04},    // Can become scavenger
 	}
 
 	for _, w := range weights {
@@ -458,23 +794,22 @@ func pickFaunaTraitWeighted() traits.Trait {
 		}
 	}
 
+	// ~52% chance of no trait (simple growth)
 	return 0
 }
 
 func pickMutation() traits.Mutation {
+	// Use weights from traits package for consistency
 	r := rand.Float32()
-	if r < 0.02 {
-		return traits.Disease
+	total := float32(0)
+
+	for mutation, weight := range traits.MutationWeights {
+		total += weight
+		if r < total {
+			return mutation
+		}
 	}
-	if r < 0.05 {
-		return traits.Rage
-	}
-	if r < 0.09 {
-		return traits.Growth
-	}
-	if r < 0.11 {
-		return traits.Splitting
-	}
+
 	return traits.NoMutation
 }
 
@@ -504,6 +839,12 @@ func (g *Game) Draw() {
 		pos, _, org, cells := query.Get()
 		g.drawOrganism(pos, org, cells)
 	}
+
+	// Draw spores
+	g.drawSpores()
+
+	// Draw effect particles
+	g.particleRenderer.Draw(g.particles.Particles)
 
 	// Draw UI
 	g.drawUI()
@@ -765,6 +1106,24 @@ func (g *Game) drawOrganism(pos *components.Position, org *components.Organism, 
 	}
 }
 
+func (g *Game) drawSpores() {
+	for i := range g.spores.Spores {
+		spore := &g.spores.Spores[i]
+
+		// Calculate alpha based on life/landing state
+		alpha := uint8(180)
+		if spore.Landed {
+			// Fade as germination approaches
+			fadeRatio := 1.0 - float32(spore.LandedTimer)/50.0
+			alpha = uint8(fadeRatio * 180)
+		}
+
+		// Green color for spores
+		color := rl.Color{R: 80, G: 180, B: 100, A: alpha}
+		rl.DrawCircle(int32(spore.X), int32(spore.Y), 2, color)
+	}
+}
+
 func (g *Game) drawUI() {
 	// Count organisms
 	floraCount := 0
@@ -787,7 +1146,7 @@ func (g *Game) drawUI() {
 	// Draw stats
 	rl.DrawText("Primordial Soup", 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Flora: %d | Fauna: %d | Cells: %d", floraCount, faunaCount, totalCells), 10, 35, 16, rl.LightGray)
-	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | Particles: %d", g.tick, g.stepsPerFrame, len(g.flowField.Particles)), 10, 55, 16, rl.LightGray)
+	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | Spores: %d | Effects: %d", g.tick, g.stepsPerFrame, g.spores.Count(), g.particles.Count()), 10, 55, 16, rl.LightGray)
 
 	statusText := "Running"
 	if g.paused {
@@ -800,17 +1159,45 @@ func (g *Game) drawUI() {
 }
 
 func main() {
+	flag.Parse()
+
+	// Setup log file if specified
+	if *logFile != "" {
+		var err error
+		logWriter, err = os.Create(*logFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create log file: %v\n", err)
+			os.Exit(1)
+		}
+		defer logWriter.Close()
+	}
+
 	rl.InitWindow(screenWidth, screenHeight, "Primordial Soup")
 	defer rl.CloseWindow()
 
 	rl.SetTargetFPS(60)
 
 	game := NewGame()
+
+	// Apply initial speed
+	if *initialSpeed > 0 && *initialSpeed <= 10 {
+		game.stepsPerFrame = *initialSpeed
+	}
+
 	defer game.flowRenderer.Unload()
 	defer game.waterBackground.Unload()
 
 	for !rl.WindowShouldClose() {
 		game.Update()
 		game.Draw()
+	}
+}
+
+func logf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	if logWriter != nil {
+		fmt.Fprintln(logWriter, msg)
+	} else {
+		fmt.Println(msg)
 	}
 }

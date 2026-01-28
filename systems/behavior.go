@@ -57,9 +57,25 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		if org.Traits.Has(traits.Herbivore) && !org.Traits.Has(traits.Carnivore) {
 			predX, predY, foundPred := s.findPredator(pos, org, faunaPositions, faunaOrgs)
 			if foundPred {
-				fleeX, fleeY := flee(pos.X, pos.Y, predX, predY, vel.X, vel.Y, org.MaxSpeed)
-				steerX += fleeX * 2
-				steerY += fleeY * 2
+				// Calculate distance to predator for urgency scaling
+				predDist := distance(pos.X, pos.Y, predX, predY)
+				urgency := float32(1.0)
+				if predDist < 30 {
+					urgency = 2.0 // Panic mode when predator is close
+				}
+				fleeX, fleeY := flee(pos.X, pos.Y, predX, predY, vel.X, vel.Y, org.MaxSpeed*1.2) // Adrenaline boost
+				steerX += fleeX * 3 * urgency
+				steerY += fleeY * 3 * urgency
+			}
+		}
+
+		// Carrion eaters seek dead organisms
+		if org.Traits.Has(traits.Carrion) {
+			deadX, deadY, foundDead := s.findDead(pos, org, faunaPositions, faunaOrgs, floraPositions, floraOrgs)
+			if foundDead {
+				seekDeadX, seekDeadY := seek(pos.X, pos.Y, deadX, deadY, vel.X, vel.Y, org.MaxSpeed)
+				steerX += seekDeadX * 1.5
+				steerY += seekDeadY * 1.5
 			}
 		}
 
@@ -142,9 +158,48 @@ func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Orga
 	return closestX, closestY, found
 }
 
-func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism) (float32, float32, bool) {
+func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, floraPos []components.Position, floraOrgs []*components.Organism) (float32, float32, bool) {
 	vision := traits.GetVisionParams(org.Traits)
 	maxDist := org.PerceptionRadius * vision.RangeMultiplier
+	closestDist := maxDist
+	var closestX, closestY float32
+	found := false
+
+	// Find dead fauna
+	for i := range faunaPos {
+		if faunaOrgs[i] == org || !faunaOrgs[i].Dead {
+			continue
+		}
+		dist := distance(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
+		if dist < closestDist {
+			closestDist = dist
+			closestX = faunaPos[i].X
+			closestY = faunaPos[i].Y
+			found = true
+		}
+	}
+
+	// Find dead flora
+	for i := range floraPos {
+		if !floraOrgs[i].Dead {
+			continue
+		}
+		dist := distance(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y)
+		if dist < closestDist {
+			closestDist = dist
+			closestX = floraPos[i].X
+			closestY = floraPos[i].Y
+			found = true
+		}
+	}
+
+	return closestX, closestY, found
+}
+
+func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism) (float32, float32, bool) {
+	// Prey have omnidirectional awareness of predators (survival instinct)
+	// Detection range is larger than normal vision - heightened alertness
+	maxDist := org.PerceptionRadius * 1.5
 	closestDist := maxDist
 	var closestX, closestY float32
 	found := false
@@ -154,6 +209,9 @@ func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.
 			continue
 		}
 		if !faunaOrgs[i].Traits.Has(traits.Carnivore) {
+			continue
+		}
+		if faunaOrgs[i].Dead {
 			continue
 		}
 		dist := distance(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)

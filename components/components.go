@@ -5,6 +5,16 @@ import (
 	"github.com/pthm-cable/soup/traits"
 )
 
+// AllocationMode determines how an organism prioritizes energy use.
+type AllocationMode uint8
+
+const (
+	ModeSurvive AllocationMode = iota // Conserve energy, no growth/breeding
+	ModeGrow                          // Prioritize cell growth
+	ModeBreed                         // Prioritize reproduction
+	ModeStore                         // Build energy reserves
+)
+
 // Position represents an entity's world position.
 type Position struct {
 	X, Y float32
@@ -31,6 +41,8 @@ type Organism struct {
 	SporeTimer        int32
 	SporeInterval     int32
 	BreedingCooldown  int32
+	AllocationMode    AllocationMode
+	TargetCells       uint8 // Desired cell count based on conditions
 }
 
 // Cell represents a single cell within an organism.

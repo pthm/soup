@@ -21,6 +21,11 @@ type Bounds struct {
 	Width, Height float32
 }
 
+// Occluder represents something that blocks light.
+type Occluder struct {
+	X, Y, Width, Height float32
+}
+
 // NewPhysicsSystem creates a new physics system.
 func NewPhysicsSystem(w *ecs.World, bounds Bounds) *PhysicsSystem {
 	return &PhysicsSystem{
