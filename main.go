@@ -378,6 +378,9 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		Alive:    true,
 	})
 
+	// Calculate shape metrics
+	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+
 	// Create entity with appropriate tag
 	if traits.IsFlora(t) {
 		return g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
@@ -483,6 +486,9 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 			Alive:    true,
 		})
 	}
+
+	// Calculate shape metrics
+	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
 
 	// Create fauna entity (neural organisms are always fauna)
 	entity := g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
@@ -930,11 +936,14 @@ func (g *Game) logWorldState() {
 		}
 	}
 
-	// Count light sensitivity traits
+	// Count light sensitivity traits and shape metrics
 	var photophilic, photophobic int
+	var drifters, generalists, apex int
+	var totalStreamlining, totalDrag float32
+	var shapeCount int
 	query3 := g.allOrgFilter.Query()
 	for query3.Next() {
-		_, _, org, _ := query3.Get()
+		_, _, org, cells := query3.Get()
 		if org.Dead || traits.IsFlora(org.Traits) {
 			continue
 		}
@@ -944,6 +953,27 @@ func (g *Game) logWorldState() {
 		if org.Traits.Has(traits.Photophobic) {
 			photophobic++
 		}
+		// Count organism classes
+		cellCount := int(cells.Count)
+		switch {
+		case cellCount <= 3:
+			drifters++
+		case cellCount <= 10:
+			generalists++
+		default:
+			apex++
+		}
+		// Accumulate shape metrics
+		totalStreamlining += org.ShapeMetrics.Streamlining
+		totalDrag += org.ShapeMetrics.DragCoefficient
+		shapeCount++
+	}
+
+	avgStreamlining := float32(0)
+	avgDrag := float32(0)
+	if shapeCount > 0 {
+		avgStreamlining = totalStreamlining / float32(shapeCount)
+		avgDrag = totalDrag / float32(shapeCount)
 	}
 
 	logf("Breeding eligible: %d", breedingEligible)
@@ -951,6 +981,8 @@ func (g *Game) logWorldState() {
 	logf("Traits: Speed=%d, Herding=%d, FarSight=%d, PredEyes=%d, PreyEyes=%d, Omnivore=%d",
 		withSpeed, withHerding, withFarSight, withPredatorEyes, withPreyEyes, omnivores)
 	logf("Light: Photophilic=%d, Photophobic=%d (Sun: %.2f)", photophilic, photophobic, g.light.PosX)
+	logf("Classes: Drifters=%d, Generalists=%d, Apex=%d | Shape: Streamlining=%.2f, Drag=%.2f",
+		drifters, generalists, apex, avgStreamlining, avgDrag)
 	logf("")
 }
 
@@ -1339,6 +1371,9 @@ func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, ce
 	if newTrait != 0 {
 		org.Traits = org.Traits.Add(newTrait)
 	}
+
+	// Recalculate shape metrics after growth
+	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
 
 	org.Energy -= 30
 }
@@ -1855,6 +1890,10 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		baseColor.B = uint8(float32(baseColor.B) * (0.5 + 0.5*factor))
 	}
 
+	// Pre-compute rotation for cell positions
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+
 	// Draw each cell
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
@@ -1862,8 +1901,17 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 			continue
 		}
 
-		cellX := pos.X + float32(cell.GridX)*org.CellSize
-		cellY := pos.Y + float32(cell.GridY)*org.CellSize
+		// Local grid position
+		localX := float32(cell.GridX) * org.CellSize
+		localY := float32(cell.GridY) * org.CellSize
+
+		// Rotate around center
+		rotatedX := localX*cosH - localY*sinH
+		rotatedY := localX*sinH + localY*cosH
+
+		// World position
+		cellX := pos.X + rotatedX
+		cellY := pos.Y + rotatedY
 
 		// Sample shadow map for local lighting
 		light := g.shadowMap.SampleLight(cellX, cellY)

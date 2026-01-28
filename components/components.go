@@ -27,6 +27,14 @@ type Velocity struct {
 	X, Y float32
 }
 
+// ShapeMetrics describes the physical shape characteristics of an organism.
+type ShapeMetrics struct {
+	AspectRatio     float32 // Length/Width (higher = streamlined)
+	CrossSection    float32 // Max width perpendicular to heading
+	Streamlining    float32 // 0-1 (1 = streamlined)
+	DragCoefficient float32 // 0.3 (streamlined) to 1.0 (blunt)
+}
+
 // Organism holds organism-specific data.
 type Organism struct {
 	Traits            traits.Trait
@@ -44,8 +52,10 @@ type Organism struct {
 	SporeInterval     int32
 	BreedingCooldown  int32
 	AllocationMode    AllocationMode
-	TargetCells       uint8 // Desired cell count based on conditions
-	DeadTime          int32 // Ticks since death (for decomposition/removal)
+	TargetCells       uint8        // Desired cell count based on conditions
+	DeadTime          int32        // Ticks since death (for decomposition/removal)
+	ShapeMetrics      ShapeMetrics // Physical shape characteristics
+	ActiveThrust      float32      // Thrust magnitude this tick (for energy cost)
 }
 
 // Cell represents a single cell within an organism.

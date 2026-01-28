@@ -136,6 +136,10 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			steerY *= scale
 		}
 
+		// Track thrust magnitude for energy cost (before capping)
+		thrustMag := float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
+		org.ActiveThrust = thrustMag
+
 		// Apply steering
 		vel.X += steerX
 		vel.Y += steerY
@@ -467,10 +471,10 @@ func (s *BehaviorSystem) flockWithHerd(pos *components.Position, vel *components
 	return sepX*1.5 + cohX*0.8, sepY*1.5 + cohY*0.8
 }
 
-func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, bounds Bounds) (float32, float32) {
+func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
 	const flowScale = 0.003
 	const timeScale = 0.0001 // Slowed down to match flow particles
-	const baseStrength = 0.4  // Reduced for gentler movement
+	const baseStrength = 0.4 // Reduced for gentler movement
 
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*timeScale)
 	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*timeScale)
@@ -489,11 +493,11 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 		return flowX * 0.05, flowY * 0.05
 	}
 
-	// Larger organisms resist flow better - but we don't have cell count here
-	// Use energy as proxy for mass
-	mass := org.Energy / org.MaxEnergy
-	resistance := float32(math.Min(float64(mass)/3, 1))
-	factor := 1 - resistance*0.8
+	// Shape-based flow resistance: streamlined organisms resist better
+	shapeResistance := org.ShapeMetrics.Streamlining * 0.4
+	massResistance := float32(math.Min(float64(org.Energy/org.MaxEnergy)/3, 1))
+	totalResistance := shapeResistance + massResistance*0.6
+	factor := 1 - totalResistance*0.7
 
 	return flowX * factor, flowY * factor
 }

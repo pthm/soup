@@ -29,6 +29,7 @@ func (s *CellSystem) Update(w *ecs.World) {
 		var activeTraits traits.Trait
 
 		// Process cells in reverse to allow safe removal
+		cellsRemoved := false
 		for i := int(cells.Count) - 1; i >= 0; i-- {
 			cell := &cells.Cells[i]
 			cell.Age++
@@ -52,6 +53,7 @@ func (s *CellSystem) Update(w *ecs.World) {
 			// Remove dead cells
 			if !cell.Alive {
 				cells.RemoveCell(uint8(i))
+				cellsRemoved = true
 				continue
 			}
 
@@ -59,6 +61,11 @@ func (s *CellSystem) Update(w *ecs.World) {
 			if cell.Trait != 0 {
 				activeTraits = activeTraits.Add(cell.Trait)
 			}
+		}
+
+		// Recalculate shape metrics if cells were removed
+		if cellsRemoved {
+			org.ShapeMetrics = CalculateShapeMetrics(cells)
 		}
 
 		// Preserve core traits that aren't cell-based

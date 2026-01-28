@@ -47,11 +47,29 @@ func (s *EnergySystem) Update(w *ecs.World) {
 			energyDrain += 0.02
 		}
 
-		// Calculate speed based on size
-		sizeSpeedPenalty := float32(min(int(cells.Count)-1, 9)) * 0.13
-		baseSpeed := float32(max(0.8, 2.0-float64(sizeSpeedPenalty)))
+		// Class-based speed and energy drain based on cell count
+		cellCount := int(cells.Count)
+		var baseSpeed, baseDrain float32
 
-		// Speed trait overcomes size penalty
+		switch {
+		case cellCount <= 3: // Drifters: passive, efficient
+			baseDrain = 0.002 + 0.0005*float32(cellCount)
+			baseSpeed = 0.5 + org.ShapeMetrics.Streamlining*0.2
+
+		case cellCount <= 10: // Generalists: balanced
+			penalty := float32(cellCount-1) * 0.08
+			baseDrain = 0.005 + 0.001*float32(cellCount)
+			baseSpeed = float32(max(0.8, 2.0-float64(penalty))) * (0.8 + org.ShapeMetrics.Streamlining*0.4)
+
+		default: // Apex/Whales: powerful but costly to accelerate
+			penalty := float32(cellCount-1) * 0.04
+			baseDrain = 0.003 + 0.0008*float32(cellCount)
+			baseSpeed = float32(max(0.6, 1.4-float64(penalty))) * (0.7 + org.ShapeMetrics.Streamlining*0.5)
+		}
+
+		energyDrain = baseDrain
+
+		// Speed trait still provides boost
 		if org.Traits.Has(traits.Speed) {
 			baseSpeed = float32(max(float64(baseSpeed), 1.8))
 		}
@@ -62,7 +80,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 			baseSpeed *= 1.4
 		}
 
-		// Floating flora moves very slowly
+		// Floating flora special case
 		if traits.IsFlora(org.Traits) && org.Traits.Has(traits.Floating) {
 			baseSpeed = 0.3
 		}
@@ -73,6 +91,11 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		if traits.IsFlora(org.Traits) {
 			energyDrain *= 0.2
 		}
+
+		// Movement cost: active thrust × drag coefficient
+		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 0.008
+		energyDrain += thrustCost
+		org.ActiveThrust = 0 // Reset for next tick
 
 		org.Energy -= energyDrain
 		org.Energy = float32(math.Min(float64(org.Energy), float64(org.MaxEnergy)))

@@ -63,13 +63,16 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		pos.X += vel.X
 		pos.Y += vel.Y
 
-		// Apply friction (more for dead things - they sink/settle)
-		friction := float32(0.98)
+		// Shape-based friction: streamlined organisms coast further
+		baseFriction := float32(0.98)
 		if org.Dead {
-			friction = 0.96
+			baseFriction = 0.96
+		} else {
+			// Streamlined organisms coast further (higher friction = less slowdown)
+			baseFriction = 0.96 + org.ShapeMetrics.Streamlining*0.03 // 0.96 to 0.99
 		}
-		vel.X *= friction
-		vel.Y *= friction
+		vel.X *= baseFriction
+		vel.Y *= baseFriction
 
 		// Update heading (not for dead)
 		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > 0.01 {
