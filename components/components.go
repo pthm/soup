@@ -2,7 +2,9 @@
 package components
 
 import (
+	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/traits"
+	"github.com/yaricom/goNEAT/v4/neat/genetics"
 )
 
 // AllocationMode determines how an organism prioritizes energy use.
@@ -132,3 +134,19 @@ type Fauna struct{}
 
 // Dead tag component for dead organisms.
 type Dead struct{}
+
+// NeuralGenome stores the genetic blueprints for neural networks.
+type NeuralGenome struct {
+	BodyGenome  *genetics.Genome // CPPN for morphology (used at birth)
+	BrainGenome *genetics.Genome // Controller for behavior
+	SpeciesID   int              // Species assignment for speciation
+	Generation  int              // Birth generation
+}
+
+// Brain stores the instantiated runtime neural network controller.
+type Brain struct {
+	Controller *neural.BrainController
+}
+
+// HasBrain tag component to mark organisms with neural control.
+type HasBrain struct{}

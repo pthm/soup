@@ -14,6 +14,7 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
 	"github.com/pthm-cable/soup/traits"
@@ -113,6 +114,10 @@ type Game struct {
 	allocation     *systems.AllocationSystem
 	spatialGrid    *systems.SpatialGrid
 
+	// Neural evolution
+	neuralConfig   *neural.Config
+	genomeIDGen    *neural.GenomeIDGenerator
+
 	// Mappers for creating entities with components
 	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
 	faunaMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna]
@@ -134,6 +139,10 @@ func NewGame() *Game {
 	// Create shadow map first as other systems depend on it
 	shadowMap := systems.NewShadowMap(screenWidth, screenHeight)
 
+	// Neural evolution config
+	neuralConfig := neural.DefaultConfig()
+	genomeIDGen := neural.NewGenomeIDGenerator()
+
 	g := &Game{
 		world:         world,
 		bounds:        bounds,
@@ -154,12 +163,16 @@ func NewGame() *Game {
 		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:        systems.NewFeedingSystem(world),
 		spores:         systems.NewSporeSystem(bounds),
-		breeding:       systems.NewBreedingSystem(world),
+		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen),
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
 		spatialGrid:   systems.NewSpatialGrid(screenWidth, screenHeight),
 		particleRenderer: renderer.NewParticleRenderer(),
+
+		// Neural evolution
+		neuralConfig:  neuralConfig,
+		genomeIDGen:   genomeIDGen,
 
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
@@ -378,7 +391,8 @@ func (g *Game) Update() {
 		measure("cells", func() { g.cells.Update(g.world) })
 
 		// Breeding (fauna reproduction)
-		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism) })
+		// Pass nil for neural organism creator - neural breeding will fallback to traditional breeding
+		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, nil) })
 
 		// Spores (flora reproduction)
 		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })

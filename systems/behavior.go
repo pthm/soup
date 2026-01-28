@@ -7,12 +7,14 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/traits"
 )
 
 // BehaviorSystem handles organism steering behaviors.
 type BehaviorSystem struct {
 	filter    ecs.Filter3[components.Position, components.Velocity, components.Organism]
+	brainMap  *ecs.Map[components.Brain]
 	noise     *PerlinNoise
 	tick      int32
 	shadowMap *ShadowMap
@@ -22,6 +24,7 @@ type BehaviorSystem struct {
 func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
 	return &BehaviorSystem{
 		filter:    *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
+		brainMap:  ecs.NewMap[components.Brain](w),
 		noise:     NewPerlinNoise(rand.Int63()),
 		shadowMap: shadowMap,
 	}
@@ -33,6 +36,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 
 	query := s.filter.Query()
 	for query.Next() {
+		entity := query.Entity()
 		pos, vel, org := query.Get()
 
 		// Skip stationary flora (unless dead - dead flora drifts)
@@ -51,14 +55,24 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			continue
 		}
 
+		// Check if this organism has a neural brain
+		var outputs neural.BehaviorOutputs
+		hasBrain := s.brainMap.Has(entity)
+
+		if hasBrain {
+			outputs = s.getBrainOutputs(entity, pos, vel, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid, bounds)
+		} else {
+			outputs = neural.DefaultOutputs()
+		}
+
 		var steerX, steerY float32
 
 		// Find and seek food (using spatial grid for efficiency)
 		foodX, foodY, foundFood := s.findFood(pos, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid)
 		if foundFood {
 			seekX, seekY := seek(pos.X, pos.Y, foodX, foodY, vel.X, vel.Y, org.MaxSpeed)
-			steerX += seekX * 1.5
-			steerY += seekY * 1.5
+			steerX += seekX * outputs.SeekFoodWeight
+			steerY += seekY * outputs.SeekFoodWeight
 		}
 
 		// Flee from predators (if herbivore)
@@ -72,8 +86,8 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 					urgency = 2.0 // Panic mode when predator is close
 				}
 				fleeX, fleeY := flee(pos.X, pos.Y, predX, predY, vel.X, vel.Y, org.MaxSpeed*1.2) // Adrenaline boost
-				steerX += fleeX * 3 * urgency
-				steerY += fleeY * 3 * urgency
+				steerX += fleeX * outputs.FleeWeight * urgency
+				steerY += fleeY * outputs.FleeWeight * urgency
 			}
 		}
 
@@ -82,16 +96,16 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			deadX, deadY, foundDead := s.findDead(pos, org, faunaPositions, faunaOrgs, floraPositions, floraOrgs, grid)
 			if foundDead {
 				seekDeadX, seekDeadY := seek(pos.X, pos.Y, deadX, deadY, vel.X, vel.Y, org.MaxSpeed)
-				steerX += seekDeadX * 1.5
-				steerY += seekDeadY * 1.5
+				steerX += seekDeadX * outputs.SeekFoodWeight // Reuse food weight for carrion
+				steerY += seekDeadY * outputs.SeekFoodWeight
 			}
 		}
 
 		// Herding behavior
 		if org.Traits.Has(traits.Herding) {
 			herdX, herdY := s.flockWithHerd(pos, vel, org, faunaPositions, faunaOrgs, grid)
-			steerX += herdX * 1.2
-			steerY += herdY * 1.2
+			steerX += herdX * outputs.HerdWeight
+			steerY += herdY * outputs.HerdWeight
 		}
 
 		// Light sensitivity behavior
@@ -105,8 +119,8 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		steerMag := float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
 		if steerMag < 0.01 {
 			org.Heading += (rand.Float32() - 0.5) * 0.3
-			steerX = float32(math.Cos(float64(org.Heading))) * 0.4
-			steerY = float32(math.Sin(float64(org.Heading))) * 0.4
+			steerX = float32(math.Cos(float64(org.Heading))) * outputs.WanderWeight
+			steerY = float32(math.Sin(float64(org.Heading))) * outputs.WanderWeight
 		}
 
 		// Apply flow field
@@ -126,6 +140,155 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		vel.X += steerX
 		vel.Y += steerY
 	}
+}
+
+// getBrainOutputs gathers sensory inputs and runs the brain network to get behavior outputs.
+func (s *BehaviorSystem) getBrainOutputs(
+	entity ecs.Entity,
+	pos *components.Position,
+	vel *components.Velocity,
+	org *components.Organism,
+	floraPos, faunaPos []components.Position,
+	floraOrgs, faunaOrgs []*components.Organism,
+	grid *SpatialGrid,
+	bounds Bounds,
+) neural.BehaviorOutputs {
+	brain := s.brainMap.Get(entity)
+	if brain == nil || brain.Controller == nil {
+		return neural.DefaultOutputs()
+	}
+
+	// Gather sensory inputs
+	sensory := neural.SensoryInputs{
+		PerceptionRadius: org.PerceptionRadius,
+		Energy:           org.Energy,
+		MaxEnergy:        org.MaxEnergy,
+		MaxCells:         32, // Fixed max cells
+	}
+
+	// Count cells (estimate from energy capacity)
+	sensory.CellCount = int((org.MaxEnergy - 100) / 50)
+	if sensory.CellCount < 1 {
+		sensory.CellCount = 1
+	}
+
+	// Food detection
+	foodX, foodY, foundFood := s.findFood(pos, org, floraPos, faunaPos, floraOrgs, faunaOrgs, grid)
+	if foundFood {
+		sensory.FoodFound = true
+		sensory.FoodDistance = distance(pos.X, pos.Y, foodX, foodY)
+		sensory.FoodAngle = float32(math.Atan2(float64(foodY-pos.Y), float64(foodX-pos.X))) - org.Heading
+	}
+
+	// Predator detection
+	predX, predY, foundPred := s.findPredator(pos, org, faunaPos, faunaOrgs, grid)
+	if foundPred {
+		sensory.PredatorFound = true
+		sensory.PredatorDistance = distance(pos.X, pos.Y, predX, predY)
+		sensory.PredatorAngle = float32(math.Atan2(float64(predY-pos.Y), float64(predX-pos.X))) - org.Heading
+	}
+
+	// Mate detection (find compatible mate)
+	mateX, mateY, foundMate := s.findMate(pos, org, faunaPos, faunaOrgs, grid)
+	if foundMate {
+		sensory.MateFound = true
+		sensory.MateDistance = distance(pos.X, pos.Y, mateX, mateY)
+		sensory.MateAngle = float32(math.Atan2(float64(mateY-pos.Y), float64(mateX-pos.X))) - org.Heading
+	}
+
+	// Herd count
+	sensory.HerdCount = s.countNearbyHerd(pos, org, faunaPos, faunaOrgs, grid)
+
+	// Light level
+	if s.shadowMap != nil {
+		sensory.LightLevel = s.shadowMap.SampleLight(pos.X, pos.Y)
+	} else {
+		sensory.LightLevel = 0.5
+	}
+
+	// Flow field (use noise-based approximation)
+	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
+	sensory.FlowX = flowX
+	sensory.FlowY = flowY
+
+	// Convert to neural inputs
+	inputs := sensory.ToInputs()
+
+	// Run brain
+	rawOutputs, err := brain.Controller.Think(inputs)
+	if err != nil {
+		return neural.DefaultOutputs()
+	}
+
+	return neural.DecodeOutputs(rawOutputs)
+}
+
+// findMate finds a compatible mate for breeding.
+func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
+	if !org.Traits.Has(traits.Breeding) {
+		return 0, 0, false
+	}
+
+	maxDist := org.PerceptionRadius
+	maxDistSq := maxDist * maxDist
+	closestDistSq := maxDistSq
+	var closestX, closestY float32
+	found := false
+
+	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
+	for _, i := range nearby {
+		other := faunaOrgs[i]
+		if other == org || other.Dead {
+			continue
+		}
+		if !other.Traits.Has(traits.Breeding) {
+			continue
+		}
+		// Opposite gender check
+		isMale := org.Traits.Has(traits.Male)
+		otherMale := other.Traits.Has(traits.Male)
+		if isMale == otherMale {
+			continue
+		}
+
+		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
+		if distSq < closestDistSq {
+			closestDistSq = distSq
+			closestX = faunaPos[i].X
+			closestY = faunaPos[i].Y
+			found = true
+		}
+	}
+
+	return closestX, closestY, found
+}
+
+// countNearbyHerd counts the number of nearby herding organisms of the same type.
+func (s *BehaviorSystem) countNearbyHerd(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) int {
+	if !org.Traits.Has(traits.Herding) {
+		return 0
+	}
+
+	herdRadius := org.PerceptionRadius * 1.5
+	count := 0
+
+	nearby := grid.GetNearbyFauna(pos.X, pos.Y, herdRadius)
+	for _, i := range nearby {
+		other := faunaOrgs[i]
+		if other == org || other.Dead {
+			continue
+		}
+		if !other.Traits.Has(traits.Herding) {
+			continue
+		}
+		// Same type check
+		if org.Traits.Has(traits.Carnivore) != other.Traits.Has(traits.Carnivore) {
+			continue
+		}
+		count++
+	}
+
+	return count
 }
 
 func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Organism, floraPos, faunaPos []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
