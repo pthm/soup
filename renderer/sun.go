@@ -62,17 +62,21 @@ func (r *SunRenderer) Draw(light LightState, occluders []systems.Occluder) {
 // Call this AFTER drawing organisms but BEFORE UI.
 func (r *SunRenderer) DrawAmbientDarkness(intensity float32) {
 	// When intensity is 1.0, no darkness overlay
-	// When intensity is 0.0, maximum darkness (alpha ~200)
+	// When intensity is low, gradual darkness overlay
 	darkness := 1.0 - intensity
-	if darkness < 0.05 {
+	if darkness < 0.1 {
 		return // Skip if barely noticeable
 	}
 
-	// Max alpha of 200 leaves some visibility even at night
-	alpha := uint8(darkness * 200)
+	// Use smoothstep for gradual transition instead of linear
+	// This keeps scenes brighter longer and only darkens significantly at low intensity
+	smoothed := darkness * darkness * (3 - 2*darkness)
 
-	// Deep blue-black for night atmosphere
-	color := rl.Color{R: 5, G: 10, B: 25, A: alpha}
+	// Max alpha of 150 (reduced from 200) leaves more visibility at night
+	alpha := uint8(smoothed * 150)
+
+	// Slightly lighter blue for night atmosphere (less oppressive)
+	color := rl.Color{R: 8, G: 15, B: 35, A: alpha}
 	rl.DrawRectangle(0, 0, int32(r.width), int32(r.height), color)
 }
 

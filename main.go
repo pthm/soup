@@ -1525,12 +1525,26 @@ func (g *Game) updateDayNightCycle() {
 	// Day cycle duration in ticks (about 60 seconds at normal speed)
 	const cycleDuration = 3600
 	const sunSpeed = 1.4 / float32(cycleDuration) // Travel 1.4 units (from 1.2 to -0.2)
-	const darknessDuration = 900                  // ~15 seconds of darkness
+	const darknessDuration = 300                  // ~5 seconds of darkness (reduced from 15)
+
+	// Minimum ambient light during daytime transitions (prevents pitch black)
+	const minDaytimeIntensity float32 = 0.15
+	// Minimum night intensity (allows some visibility at night)
+	const minNightIntensity float32 = 0.05
 
 	// If in darkness period, count down
 	if g.nightTicks > 0 {
 		g.nightTicks--
-		g.light.Intensity = 0.0
+		// Smooth transition into and out of night using remaining ticks
+		nightProgress := float32(g.nightTicks) / float32(darknessDuration)
+		// Creates a smooth dip: high at start/end of night, lowest in middle
+		if nightProgress > 0.5 {
+			// First half: transitioning into night
+			g.light.Intensity = minNightIntensity + (nightProgress-0.5)*2*minDaytimeIntensity
+		} else {
+			// Second half: transitioning out of night
+			g.light.Intensity = minNightIntensity + (0.5-nightProgress)*2*minDaytimeIntensity
+		}
 		// When darkness ends, reset sun to right side
 		if g.nightTicks == 0 {
 			g.light.PosX = 1.2
@@ -1544,25 +1558,49 @@ func (g *Game) updateDayNightCycle() {
 	// When sun goes off-screen left, enter darkness period then reset
 	if g.light.PosX < -0.2 {
 		g.nightTicks = darknessDuration
-		g.light.Intensity = 0.0
+		g.light.Intensity = minDaytimeIntensity
 		return
 	}
 
-	// Calculate intensity based on sun position
-	// Sun starts at 0 intensity on right edge, peaks at center, falls to 0 at left edge
+	// Calculate intensity based on sun position using smoothstep curve
+	// This keeps intensity high longer during midday and transitions smoothly at edges
 	if g.light.PosX >= 0 && g.light.PosX <= 1.0 {
 		// Distance from center (0 at center, 0.5 at edges)
 		centerDist := g.light.PosX - 0.5
 		if centerDist < 0 {
 			centerDist = -centerDist
 		}
-		// Intensity: 1.0 at center (dist=0), 0.0 at edges (dist=0.5)
-		// Use smooth curve for natural falloff
 		normalizedDist := centerDist / 0.5 // 0 at center, 1 at edges
-		g.light.Intensity = 1.0 - normalizedDist*normalizedDist // Quadratic falloff
+
+		// Smoothstep curve: stays at 1.0 longer in middle, smooth falloff at edges
+		// Formula: 1 - smoothstep(0, 1, normalizedDist) where smoothstep = 3x² - 2x³
+		// But we want to keep it bright longer, so we use a modified curve:
+		// - Use power of 0.7 to compress the middle (bright) region
+		// - Then apply smoothstep for gradual edge falloff
+		compressed := float32(1.0)
+		if normalizedDist > 0.3 {
+			// Only start dimming after 30% from center (0.15 from edge)
+			edgeDist := (normalizedDist - 0.3) / 0.7 // 0 to 1 over the outer 70%
+			// Smoothstep: 3x² - 2x³ gives smooth S-curve
+			smoothed := edgeDist * edgeDist * (3 - 2*edgeDist)
+			compressed = 1.0 - smoothed
+		}
+
+		// Apply minimum floor and scale
+		g.light.Intensity = minDaytimeIntensity + compressed*(1.0-minDaytimeIntensity)
+	} else if g.light.PosX > 1.0 {
+		// Sun entering from right - gradual fade in
+		entryDist := (g.light.PosX - 1.0) / 0.2 // 0 at edge, 1 at start position
+		g.light.Intensity = minDaytimeIntensity + (1.0-entryDist)*(0.5-minDaytimeIntensity)
 	} else {
-		// Sun off-screen = no light
-		g.light.Intensity = 0.0
+		// Sun exiting left - gradual fade out
+		exitDist := (-0.2 - g.light.PosX) / 0.2 // Would be negative, but we're below -0.2
+		if g.light.PosX >= -0.2 {
+			exitDist = (0 - g.light.PosX) / 0.2 // 0 at edge, 1 at exit position
+			g.light.Intensity = minDaytimeIntensity + (1.0-exitDist)*(0.5-minDaytimeIntensity)
+		} else {
+			g.light.Intensity = minNightIntensity
+		}
 	}
 }
 
