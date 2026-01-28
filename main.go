@@ -95,6 +95,7 @@ type Game struct {
 	waterBackground *renderer.WaterBackground
 	sunRenderer     *renderer.SunRenderer
 	light           renderer.LightState
+	nightTicks      int32 // Counter for darkness period
 	tick          int32
 	paused        bool
 	stepsPerFrame int
@@ -952,31 +953,44 @@ func (g *Game) updateDayNightCycle() {
 	// Day cycle duration in ticks (about 60 seconds at normal speed)
 	const cycleDuration = 3600
 	const sunSpeed = 1.4 / float32(cycleDuration) // Travel 1.4 units (from 1.2 to -0.2)
+	const darknessDuration = 900                  // ~15 seconds of darkness
+
+	// If in darkness period, count down
+	if g.nightTicks > 0 {
+		g.nightTicks--
+		g.light.Intensity = 0.0
+		// When darkness ends, reset sun to right side
+		if g.nightTicks == 0 {
+			g.light.PosX = 1.2
+		}
+		return
+	}
 
 	// Move sun from right to left
 	g.light.PosX -= sunSpeed
 
-	// Wrap around when sun goes off-screen left
+	// When sun goes off-screen left, enter darkness period then reset
 	if g.light.PosX < -0.2 {
-		g.light.PosX = 1.2
+		g.nightTicks = darknessDuration
+		g.light.Intensity = 0.0
+		return
 	}
 
 	// Calculate intensity based on sun position
-	// Brightest when sun is in center (0.5), dimmer at edges
-	centerDist := float32(0.0)
+	// Sun starts at 0 intensity on right edge, peaks at center, falls to 0 at left edge
 	if g.light.PosX >= 0 && g.light.PosX <= 1.0 {
-		centerDist = (g.light.PosX - 0.5)
+		// Distance from center (0 at center, 0.5 at edges)
+		centerDist := g.light.PosX - 0.5
 		if centerDist < 0 {
 			centerDist = -centerDist
 		}
-		// Intensity: 1.0 at center, 0.4 at edges
-		g.light.Intensity = 1.0 - centerDist*1.2
-		if g.light.Intensity < 0.3 {
-			g.light.Intensity = 0.3
-		}
+		// Intensity: 1.0 at center (dist=0), 0.0 at edges (dist=0.5)
+		// Use smooth curve for natural falloff
+		normalizedDist := centerDist / 0.5 // 0 at center, 1 at edges
+		g.light.Intensity = 1.0 - normalizedDist*normalizedDist // Quadratic falloff
 	} else {
-		// Sun off-screen = night (but not completely dark)
-		g.light.Intensity = 0.2
+		// Sun off-screen = no light
+		g.light.Intensity = 0.0
 	}
 }
 
@@ -1031,6 +1045,9 @@ func (g *Game) Draw() {
 
 	// Draw effect particles
 	g.particleRenderer.Draw(g.particles.Particles)
+
+	// Draw ambient darkness overlay (based on sun intensity)
+	g.sunRenderer.DrawAmbientDarkness(g.light.Intensity)
 
 	// Draw UI
 	g.drawUI()
@@ -1260,10 +1277,20 @@ func (g *Game) drawOrganism(pos *components.Position, org *components.Organism, 
 		cellX := pos.X + float32(cell.GridX)*org.CellSize
 		cellY := pos.Y + float32(cell.GridY)*org.CellSize
 
+		// Sample shadow map for local lighting
+		light := g.shadowMap.SampleLight(cellX, cellY)
+		// Apply global sun intensity as additional factor
+		light *= (0.3 + g.light.Intensity*0.7) // Min 30% light even at night
+
 		// Adjust alpha for decomposition
 		alpha := uint8(255 * (1 - cell.Decomposition))
 		cellColor := baseColor
 		cellColor.A = alpha
+
+		// Apply lighting to color (darken based on shadow map)
+		cellColor.R = uint8(float32(cellColor.R) * light)
+		cellColor.G = uint8(float32(cellColor.G) * light)
+		cellColor.B = uint8(float32(cellColor.B) * light)
 
 		// Draw cell
 		rl.DrawRectangle(
@@ -1274,18 +1301,18 @@ func (g *Game) drawOrganism(pos *components.Position, org *components.Organism, 
 			cellColor,
 		)
 
-		// Draw mutation indicator
+		// Draw mutation indicator (also affected by lighting)
 		if cell.Mutation != traits.NoMutation {
 			var mutColor rl.Color
 			switch cell.Mutation {
 			case traits.Disease:
-				mutColor = rl.Color{R: 100, G: 50, B: 100, A: 200}
+				mutColor = rl.Color{R: uint8(100 * light), G: uint8(50 * light), B: uint8(100 * light), A: 200}
 			case traits.Rage:
-				mutColor = rl.Color{R: 255, G: 100, B: 50, A: 200}
+				mutColor = rl.Color{R: uint8(255 * light), G: uint8(100 * light), B: uint8(50 * light), A: 200}
 			case traits.Growth:
-				mutColor = rl.Color{R: 100, G: 255, B: 100, A: 200}
+				mutColor = rl.Color{R: uint8(100 * light), G: uint8(255 * light), B: uint8(100 * light), A: 200}
 			case traits.Splitting:
-				mutColor = rl.Color{R: 200, G: 200, B: 50, A: 200}
+				mutColor = rl.Color{R: uint8(200 * light), G: uint8(200 * light), B: uint8(50 * light), A: 200}
 			}
 			rl.DrawCircle(int32(cellX), int32(cellY), 1, mutColor)
 		}
@@ -1304,8 +1331,17 @@ func (g *Game) drawSpores() {
 			alpha = uint8(fadeRatio * 180)
 		}
 
-		// Green color for spores
-		color := rl.Color{R: 80, G: 180, B: 100, A: alpha}
+		// Sample shadow map for local lighting
+		light := g.shadowMap.SampleLight(spore.X, spore.Y)
+		light *= (0.3 + g.light.Intensity*0.7)
+
+		// Green color for spores, adjusted for lighting
+		color := rl.Color{
+			R: uint8(80 * light),
+			G: uint8(180 * light),
+			B: uint8(100 * light),
+			A: alpha,
+		}
 		rl.DrawCircle(int32(spore.X), int32(spore.Y), 2, color)
 	}
 }

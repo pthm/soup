@@ -93,6 +93,13 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			distFactor := float32(math.Pow(float64(1-normalizedDist), 0.8))
 			light := 0.3 + distFactor*0.7
 
+			// Vertical gradient - light attenuates with depth (darker at bottom)
+			// normalizedY: 0 = top (bright), 1 = bottom (dark)
+			normalizedY := worldY / sm.height
+			// Depth attenuation: top gets full light, bottom gets ~40% of base light
+			depthFactor := 1.0 - normalizedY*0.6
+			light *= depthFactor
+
 			// Only check occluders in cells that the ray passes through
 			candidates := sm.getOccludersAlongRayFast(worldX, worldY, sunX, sunY, occGridCellW, occGridCellH)
 

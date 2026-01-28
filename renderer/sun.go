@@ -36,19 +36,64 @@ func (r *SunRenderer) Draw(light LightState, occluders []systems.Occluder) {
 	sunY := light.PosY * r.height
 	maxDist := float32(math.Sqrt(float64(r.width*r.width + r.height*r.height)))
 
+	// Draw vertical depth gradient (darker at bottom) - always visible
+	r.drawDepthGradient()
+
 	// Only draw radial light if sun is somewhat visible
 	if light.PosX >= -0.1 && light.PosX <= 1.1 {
 		r.drawRadialLight(sunX, sunY, maxDist, light.Intensity)
 	}
 
-	// Draw shadows for each occluder (shadows cast even when sun is off-screen)
-	for _, occ := range occluders {
-		r.drawShadow(sunX, sunY, occ, maxDist)
+	// Draw shadows for each occluder - shadow strength scales with intensity
+	// No shadows when sun intensity is very low (night time)
+	if light.Intensity > 0.1 {
+		for _, occ := range occluders {
+			r.drawShadow(sunX, sunY, occ, maxDist, light.Intensity)
+		}
 	}
 
 	// Only draw sun glow if sun is on screen
 	if light.PosX >= 0 && light.PosX <= 1.0 && light.PosY >= -0.1 && light.PosY <= 1.0 {
 		r.drawSunGlow(sunX, sunY, light.Intensity)
+	}
+}
+
+// DrawAmbientDarkness draws a global darkness overlay based on sun intensity.
+// Call this AFTER drawing organisms but BEFORE UI.
+func (r *SunRenderer) DrawAmbientDarkness(intensity float32) {
+	// When intensity is 1.0, no darkness overlay
+	// When intensity is 0.0, maximum darkness (alpha ~200)
+	darkness := 1.0 - intensity
+	if darkness < 0.05 {
+		return // Skip if barely noticeable
+	}
+
+	// Max alpha of 200 leaves some visibility even at night
+	alpha := uint8(darkness * 200)
+
+	// Deep blue-black for night atmosphere
+	color := rl.Color{R: 5, G: 10, B: 25, A: alpha}
+	rl.DrawRectangle(0, 0, int32(r.width), int32(r.height), color)
+}
+
+// drawDepthGradient draws a vertical gradient overlay (darker at bottom).
+// This creates the visual appearance of light attenuating with depth.
+func (r *SunRenderer) drawDepthGradient() {
+	// Draw gradient in horizontal bands from top to bottom
+	const bands = 32
+	bandHeight := r.height / bands
+
+	for i := 0; i < bands; i++ {
+		// normalizedY: 0 = top, 1 = bottom
+		normalizedY := float32(i) / float32(bands)
+		// Alpha increases towards bottom (more darkening)
+		// Max alpha around 100 at bottom for visible but not overwhelming effect
+		alpha := uint8(normalizedY * 100)
+
+		y := float32(i) * bandHeight
+		// Dark blue-black color for depth
+		color := rl.Color{R: 0, G: 5, B: 15, A: alpha}
+		rl.DrawRectangle(0, int32(y), int32(r.width), int32(bandHeight)+1, color)
 	}
 }
 
@@ -74,7 +119,8 @@ func (r *SunRenderer) drawRadialLight(x, y, maxRadius, intensity float32) {
 }
 
 // drawShadow draws a shadow polygon cast by an occluder.
-func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, maxDist float32) {
+// Shadow opacity scales with light intensity.
+func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, maxDist float32, intensity float32) {
 	// Get the four corners of the occluder
 	corners := []struct{ x, y float32 }{
 		{occ.X, occ.Y},                             // top-left
@@ -127,8 +173,9 @@ func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, m
 	minProjX, minProjY := projectPoint(minCorner.x, minCorner.y)
 	maxProjX, maxProjY := projectPoint(maxCorner.x, maxCorner.y)
 
-	// Draw main shadow quad
-	shadowColor := rl.Color{R: 5, G: 8, B: 12, A: 80}
+	// Draw main shadow quad - opacity scales with sun intensity
+	shadowAlpha := uint8(80 * intensity)
+	shadowColor := rl.Color{R: 5, G: 8, B: 12, A: shadowAlpha}
 	rl.DrawTriangle(
 		rl.Vector2{X: minCorner.x, Y: minCorner.y},
 		rl.Vector2{X: maxCorner.x, Y: maxCorner.y},
@@ -142,9 +189,10 @@ func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, m
 		shadowColor,
 	)
 
-	// Draw soft penumbra edges
+	// Draw soft penumbra edges - also scale with intensity
 	penumbraOffset := float32(0.08)
-	penumbraColor := rl.Color{R: 5, G: 8, B: 12, A: 30}
+	penumbraAlpha := uint8(30 * intensity)
+	penumbraColor := rl.Color{R: 5, G: 8, B: 12, A: penumbraAlpha}
 
 	// Left penumbra
 	leftAngle := float32(math.Atan2(float64(minCorner.y-lightY), float64(minCorner.x-lightX)))
