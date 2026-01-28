@@ -21,11 +21,15 @@ import (
 )
 
 var (
-	initialSpeed = flag.Int("speed", 1, "Initial simulation speed (1-10)")
-	logInterval  = flag.Int("log", 0, "Log world state every N ticks (0 = disabled)")
-	logFile      = flag.String("logfile", "", "Write logs to file instead of stdout")
-	perfLog      = flag.Bool("perf", false, "Enable performance logging")
-	logWriter    *os.File
+	initialSpeed    = flag.Int("speed", 1, "Initial simulation speed (1-10)")
+	logInterval     = flag.Int("log", 0, "Log world state every N ticks (0 = disabled)")
+	logFile         = flag.String("logfile", "", "Write logs to file instead of stdout")
+	perfLog         = flag.Bool("perf", false, "Enable performance logging")
+	neuralLog       = flag.Bool("neural", false, "Enable neural evolution logging")
+	neuralLogDetail = flag.Bool("neural-detail", false, "Enable detailed neural logging (genomes, individual organisms)")
+	headless        = flag.Bool("headless", false, "Run without graphics (for logging/benchmarking)")
+	maxTicks        = flag.Int("max-ticks", 0, "Stop after N ticks (0 = run forever, useful with -headless)")
+	logWriter       *os.File
 )
 
 // PerfStats tracks execution time for each system
@@ -115,12 +119,21 @@ type Game struct {
 	spatialGrid    *systems.SpatialGrid
 
 	// Neural evolution
-	neuralConfig   *neural.Config
-	genomeIDGen    *neural.GenomeIDGenerator
+	neuralConfig    *neural.Config
+	genomeIDGen     *neural.GenomeIDGenerator
+	speciesManager  *neural.SpeciesManager
+
+	// Display settings
+	showSpeciesColors bool // Toggle species coloring with 'S' key
+	showNeuralStats   bool // Toggle neural stats panel with 'N' key
 
 	// Mappers for creating entities with components
 	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
 	faunaMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna]
+
+	// Neural component mappers (for adding neural components to fauna entities)
+	neuralGenomeMap *ecs.Map[components.NeuralGenome]
+	brainMap        *ecs.Map[components.Brain]
 
 	// Filters for querying
 	floraFilter  *ecs.Filter3[components.Position, components.Organism, components.Flora]
@@ -171,14 +184,92 @@ func NewGame() *Game {
 		particleRenderer: renderer.NewParticleRenderer(),
 
 		// Neural evolution
-		neuralConfig:  neuralConfig,
-		genomeIDGen:   genomeIDGen,
+		neuralConfig:    neuralConfig,
+		genomeIDGen:     genomeIDGen,
+		speciesManager:  neural.NewSpeciesManager(neuralConfig.NEAT),
+
+		// Display settings
+		showSpeciesColors: false,
+		showNeuralStats:   false,
 
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
 		floraFilter:   ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
 		faunaFilter:   ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
 		allOrgFilter:  ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
+
+		// Neural component mappers
+		neuralGenomeMap: ecs.NewMap[components.NeuralGenome](world),
+		brainMap:        ecs.NewMap[components.Brain](world),
+	}
+
+	g.seedUniverse()
+
+	return g
+}
+
+// NewGameHeadless creates a game without graphics for headless simulation
+func NewGameHeadless() *Game {
+	world := ecs.NewWorld()
+
+	bounds := systems.Bounds{
+		Width:  screenWidth,
+		Height: screenHeight,
+	}
+
+	// Create shadow map (still needed for photosynthesis calculations)
+	shadowMap := systems.NewShadowMap(screenWidth, screenHeight)
+
+	// Neural evolution config
+	neuralConfig := neural.DefaultConfig()
+	genomeIDGen := neural.NewGenomeIDGenerator()
+
+	g := &Game{
+		world:         world,
+		bounds:        bounds,
+		physics:       systems.NewPhysicsSystem(world, bounds),
+		energy:        systems.NewEnergySystem(world),
+		cells:         systems.NewCellSystem(world),
+		behavior:      systems.NewBehaviorSystem(world, shadowMap),
+		flowField:     systems.NewFlowFieldSystem(bounds, 8000),
+		// Skip renderers - they require raylib
+		flowRenderer:    nil,
+		waterBackground: nil,
+		sunRenderer:     nil,
+		particleRenderer: nil,
+		light:           renderer.LightState{PosX: 1.2, PosY: -0.15, Intensity: 1.0},
+		stepsPerFrame:   1,
+		perf:            NewPerfStats(),
+
+		// Systems
+		shadowMap:      shadowMap,
+		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
+		feeding:        systems.NewFeedingSystem(world),
+		spores:         systems.NewSporeSystem(bounds),
+		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen),
+		splitting:      systems.NewSplittingSystem(),
+		particles:      systems.NewParticleSystem(),
+		allocation:     systems.NewAllocationSystem(world),
+		spatialGrid:    systems.NewSpatialGrid(screenWidth, screenHeight),
+
+		// Neural evolution
+		neuralConfig:   neuralConfig,
+		genomeIDGen:    genomeIDGen,
+		speciesManager: neural.NewSpeciesManager(neuralConfig.NEAT),
+
+		// Display settings (unused in headless)
+		showSpeciesColors: false,
+		showNeuralStats:   false,
+
+		floraMapper:  ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
+		faunaMapper:  ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
+		floraFilter:  ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
+		faunaFilter:  ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
+		allOrgFilter: ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
+
+		// Neural component mappers
+		neuralGenomeMap: ecs.NewMap[components.NeuralGenome](world),
+		brainMap:        ecs.NewMap[components.Brain](world),
 	}
 
 	g.seedUniverse()
@@ -207,13 +298,10 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create herbivores (all get Breeding)
+	// Create herbivores with neural brains (CPPN morphology + evolved behavior)
 	for i := 0; i < 50; i++ {
 		t := traits.Herbivore | traits.Breeding
-		if rand.Float32() > 0.5 {
-			t = t.Add(traits.Herding)
-		}
-		g.createOrganism(
+		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			t,
@@ -221,13 +309,10 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create carnivores (all get Breeding)
+	// Create carnivores with neural brains
 	for i := 0; i < 20; i++ {
 		t := traits.Carnivore | traits.Breeding
-		if rand.Float32() > 0.3 {
-			t = t.Add(traits.Herding)
-		}
-		g.createOrganism(
+		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			t,
@@ -235,12 +320,12 @@ func (g *Game) seedUniverse() {
 		)
 	}
 
-	// Create carrion eaters (with Breeding)
+	// Create carrion eaters with neural brains
 	for i := 0; i < 15; i++ {
-		g.createOrganism(
+		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carrion|traits.Herding|traits.Breeding,
+			traits.Carrion|traits.Breeding,
 			80,
 		)
 	}
@@ -294,6 +379,173 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 	return g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
 }
 
+// createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
+func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain) ecs.Entity {
+	// Assign gender if breeding
+	if t.Has(traits.Breeding) {
+		if rand.Float32() > 0.5 {
+			t = t.Add(traits.Male)
+		} else {
+			t = t.Add(traits.Female)
+		}
+	}
+
+	// Generate morphology from CPPN
+	var morph neural.MorphologyResult
+	if neuralGenome != nil && neuralGenome.BodyGenome != nil {
+		var err error
+		morph, err = neural.GenerateMorphologyWithConfig(neuralGenome.BodyGenome, g.neuralConfig.CPPN)
+		if err != nil {
+			// Fallback to single cell
+			morph = neural.MorphologyResult{
+				Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+			}
+		}
+	} else {
+		// No CPPN genome, single cell fallback
+		morph = neural.MorphologyResult{
+			Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+		}
+	}
+
+	// Apply morphology-derived traits
+	if morph.SpeedTrait {
+		t = t.Add(traits.Speed)
+	}
+	if morph.HerdTrait {
+		t = t.Add(traits.Herding)
+	}
+	if morph.VisionTrait {
+		t = t.Add(traits.FarSight)
+	}
+
+	// Adjust diet traits based on morphology (if not already set)
+	if !t.Has(traits.Herbivore) && !t.Has(traits.Carnivore) && !t.Has(traits.Carrion) {
+		if morph.IsCarnivore() {
+			t = t.Add(traits.Carnivore)
+		} else if morph.IsHerbivore() {
+			t = t.Add(traits.Herbivore)
+		} else {
+			// Omnivore - add both
+			t = t.Add(traits.Herbivore)
+		}
+	}
+
+	// Calculate max energy based on cell count
+	cellCount := morph.CellCount()
+	maxEnergy := float32(100 + cellCount*50)
+
+	pos := &components.Position{X: x, Y: y}
+	vel := &components.Velocity{X: 0, Y: 0}
+	org := &components.Organism{
+		Traits:           t,
+		Energy:           energy,
+		MaxEnergy:        maxEnergy,
+		CellSize:         2.5,
+		MaxSpeed:         1.5,
+		MaxForce:         0.03,
+		PerceptionRadius: 100,
+		Dead:             false,
+		Heading:          rand.Float32() * 6.28318,
+		GrowthTimer:      0,
+		GrowthInterval:   120,
+		SporeTimer:       0,
+		SporeInterval:    300,
+		BreedingCooldown: 0,
+	}
+
+	// Create cell buffer from morphology
+	cells := &components.CellBuffer{}
+	for _, cellSpec := range morph.Cells {
+		// Determine cell trait from diet bias
+		var cellTrait traits.Trait
+		if cellSpec.DietBias < -0.3 {
+			cellTrait = traits.Herbivore
+		} else if cellSpec.DietBias > 0.3 {
+			cellTrait = traits.Carnivore
+		} else {
+			cellTrait = t & (traits.Herbivore | traits.Carnivore | traits.Carrion)
+		}
+
+		cells.AddCell(components.Cell{
+			GridX:    cellSpec.GridX,
+			GridY:    cellSpec.GridY,
+			Age:      0,
+			MaxAge:   3000 + rand.Int31n(2000),
+			Trait:    cellTrait,
+			Mutation: traits.NoMutation,
+			Alive:    true,
+		})
+	}
+
+	// Create fauna entity (neural organisms are always fauna)
+	entity := g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
+
+	// Add neural components and assign species
+	if neuralGenome != nil {
+		// Always evaluate species based on brain genome for proper NEAT speciation
+		// Even offspring should be re-evaluated as they may have mutated into a new species
+		if neuralGenome.BrainGenome != nil {
+			parentSpeciesID := neuralGenome.SpeciesID
+			speciesID := g.speciesManager.AssignSpecies(neuralGenome.BrainGenome)
+			neuralGenome.SpeciesID = speciesID
+			g.speciesManager.AddMember(speciesID, int(entity.ID()))
+
+			// If this is offspring (had a parent species), record it and log
+			if parentSpeciesID > 0 {
+				g.speciesManager.RecordOffspring(parentSpeciesID)
+
+				// Log breeding event
+				if *neuralLog && *neuralLogDetail {
+					nodes := len(neuralGenome.BrainGenome.Nodes)
+					genes := len(neuralGenome.BrainGenome.Genes)
+					speciated := ""
+					if speciesID != parentSpeciesID {
+						speciated = fmt.Sprintf(" [SPECIATED: %d->%d]", parentSpeciesID, speciesID)
+					}
+					logf("[BIRTH] Entity %d @ (%.0f,%.0f): gen=%d, nodes=%d, genes=%d, species=%d%s",
+						entity.ID(), x, y, neuralGenome.Generation, nodes, genes, speciesID, speciated)
+				}
+			}
+		}
+		// Use Add to add new component to entity (not Set which requires existing component)
+		g.neuralGenomeMap.Add(entity, neuralGenome)
+	}
+	if brain != nil {
+		g.brainMap.Add(entity, brain)
+	}
+
+	return entity
+}
+
+// createInitialNeuralOrganism creates a new neural organism with fresh genomes.
+// This is used during seeding to create the initial neural population.
+func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait, energy float32) ecs.Entity {
+	// Create fresh genome pair
+	bodyGenome, brainGenome := neural.CreateInitialGenomePair(g.genomeIDGen, g.neuralConfig.Brain.InitialConnectionProb)
+
+	// Create brain controller
+	brainController, err := neural.NewBrainController(brainGenome)
+	if err != nil {
+		// Fallback to traditional organism if brain creation fails
+		return g.createOrganism(x, y, baseTrait, energy)
+	}
+
+	// Build neural components
+	neuralGenome := &components.NeuralGenome{
+		BodyGenome:  bodyGenome,
+		BrainGenome: brainGenome,
+		SpeciesID:   0, // Will be assigned by species manager
+		Generation:  0,
+	}
+
+	brain := &components.Brain{
+		Controller: brainController,
+	}
+
+	return g.createNeuralOrganism(x, y, baseTrait, energy, neuralGenome, brain)
+}
+
 func (g *Game) Update() {
 	// Handle input
 	if rl.IsKeyPressed(rl.KeySpace) {
@@ -330,6 +582,16 @@ func (g *Game) Update() {
 			traits.Carnivore|traits.Breeding,
 			120,
 		)
+	}
+
+	// Toggle species coloring
+	if rl.IsKeyPressed(rl.KeyS) {
+		g.showSpeciesColors = !g.showSpeciesColors
+	}
+
+	// Toggle neural stats panel
+	if rl.IsKeyPressed(rl.KeyN) {
+		g.showNeuralStats = !g.showNeuralStats
 	}
 
 	if g.paused {
@@ -390,9 +652,8 @@ func (g *Game) Update() {
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
 
-		// Breeding (fauna reproduction)
-		// Pass nil for neural organism creator - neural breeding will fallback to traditional breeding
-		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, nil) })
+		// Breeding (fauna reproduction with CPPN morphology generation)
+		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, g.createNeuralOrganism) })
 
 		// Spores (flora reproduction)
 		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })
@@ -414,6 +675,99 @@ func (g *Game) Update() {
 		// Performance logging (every 120 ticks = ~2 seconds at 1x speed)
 		if *perfLog && g.tick%120 == 0 {
 			g.logPerfStats()
+		}
+
+		// Neural evolution logging (every 500 ticks = ~8 seconds at 1x speed)
+		if *neuralLog && g.tick%500 == 0 {
+			g.logNeuralStats()
+		}
+	}
+}
+
+// UpdateHeadless runs simulation without any input handling or graphics
+func (g *Game) UpdateHeadless() {
+	// Run simulation steps
+	for step := 0; step < g.stepsPerFrame; step++ {
+		g.tick++
+
+		// Helper to time a function
+		measure := func(name string, fn func()) {
+			if *perfLog {
+				start := time.Now()
+				fn()
+				g.perf.Record(name, time.Since(start))
+			} else {
+				fn()
+			}
+		}
+
+		// Update day/night cycle
+		measure("dayNight", func() { g.updateDayNightCycle() })
+
+		// Update flow field (still affects behavior even without rendering)
+		measure("flowField", func() { g.flowField.Update(g.tick) })
+
+		// Update shadow map
+		var occluders []systems.Occluder
+		measure("collectOccluders", func() {
+			occluders = g.collectOccluders()
+		})
+		measure("shadowMap", func() {
+			sunX := g.light.PosX * g.bounds.Width
+			sunY := g.light.PosY * g.bounds.Height
+			g.shadowMap.Update(g.tick, sunX, sunY, occluders)
+		})
+
+		// Collect position data for behavior system
+		var floraPos, faunaPos []components.Position
+		var floraOrgs, faunaOrgs []*components.Organism
+		measure("collectPositions", func() {
+			floraPos, faunaPos = g.collectPositions()
+			floraOrgs, faunaOrgs = g.collectOrganisms()
+		})
+
+		// Update spatial grid
+		measure("spatialGrid", func() { g.spatialGrid.Update(floraPos, faunaPos) })
+
+		// Update allocation modes
+		measure("allocation", func() { g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs) })
+
+		// Run systems
+		measure("behavior", func() { g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
+		measure("physics", func() { g.physics.Update(g.world) })
+		measure("feeding", func() { g.feeding.Update() })
+		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("energy", func() { g.energy.Update(g.world) })
+		measure("cells", func() { g.cells.Update(g.world) })
+
+		// Breeding
+		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, g.createNeuralOrganism) })
+
+		// Spores
+		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })
+
+		// Growth
+		measure("growth", func() { g.updateGrowth() })
+
+		// Particles (visual but system still runs)
+		measure("particles", func() { g.particles.Update() })
+
+		// Cleanup
+		measure("cleanup", func() { g.cleanupDead() })
+
+		// Periodic logging
+		if *logInterval > 0 && g.tick%int32(*logInterval) == 0 {
+			g.logWorldState()
+		}
+
+		// Performance logging
+		if *perfLog && g.tick%120 == 0 {
+			g.logPerfStats()
+		}
+
+		// Neural evolution logging
+		if *neuralLog && g.tick%500 == 0 {
+			g.logNeuralStats()
 		}
 	}
 }
@@ -583,6 +937,122 @@ func (g *Game) logWorldState() {
 	logf("Traits: Speed=%d, Herding=%d, FarSight=%d, PredEyes=%d, PreyEyes=%d, Omnivore=%d",
 		withSpeed, withHerding, withFarSight, withPredatorEyes, withPreyEyes, omnivores)
 	logf("Light: Photophilic=%d, Photophobic=%d (Sun: %.2f)", photophilic, photophobic, g.light.PosX)
+	logf("")
+}
+
+func (g *Game) logNeuralStats() {
+	stats := g.speciesManager.GetStats()
+	topSpecies := g.speciesManager.GetTopSpecies(10)
+
+	logf("╔══════════════════════════════════════════════════════════════════╗")
+	logf("║ NEURAL EVOLUTION @ Tick %d (Gen %d)                              ", g.tick, stats.Generation)
+	logf("╠══════════════════════════════════════════════════════════════════╣")
+	logf("║ Species: %d | Total Members: %d | Best Fitness: %.2f",
+		stats.Count, stats.TotalMembers, stats.BestFitness)
+	logf("║ Total Offspring: %d | Avg Staleness: %.1f",
+		stats.TotalOffspring, stats.AverageStaleness)
+
+	// Count neural organisms
+	neuralCount := 0
+	var totalNodes, totalGenes int
+	var minNodes, maxNodes int = 9999, 0
+	var minGenes, maxGenes int = 9999, 0
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		_, _, org, cells := query.Get()
+
+		if org.Dead {
+			continue
+		}
+
+		if g.neuralGenomeMap.Has(entity) {
+			neuralCount++
+			neuralGenome := g.neuralGenomeMap.Get(entity)
+			if neuralGenome != nil && neuralGenome.BrainGenome != nil {
+				nodes := len(neuralGenome.BrainGenome.Nodes)
+				genes := len(neuralGenome.BrainGenome.Genes)
+				totalNodes += nodes
+				totalGenes += genes
+
+				if nodes < minNodes {
+					minNodes = nodes
+				}
+				if nodes > maxNodes {
+					maxNodes = nodes
+				}
+				if genes < minGenes {
+					minGenes = genes
+				}
+				if genes > maxGenes {
+					maxGenes = genes
+				}
+			}
+		}
+		_ = cells
+	}
+
+	if minNodes == 9999 {
+		minNodes = 0
+	}
+	if minGenes == 9999 {
+		minGenes = 0
+	}
+
+	avgNodes := 0.0
+	avgGenes := 0.0
+	if neuralCount > 0 {
+		avgNodes = float64(totalNodes) / float64(neuralCount)
+		avgGenes = float64(totalGenes) / float64(neuralCount)
+	}
+
+	logf("╠══════════════════════════════════════════════════════════════════╣")
+	logf("║ Neural Organisms: %d", neuralCount)
+	logf("║ Brain Complexity:")
+	logf("║   Nodes: avg=%.1f, min=%d, max=%d", avgNodes, minNodes, maxNodes)
+	logf("║   Genes: avg=%.1f, min=%d, max=%d", avgGenes, minGenes, maxGenes)
+
+	if len(topSpecies) > 0 {
+		logf("╠══════════════════════════════════════════════════════════════════╣")
+		logf("║ TOP SPECIES:")
+		for i, sp := range topSpecies {
+			logf("║   #%d: Species %d - %d members, age=%d, stale=%d, fit=%.1f, offspring=%d",
+				i+1, sp.ID, sp.Size, sp.Age, sp.Staleness, sp.BestFit, sp.Offspring)
+		}
+	}
+
+	// Detailed per-organism logging if enabled
+	if *neuralLogDetail {
+		logf("╠══════════════════════════════════════════════════════════════════╣")
+		logf("║ DETAILED ORGANISM DATA (sample of 10):")
+
+		count := 0
+		query2 := g.allOrgFilter.Query()
+		for query2.Next() && count < 10 {
+			entity := query2.Entity()
+			pos, _, org, cells := query2.Get()
+
+			if org.Dead || !g.neuralGenomeMap.Has(entity) {
+				continue
+			}
+
+			neuralGenome := g.neuralGenomeMap.Get(entity)
+			if neuralGenome == nil || neuralGenome.BrainGenome == nil {
+				continue
+			}
+
+			nodes := len(neuralGenome.BrainGenome.Nodes)
+			genes := len(neuralGenome.BrainGenome.Genes)
+
+			logf("║   Entity %d @ (%.0f,%.0f): species=%d, gen=%d, cells=%d, energy=%.0f/%.0f, nodes=%d, genes=%d",
+				entity.ID(), pos.X, pos.Y, neuralGenome.SpeciesID, neuralGenome.Generation,
+				cells.Count, org.Energy, org.MaxEnergy, nodes, genes)
+			count++
+		}
+	}
+
+	logf("╚══════════════════════════════════════════════════════════════════╝")
 	logf("")
 }
 
@@ -1016,19 +1486,54 @@ func (g *Game) cleanupDead() {
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
-		_, _, org, _ := query.Get()
+		entity := query.Entity()
+		_, _, org, cells := query.Get()
 
 		if org.Dead {
+			// On first death tick, remove from species and record fitness
+			if org.DeadTime == 0 && g.neuralGenomeMap.Has(entity) {
+				neuralGenome := g.neuralGenomeMap.Get(entity)
+				if neuralGenome != nil && neuralGenome.SpeciesID > 0 {
+					// Calculate final fitness before removal
+					fitness := neural.CalculateFitness(org.Energy, org.MaxEnergy, g.tick, 0)
+					g.speciesManager.AccumulateFitness(neuralGenome.SpeciesID, fitness)
+					g.speciesManager.RemoveMember(neuralGenome.SpeciesID, int(entity.ID()))
+
+					// Log death event
+					if *neuralLog && *neuralLogDetail {
+						logf("[DEATH] Entity %d: gen=%d, species=%d, fitness=%.2f, survived=%d ticks",
+							entity.ID(), neuralGenome.Generation, neuralGenome.SpeciesID, fitness, g.tick)
+					}
+				}
+			}
+
 			org.DeadTime++
 			if org.DeadTime > maxDeadTime {
-				toRemove = append(toRemove, query.Entity())
+				toRemove = append(toRemove, entity)
+			}
+		} else if g.neuralGenomeMap.Has(entity) {
+			// Periodically update fitness for living organisms (every 100 ticks)
+			if g.tick%100 == 0 {
+				neuralGenome := g.neuralGenomeMap.Get(entity)
+				if neuralGenome != nil && neuralGenome.SpeciesID > 0 {
+					fitness := neural.CalculateFitness(org.Energy, org.MaxEnergy, g.tick, 0)
+					g.speciesManager.AccumulateFitness(neuralGenome.SpeciesID, fitness)
+				}
 			}
 		}
+
+		// Suppress unused variable warning
+		_ = cells
 	}
 
 	// Remove dead entities
 	for _, e := range toRemove {
 		g.world.RemoveEntity(e)
+	}
+
+	// Update generations periodically (every 3000 ticks ≈ 50 seconds at normal speed)
+	if g.tick%3000 == 0 && g.tick > 0 {
+		g.speciesManager.EndGeneration()
 	}
 }
 
@@ -1050,8 +1555,9 @@ func (g *Game) Draw() {
 	// Draw all organisms
 	query := g.allOrgFilter.Query()
 	for query.Next() {
+		entity := query.Entity()
 		pos, _, org, cells := query.Get()
-		g.drawOrganism(pos, org, cells)
+		g.drawOrganism(entity, pos, org, cells)
 	}
 
 	// Draw spores
@@ -1065,6 +1571,11 @@ func (g *Game) Draw() {
 
 	// Draw UI
 	g.drawUI()
+
+	// Draw neural stats panel if enabled
+	if g.showNeuralStats {
+		g.drawNeuralStats()
+	}
 
 	// Draw tooltip for hovered organism
 	g.drawTooltip()
@@ -1264,8 +1775,22 @@ func (g *Game) drawTooltip() {
 	}
 }
 
-func (g *Game) drawOrganism(pos *components.Position, org *components.Organism, cells *components.CellBuffer) {
-	r, gr, b := traits.GetTraitColor(org.Traits)
+func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *components.Organism, cells *components.CellBuffer) {
+	var r, gr, b uint8
+
+	// Use species color if enabled and organism has neural genome
+	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
+		neuralGenome := g.neuralGenomeMap.Get(entity)
+		if neuralGenome != nil && neuralGenome.SpeciesID > 0 {
+			speciesColor := g.speciesManager.GetSpeciesColor(neuralGenome.SpeciesID)
+			r, gr, b = speciesColor.R, speciesColor.G, speciesColor.B
+		} else {
+			r, gr, b = traits.GetTraitColor(org.Traits)
+		}
+	} else {
+		r, gr, b = traits.GetTraitColor(org.Traits)
+	}
+
 	baseColor := rl.Color{R: r, G: gr, B: b, A: 255}
 
 	// Adjust for death/low energy
@@ -1422,7 +1947,70 @@ func (g *Game) drawUI() {
 	}
 
 	// Controls
-	rl.DrawText("SPACE: Pause | < >: Speed | Click: Add Herbivore | F: Flora | C: Carnivore", 10, int32(screenHeight-25), 14, rl.Gray)
+	rl.DrawText("SPACE: Pause | < >: Speed | Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural Stats", 10, int32(screenHeight-25), 14, rl.Gray)
+}
+
+func (g *Game) drawNeuralStats() {
+	// Panel position and size
+	panelX := int32(10)
+	panelY := int32(100)
+	panelWidth := int32(280)
+	panelHeight := int32(220)
+	padding := int32(8)
+	lineHeight := 16
+
+	// Draw panel background
+	rl.DrawRectangle(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 20, G: 25, B: 30, A: 230})
+	rl.DrawRectangleLines(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 60, G: 70, B: 80, A: 255})
+
+	// Get stats
+	stats := g.speciesManager.GetStats()
+	topSpecies := g.speciesManager.GetTopSpecies(5)
+
+	// Draw header
+	y := panelY + padding
+	rl.DrawText("Neural Evolution Stats", panelX+padding, y, 16, rl.White)
+	y += int32(lineHeight + 4)
+
+	// Mode indicator
+	modeText := "Species Colors: OFF"
+	modeColor := rl.Gray
+	if g.showSpeciesColors {
+		modeText = "Species Colors: ON"
+		modeColor = rl.Green
+	}
+	rl.DrawText(modeText, panelX+padding, y, 12, modeColor)
+	y += int32(lineHeight)
+
+	// Overall stats
+	rl.DrawText(fmt.Sprintf("Generation: %d", stats.Generation), panelX+padding, y, 12, rl.LightGray)
+	y += int32(lineHeight)
+	rl.DrawText(fmt.Sprintf("Species: %d | Members: %d", stats.Count, stats.TotalMembers), panelX+padding, y, 12, rl.LightGray)
+	y += int32(lineHeight)
+	rl.DrawText(fmt.Sprintf("Best Fitness: %.1f", stats.BestFitness), panelX+padding, y, 12, rl.LightGray)
+	y += int32(lineHeight + 4)
+
+	// Top species header
+	if len(topSpecies) > 0 {
+		rl.DrawText("Top Species:", panelX+padding, y, 14, rl.Yellow)
+		y += int32(lineHeight + 2)
+
+		for i, sp := range topSpecies {
+			if i >= 5 {
+				break
+			}
+			// Draw species color swatch
+			swatchSize := int32(10)
+			rl.DrawRectangle(panelX+padding, y+2, swatchSize, swatchSize,
+				rl.Color{R: sp.Color.R, G: sp.Color.G, B: sp.Color.B, A: 255})
+
+			// Draw species info
+			text := fmt.Sprintf("#%d: %d members (age: %d, fit: %.0f)",
+				sp.ID, sp.Size, sp.Age, sp.BestFit)
+			rl.DrawText(text, panelX+padding+swatchSize+6, y, 12, rl.LightGray)
+			y += int32(lineHeight)
+		}
+	}
 }
 
 func main() {
@@ -1437,6 +2025,12 @@ func main() {
 			os.Exit(1)
 		}
 		defer logWriter.Close()
+	}
+
+	if *headless {
+		// Run simulation without graphics
+		runHeadless()
+		return
 	}
 
 	rl.InitWindow(screenWidth, screenHeight, "Primordial Soup")
@@ -1458,6 +2052,54 @@ func main() {
 		game.Update()
 		game.Draw()
 	}
+}
+
+// runHeadless runs the simulation without graphics for logging/benchmarking
+func runHeadless() {
+	logf("Starting headless simulation...")
+	logf("  Speed: %dx, Max ticks: %d", *initialSpeed, *maxTicks)
+	if *neuralLog {
+		logf("  Neural logging: enabled (detail=%v)", *neuralLogDetail)
+	}
+	logf("")
+
+	game := NewGameHeadless()
+
+	// Apply initial speed (in headless, this is steps per "frame")
+	if *initialSpeed > 0 && *initialSpeed <= 10 {
+		game.stepsPerFrame = *initialSpeed
+	}
+
+	startTime := time.Now()
+	lastReport := startTime
+	reportInterval := 10 * time.Second
+
+	for {
+		// Check max ticks
+		if *maxTicks > 0 && int(game.tick) >= *maxTicks {
+			logf("Reached max ticks (%d), stopping.", *maxTicks)
+			break
+		}
+
+		// Run simulation step
+		game.UpdateHeadless()
+
+		// Periodic progress report
+		if time.Since(lastReport) >= reportInterval {
+			elapsed := time.Since(startTime)
+			ticksPerSec := float64(game.tick) / elapsed.Seconds()
+			logf("[PROGRESS] Tick %d | %.0f ticks/sec | Elapsed: %s",
+				game.tick, ticksPerSec, elapsed.Round(time.Second))
+			lastReport = time.Now()
+		}
+	}
+
+	elapsed := time.Since(startTime)
+	logf("")
+	logf("Simulation complete.")
+	logf("  Total ticks: %d", game.tick)
+	logf("  Elapsed time: %s", elapsed.Round(time.Millisecond))
+	logf("  Average: %.0f ticks/sec", float64(game.tick)/elapsed.Seconds())
 }
 
 func logf(format string, args ...interface{}) {
