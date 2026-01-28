@@ -34,6 +34,15 @@ func (s *PhotosynthesisSystem) Update() {
 		// Sample light at organism position
 		light := s.shadowMap.SampleLight(pos.X, pos.Y)
 
+		// Rooted flora is adapted to lower light (anchored, can't move to light)
+		// They get a minimum light floor and bonus in shadows
+		if org.Traits.Has(traits.Rooted) {
+			// Rooted flora has adapted to partial shade
+			if light < 0.5 {
+				light = 0.5 + (light * 0.5) // Minimum 0.5, scaled bonus up to 0.75
+			}
+		}
+
 		// Check for disease - reduces effective max energy
 		hasDisease := false
 		for i := uint8(0); i < cells.Count; i++ {

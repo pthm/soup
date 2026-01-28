@@ -36,16 +36,20 @@ func (r *SunRenderer) Draw(light LightState, occluders []systems.Occluder) {
 	sunY := light.PosY * r.height
 	maxDist := float32(math.Sqrt(float64(r.width*r.width + r.height*r.height)))
 
-	// Draw radial light gradient
-	r.drawRadialLight(sunX, sunY, maxDist, light.Intensity)
+	// Only draw radial light if sun is somewhat visible
+	if light.PosX >= -0.1 && light.PosX <= 1.1 {
+		r.drawRadialLight(sunX, sunY, maxDist, light.Intensity)
+	}
 
-	// Draw shadows for each occluder
+	// Draw shadows for each occluder (shadows cast even when sun is off-screen)
 	for _, occ := range occluders {
 		r.drawShadow(sunX, sunY, occ, maxDist)
 	}
 
-	// Draw sun glow on top
-	r.drawSunGlow(sunX, sunY, light.Intensity)
+	// Only draw sun glow if sun is on screen
+	if light.PosX >= 0 && light.PosX <= 1.0 && light.PosY >= -0.1 && light.PosY <= 1.0 {
+		r.drawSunGlow(sunX, sunY, light.Intensity)
+	}
 }
 
 // drawRadialLight draws a subtle radial gradient from the light source.

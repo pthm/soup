@@ -58,6 +58,11 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			maxDist := float32(math.Sqrt(float64(sm.width*sm.width + sm.height*sm.height)))
 			normalizedDist := dist / maxDist
 
+			// Clamp to valid range (sun can be off-screen)
+			if normalizedDist > 1.0 {
+				normalizedDist = 1.0
+			}
+
 			// Distance falloff - gentler curve, minimum 0.3 ambient light
 			// At sun: 1.0, at farthest corner: 0.3
 			distFactor := float32(math.Pow(float64(1-normalizedDist), 0.8))

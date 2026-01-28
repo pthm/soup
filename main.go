@@ -83,12 +83,12 @@ func NewGame() *Game {
 		physics:       systems.NewPhysicsSystem(world, bounds),
 		energy:        systems.NewEnergySystem(world),
 		cells:         systems.NewCellSystem(world),
-		behavior:      systems.NewBehaviorSystem(world),
+		behavior:      systems.NewBehaviorSystem(world, shadowMap),
 		flowField:       systems.NewFlowFieldSystem(bounds, 8000),
 		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
 		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
 		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
-		light:           renderer.LightState{PosX: 0.75, PosY: 0.12, Intensity: 1.0},
+		light:           renderer.LightState{PosX: 1.2, PosY: -0.15, Intensity: 1.0}, // Start off-screen right
 		stepsPerFrame: 1,
 
 		// New systems
@@ -268,6 +268,9 @@ func (g *Game) Update() {
 	for step := 0; step < g.stepsPerFrame; step++ {
 		g.tick++
 
+		// Update day/night cycle
+		g.updateDayNightCycle()
+
 		// Update flow field particles (visual, independent)
 		g.flowField.Update(g.tick)
 
@@ -368,9 +371,16 @@ func (g *Game) logWorldState() {
 	avgFaunaEnergy := float32(0)
 	if floraCount > 0 {
 		avgFloraEnergy = floraEnergy / float32(floraCount)
+		// Handle NaN from potential edge cases
+		if avgFloraEnergy != avgFloraEnergy { // NaN check
+			avgFloraEnergy = 0
+		}
 	}
 	if faunaCount > 0 {
 		avgFaunaEnergy = faunaEnergy / float32(faunaCount)
+		if avgFaunaEnergy != avgFaunaEnergy {
+			avgFaunaEnergy = 0
+		}
 	}
 	if minFaunaEnergy == 9999 {
 		minFaunaEnergy = 0
@@ -434,10 +444,28 @@ func (g *Game) logWorldState() {
 			breedingEligible++
 		}
 	}
+
+	// Count light sensitivity traits
+	var photophilic, photophobic int
+	query3 := g.allOrgFilter.Query()
+	for query3.Next() {
+		_, _, org, _ := query3.Get()
+		if org.Dead || traits.IsFlora(org.Traits) {
+			continue
+		}
+		if org.Traits.Has(traits.Photophilic) {
+			photophilic++
+		}
+		if org.Traits.Has(traits.Photophobic) {
+			photophobic++
+		}
+	}
+
 	logf("Breeding eligible: %d", breedingEligible)
 	logf("Modes: Grow=%d, Breed=%d, Survive=%d, Store=%d", modeGrow, modeBreed, modeSurvive, modeStore)
 	logf("Traits: Speed=%d, Herding=%d, FarSight=%d, PredEyes=%d, PreyEyes=%d, Omnivore=%d",
 		withSpeed, withHerding, withFarSight, withPredatorEyes, withPreyEyes, omnivores)
+	logf("Light: Photophilic=%d, Photophobic=%d (Sun: %.2f)", photophilic, photophobic, g.light.PosX)
 	logf("")
 }
 
@@ -770,21 +798,25 @@ func pickFaunaTraitWeighted() traits.Trait {
 		w float32
 	}{
 		// Behavior traits (common)
-		{traits.Herding, 0.12},
-		{traits.Breeding, 0.08},
+		{traits.Herding, 0.10},
+		{traits.Breeding, 0.06},
 
 		// Vision traits (moderate)
-		{traits.PreyEyes, 0.06},
+		{traits.PreyEyes, 0.05},
 		{traits.PredatorEyes, 0.04},
 		{traits.FarSight, 0.04},
 
 		// Physical traits
 		{traits.Speed, 0.05},
 
+		// Light sensitivity (creates habitat preferences)
+		{traits.Photophilic, 0.06}, // Prefers bright areas
+		{traits.Photophobic, 0.06}, // Prefers shadows
+
 		// Diet evolution (rare but important for diversity)
-		{traits.Herbivore, 0.03},  // Can become omnivore
-		{traits.Carnivore, 0.02},  // Can become predator
-		{traits.Carrion, 0.04},    // Can become scavenger
+		{traits.Herbivore, 0.03}, // Can become omnivore
+		{traits.Carnivore, 0.02}, // Can become predator
+		{traits.Carrion, 0.04},   // Can become scavenger
 	}
 
 	for _, w := range weights {
@@ -811,6 +843,39 @@ func pickMutation() traits.Mutation {
 	}
 
 	return traits.NoMutation
+}
+
+// updateDayNightCycle moves the sun across the sky and adjusts light intensity.
+func (g *Game) updateDayNightCycle() {
+	// Day cycle duration in ticks (about 60 seconds at normal speed)
+	const cycleDuration = 3600
+	const sunSpeed = 1.4 / float32(cycleDuration) // Travel 1.4 units (from 1.2 to -0.2)
+
+	// Move sun from right to left
+	g.light.PosX -= sunSpeed
+
+	// Wrap around when sun goes off-screen left
+	if g.light.PosX < -0.2 {
+		g.light.PosX = 1.2
+	}
+
+	// Calculate intensity based on sun position
+	// Brightest when sun is in center (0.5), dimmer at edges
+	centerDist := float32(0.0)
+	if g.light.PosX >= 0 && g.light.PosX <= 1.0 {
+		centerDist = (g.light.PosX - 0.5)
+		if centerDist < 0 {
+			centerDist = -centerDist
+		}
+		// Intensity: 1.0 at center, 0.4 at edges
+		g.light.Intensity = 1.0 - centerDist*1.2
+		if g.light.Intensity < 0.3 {
+			g.light.Intensity = 0.3
+		}
+	} else {
+		// Sun off-screen = night (but not completely dark)
+		g.light.Intensity = 0.2
+	}
 }
 
 func (g *Game) cleanupDead() {

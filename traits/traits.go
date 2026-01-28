@@ -27,6 +27,10 @@ const (
 	// Physical traits (fauna only)
 	Speed // Faster movement, overcomes size penalty
 
+	// Light sensitivity traits (fauna only)
+	Photophilic // Seeks light, thrives in bright areas
+	Photophobic // Avoids light, thrives in shadows
+
 	// Gender (for breeding)
 	Male
 	Female
@@ -77,7 +81,7 @@ func IsOmnivore(t Trait) bool {
 var FloraOnlyTraits = Flora | Rooted | Floating
 
 // FaunaOnlyTraits are traits that only apply to fauna.
-var FaunaOnlyTraits = Herbivore | Carnivore | Carrion | Herding | Breeding | PredatorEyes | PreyEyes | FarSight | Speed
+var FaunaOnlyTraits = Herbivore | Carnivore | Carrion | Herding | Breeding | PredatorEyes | PreyEyes | FarSight | Speed | Photophilic | Photophobic
 
 // TraitWeights for random selection (higher = more common).
 var TraitWeights = map[Trait]float32{
@@ -93,6 +97,8 @@ var TraitWeights = map[Trait]float32{
 	PreyEyes:     0.08,
 	FarSight:     0.05,
 	Speed:        0.06,
+	Photophilic:  0.08,
+	Photophobic:  0.08,
 }
 
 // MutationWeights for random mutation selection.
@@ -171,6 +177,12 @@ func TraitNames(t Trait) []string {
 	}
 	if t.Has(Speed) {
 		names = append(names, "Speed")
+	}
+	if t.Has(Photophilic) {
+		names = append(names, "Photophilic")
+	}
+	if t.Has(Photophobic) {
+		names = append(names, "Photophobic")
 	}
 	if t.Has(Male) {
 		names = append(names, "Male")

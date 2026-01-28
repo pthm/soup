@@ -40,15 +40,21 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 	for query.Next() {
 		pos, vel, org := query.Get()
 
-		// Skip stationary flora
-		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) {
+		// Skip stationary flora (but not if dead - dead flora can drift)
+		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) && !org.Dead {
 			continue
+		}
+
+		// Dead organisms drift slowly with reduced max speed
+		maxSpeed := org.MaxSpeed
+		if org.Dead {
+			maxSpeed = 0.5 // Slow drift for corpses
 		}
 
 		// Limit velocity
 		velMag := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
-		if velMag > org.MaxSpeed {
-			scale := org.MaxSpeed / velMag
+		if velMag > maxSpeed {
+			scale := maxSpeed / velMag
 			vel.X *= scale
 			vel.Y *= scale
 		}
@@ -57,33 +63,40 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		pos.X += vel.X
 		pos.Y += vel.Y
 
-		// Apply friction
-		vel.X *= 0.98
-		vel.Y *= 0.98
+		// Apply friction (more for dead things - they sink/settle)
+		friction := float32(0.98)
+		if org.Dead {
+			friction = 0.96
+		}
+		vel.X *= friction
+		vel.Y *= friction
 
-		// Update heading
-		if vel.X*vel.X+vel.Y*vel.Y > 0.01 {
+		// Update heading (not for dead)
+		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > 0.01 {
 			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
 		}
 
-		// Keep in bounds
-		cellRadius := org.CellSize * float32(3) // Approximate organism radius
-		if pos.X < cellRadius {
-			pos.X = cellRadius
+		// Horizontal wrap-around
+		if pos.X < 0 {
+			pos.X += s.bounds.Width
 		}
-		if pos.X > s.bounds.Width-cellRadius {
-			pos.X = s.bounds.Width - cellRadius
+		if pos.X > s.bounds.Width {
+			pos.X -= s.bounds.Width
 		}
 
-		// Rooted organisms stay at bottom
-		if org.Traits.Has(traits.Rooted) {
+		// Rooted organisms stay at bottom (unless dead)
+		if org.Traits.Has(traits.Rooted) && !org.Dead {
 			pos.Y = s.bounds.Height - org.CellSize
 		} else {
+			// Vertical bounds (no wrap - top and bottom are walls)
+			cellRadius := org.CellSize * float32(3)
 			if pos.Y < cellRadius {
 				pos.Y = cellRadius
+				vel.Y *= -0.3 // Bounce slightly
 			}
 			if pos.Y > s.bounds.Height-cellRadius {
 				pos.Y = s.bounds.Height - cellRadius
+				vel.Y *= -0.3 // Bounce slightly
 			}
 		}
 	}

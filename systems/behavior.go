@@ -12,16 +12,18 @@ import (
 
 // BehaviorSystem handles organism steering behaviors.
 type BehaviorSystem struct {
-	filter ecs.Filter3[components.Position, components.Velocity, components.Organism]
-	noise  *PerlinNoise
-	tick   int32
+	filter    ecs.Filter3[components.Position, components.Velocity, components.Organism]
+	noise     *PerlinNoise
+	tick      int32
+	shadowMap *ShadowMap
 }
 
 // NewBehaviorSystem creates a new behavior system.
-func NewBehaviorSystem(w *ecs.World) *BehaviorSystem {
+func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
 	return &BehaviorSystem{
-		filter: *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
-		noise:  NewPerlinNoise(rand.Int63()),
+		filter:    *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
+		noise:     NewPerlinNoise(rand.Int63()),
+		shadowMap: shadowMap,
 	}
 }
 
@@ -33,13 +35,19 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 	for query.Next() {
 		pos, vel, org := query.Get()
 
-		// Skip stationary flora
-		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) {
+		// Skip stationary flora (unless dead - dead flora drifts)
+		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) && !org.Dead {
 			continue
 		}
 
-		// Skip dead organisms
+		// Dead organisms only get flow field influence
 		if org.Dead {
+			flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
+			// Stronger flow effect on dead things (they don't resist)
+			vel.X += flowX * 1.5
+			vel.Y += flowY * 1.5
+			// Slight downward drift (sinking)
+			vel.Y += 0.02
 			continue
 		}
 
@@ -84,6 +92,13 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			herdX, herdY := s.flockWithHerd(pos, vel, org, faunaPositions, faunaOrgs)
 			steerX += herdX * 1.2
 			steerY += herdY * 1.2
+		}
+
+		// Light sensitivity behavior
+		if org.Traits.Has(traits.Photophilic) || org.Traits.Has(traits.Photophobic) {
+			lightX, lightY := s.getLightPreferenceForce(pos, org)
+			steerX += lightX
+			steerY += lightY
 		}
 
 		// Wander if no other behavior
@@ -306,6 +321,53 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 	factor := 1 - resistance*0.8
 
 	return flowX * factor, flowY * factor
+}
+
+// getLightPreferenceForce calculates steering based on light sensitivity traits.
+func (s *BehaviorSystem) getLightPreferenceForce(pos *components.Position, org *components.Organism) (float32, float32) {
+	if s.shadowMap == nil {
+		return 0, 0
+	}
+
+	// Sample light at current position and nearby positions
+	currentLight := s.shadowMap.SampleLight(pos.X, pos.Y)
+	sampleDist := float32(20.0) // How far to sample for gradient
+
+	// Sample in 4 directions to find light gradient
+	lightLeft := s.shadowMap.SampleLight(pos.X-sampleDist, pos.Y)
+	lightRight := s.shadowMap.SampleLight(pos.X+sampleDist, pos.Y)
+	lightUp := s.shadowMap.SampleLight(pos.X, pos.Y-sampleDist)
+	lightDown := s.shadowMap.SampleLight(pos.X, pos.Y+sampleDist)
+
+	// Calculate gradient (direction of increasing light)
+	gradX := lightRight - lightLeft
+	gradY := lightDown - lightUp
+
+	// Strength based on how much organism cares about light
+	strength := float32(0.8)
+
+	if org.Traits.Has(traits.Photophilic) {
+		// Move toward brighter areas (follow gradient)
+		// Also get a bonus/penalty based on current light level
+		comfort := currentLight - 0.5 // Positive if in light, negative if in shadow
+		urgency := float32(1.0)
+		if comfort < 0 {
+			urgency = 1.5 // More urgent to find light when in shadow
+		}
+		return gradX * strength * urgency, gradY * strength * urgency
+	}
+
+	if org.Traits.Has(traits.Photophobic) {
+		// Move toward darker areas (against gradient)
+		comfort := 0.5 - currentLight // Positive if in shadow, negative if in light
+		urgency := float32(1.0)
+		if comfort < 0 {
+			urgency = 1.5 // More urgent to find shadow when in light
+		}
+		return -gradX * strength * urgency, -gradY * strength * urgency
+	}
+
+	return 0, 0
 }
 
 // Helper functions
