@@ -68,8 +68,8 @@ func DefaultNEATOptions() *neat.Options {
 		WeightMutPower: 2.5,
 
 		// Structural mutation rates
-		MutateAddNodeProb:      0.03,
-		MutateAddLinkProb:      0.05,
+		MutateAddNodeProb:      0.10,
+		MutateAddLinkProb:      0.15,
 		MutateToggleEnableProb: 0.01,
 
 		// Weight mutation probability
@@ -85,7 +85,7 @@ func DefaultNEATOptions() *neat.Options {
 		RecurOnlyProb:         0.0,
 
 		// Speciation
-		CompatThreshold: 3.0,
+		CompatThreshold: 2.3,
 		DisjointCoeff:   1.0,
 		ExcessCoeff:     1.0,
 		MutdiffCoeff:    0.4,

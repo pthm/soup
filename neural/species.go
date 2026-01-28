@@ -435,8 +435,8 @@ func CalculateFitness(energy, maxEnergy float32, survivalTicks int32, offspringC
 	// Base fitness from energy ratio
 	energyRatio := float64(energy / maxEnergy)
 
-	// Survival bonus (more ticks alive = better adapted)
-	survivalBonus := float64(survivalTicks) / 1000.0 // Normalize to reasonable range
+	// Survival bonus with diminishing returns (early survival matters more)
+	survivalBonus := math.Log1p(float64(survivalTicks) / 500.0)
 
 	// Reproduction bonus (offspring count matters most for evolution)
 	reproBonus := 1.0 + float64(offspringCount)*0.5

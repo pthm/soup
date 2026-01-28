@@ -117,6 +117,7 @@ type Game struct {
 	particleRenderer *renderer.ParticleRenderer
 	allocation     *systems.AllocationSystem
 	spatialGrid    *systems.SpatialGrid
+	disease        *systems.DiseaseSystem
 
 	// Neural evolution
 	neuralConfig    *neural.Config
@@ -136,9 +137,10 @@ type Game struct {
 	brainMap        *ecs.Map[components.Brain]
 
 	// Filters for querying
-	floraFilter  *ecs.Filter3[components.Position, components.Organism, components.Flora]
-	faunaFilter  *ecs.Filter3[components.Position, components.Organism, components.Fauna]
-	allOrgFilter *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
+	floraFilter      *ecs.Filter3[components.Position, components.Organism, components.Flora]
+	faunaFilter      *ecs.Filter3[components.Position, components.Organism, components.Fauna]
+	faunaCellFilter  *ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Fauna]
+	allOrgFilter     *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
 }
 
 func NewGame() *Game {
@@ -181,6 +183,7 @@ func NewGame() *Game {
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
 		spatialGrid:   systems.NewSpatialGrid(screenWidth, screenHeight),
+		disease:       systems.NewDiseaseSystem(),
 		particleRenderer: renderer.NewParticleRenderer(),
 
 		// Neural evolution
@@ -194,9 +197,10 @@ func NewGame() *Game {
 
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
-		floraFilter:   ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
-		faunaFilter:   ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
-		allOrgFilter:  ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
+		floraFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
+		faunaFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
+		faunaCellFilter: ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Fauna](world),
+		allOrgFilter:    ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
 
 		// Neural component mappers
 		neuralGenomeMap: ecs.NewMap[components.NeuralGenome](world),
@@ -251,6 +255,7 @@ func NewGameHeadless() *Game {
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
 		spatialGrid:    systems.NewSpatialGrid(screenWidth, screenHeight),
+		disease:        systems.NewDiseaseSystem(),
 
 		// Neural evolution
 		neuralConfig:   neuralConfig,
@@ -261,11 +266,12 @@ func NewGameHeadless() *Game {
 		showSpeciesColors: false,
 		showNeuralStats:   false,
 
-		floraMapper:  ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
-		faunaMapper:  ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
-		floraFilter:  ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
-		faunaFilter:  ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
-		allOrgFilter: ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
+		floraMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
+		faunaMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
+		floraFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
+		faunaFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
+		faunaCellFilter: ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Fauna](world),
+		allOrgFilter:    ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
 
 		// Neural component mappers
 		neuralGenomeMap: ecs.NewMap[components.NeuralGenome](world),
@@ -649,6 +655,10 @@ func (g *Game) Update() {
 		measure("physics", func() { g.physics.Update(g.world) })
 		measure("feeding", func() { g.feeding.Update() })
 		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("disease", func() {
+			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
+			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
+		})
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
 
@@ -737,6 +747,10 @@ func (g *Game) UpdateHeadless() {
 		measure("physics", func() { g.physics.Update(g.world) })
 		measure("feeding", func() { g.feeding.Update() })
 		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("disease", func() {
+			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
+			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
+		})
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
 
@@ -952,8 +966,9 @@ func (g *Game) logNeuralStats() {
 	logf("║ Total Offspring: %d | Avg Staleness: %.1f",
 		stats.TotalOffspring, stats.AverageStaleness)
 
-	// Count neural organisms
+	// Count neural organisms and disease
 	neuralCount := 0
+	diseasedCount := 0
 	var totalNodes, totalGenes int
 	var minNodes, maxNodes int = 9999, 0
 	var minGenes, maxGenes int = 9999, 0
@@ -965,6 +980,14 @@ func (g *Game) logNeuralStats() {
 
 		if org.Dead {
 			continue
+		}
+
+		// Check for disease
+		for i := uint8(0); i < cells.Count; i++ {
+			if cells.Cells[i].Mutation == traits.Disease && cells.Cells[i].Alive {
+				diseasedCount++
+				break
+			}
 		}
 
 		if g.neuralGenomeMap.Has(entity) {
@@ -990,7 +1013,6 @@ func (g *Game) logNeuralStats() {
 				}
 			}
 		}
-		_ = cells
 	}
 
 	if minNodes == 9999 {
@@ -1008,7 +1030,8 @@ func (g *Game) logNeuralStats() {
 	}
 
 	logf("╠══════════════════════════════════════════════════════════════════╣")
-	logf("║ Neural Organisms: %d", neuralCount)
+	logf("║ Neural Organisms: %d | Diseased: %d (%.1f%%)", neuralCount, diseasedCount,
+		float64(diseasedCount)/float64(max(neuralCount, 1))*100)
 	logf("║ Brain Complexity:")
 	logf("║   Nodes: avg=%.1f, min=%d, max=%d", avgNodes, minNodes, maxNodes)
 	logf("║   Genes: avg=%.1f, min=%d, max=%d", avgGenes, minGenes, maxGenes)
@@ -1143,6 +1166,32 @@ func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organis
 	}
 
 	return floraOrgs, faunaOrgs
+}
+
+func (g *Game) collectFaunaForDisease() ([]components.Position, []*components.Organism, []*components.CellBuffer, []*components.NeuralGenome) {
+	var positions []components.Position
+	var organisms []*components.Organism
+	var cellBuffers []*components.CellBuffer
+	var genomes []*components.NeuralGenome
+
+	query := g.faunaCellFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		pos, org, cells, _ := query.Get()
+
+		positions = append(positions, *pos)
+		organisms = append(organisms, org)
+		cellBuffers = append(cellBuffers, cells)
+
+		// Get neural genome if available
+		var genome *components.NeuralGenome
+		if g.neuralGenomeMap.Has(entity) {
+			genome = g.neuralGenomeMap.Get(entity)
+		}
+		genomes = append(genomes, genome)
+	}
+
+	return positions, organisms, cellBuffers, genomes
 }
 
 func (g *Game) updateGrowth() {
