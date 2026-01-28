@@ -5,8 +5,9 @@ import (
 )
 
 const (
-	shadowMapWidth  = 128
-	shadowMapHeight = 128
+	shadowMapWidth  = 64 // Reduced from 128 for performance
+	shadowMapHeight = 64
+	occluderGridSize = 16 // Spatial grid for occluders
 )
 
 // ShadowMap stores light intensity values for photosynthesis and phototropism.
@@ -15,6 +16,12 @@ type ShadowMap struct {
 	width, height  float32
 	updateInterval int32
 	lastUpdate     int32
+	// Spatial grid for occluder acceleration
+	occluderGrid   [occluderGridSize][occluderGridSize][]int // indices into occluders slice
+	// Pre-allocated buffers to avoid allocations in hot path
+	seenGeneration int           // Incremented each frame to avoid clearing seen array
+	occluderSeen   []int         // Stores generation when occluder was last seen
+	candidateBuf   []int         // Reusable buffer for candidate occluders
 }
 
 // NewShadowMap creates a new shadow map for the given screen dimensions.
@@ -22,7 +29,7 @@ func NewShadowMap(screenWidth, screenHeight float32) *ShadowMap {
 	sm := &ShadowMap{
 		width:          screenWidth,
 		height:         screenHeight,
-		updateInterval: 5, // Update every 5 ticks
+		updateInterval: 8, // Update every 8 ticks (increased from 5)
 	}
 	// Initialize all cells to full light
 	for y := 0; y < shadowMapHeight; y++ {
@@ -41,12 +48,32 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 	}
 	sm.lastUpdate = tick
 
+	// Build spatial grid for occluders
+	sm.buildOccluderGrid(occluders)
+
+	// Ensure seen buffer is large enough
+	if len(sm.occluderSeen) < len(occluders) {
+		sm.occluderSeen = make([]int, len(occluders)*2) // 2x to avoid frequent reallocations
+	}
+	// Pre-allocate candidate buffer
+	if cap(sm.candidateBuf) < 64 {
+		sm.candidateBuf = make([]int, 0, 64)
+	}
+
 	cellWidth := sm.width / shadowMapWidth
 	cellHeight := sm.height / shadowMapHeight
+	occGridCellW := sm.width / occluderGridSize
+	occGridCellH := sm.height / occluderGridSize
+
+	// Pre-compute max distance once
+	maxDist := float32(math.Sqrt(float64(sm.width*sm.width + sm.height*sm.height)))
 
 	// For each grid cell, calculate light intensity
 	for gy := 0; gy < shadowMapHeight; gy++ {
 		for gx := 0; gx < shadowMapWidth; gx++ {
+			// Increment generation for this grid cell to invalidate seen markers
+			sm.seenGeneration++
+
 			// World position of grid cell center
 			worldX := (float32(gx) + 0.5) * cellWidth
 			worldY := (float32(gy) + 0.5) * cellHeight
@@ -55,7 +82,6 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			dx := worldX - sunX
 			dy := worldY - sunY
 			dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-			maxDist := float32(math.Sqrt(float64(sm.width*sm.width + sm.height*sm.height)))
 			normalizedDist := dist / maxDist
 
 			// Clamp to valid range (sun can be off-screen)
@@ -64,17 +90,26 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			}
 
 			// Distance falloff - gentler curve, minimum 0.3 ambient light
-			// At sun: 1.0, at farthest corner: 0.3
 			distFactor := float32(math.Pow(float64(1-normalizedDist), 0.8))
 			light := 0.3 + distFactor*0.7
 
-			// Check occlusion from each occluder
-			for _, occ := range occluders {
+			// Only check occluders in cells that the ray passes through
+			candidates := sm.getOccludersAlongRayFast(worldX, worldY, sunX, sunY, occGridCellW, occGridCellH)
+
+			// Check occlusion from candidate occluders
+			for _, idx := range candidates {
+				occ := occluders[idx]
 				if sm.rayIntersectsAABB(worldX, worldY, sunX, sunY, occ) {
-					// Shadow strength based on occluder density (using size as proxy)
+					// Shadow strength based on occluder density
 					occluderArea := occ.Width * occ.Height
 					density := float32(math.Min(float64(occluderArea)/(15*15), 1.0))
 					light *= (1 - density*0.7)
+
+					// Early termination - if very dark, stop checking
+					if light < 0.1 {
+						light = 0.1
+						break
+					}
 				}
 			}
 
@@ -89,6 +124,183 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			sm.grid[gy][gx] = light
 		}
 	}
+}
+
+// buildOccluderGrid populates the spatial grid with occluder indices.
+func (sm *ShadowMap) buildOccluderGrid(occluders []Occluder) {
+	// Clear the grid
+	for y := 0; y < occluderGridSize; y++ {
+		for x := 0; x < occluderGridSize; x++ {
+			sm.occluderGrid[y][x] = sm.occluderGrid[y][x][:0]
+		}
+	}
+
+	cellW := sm.width / occluderGridSize
+	cellH := sm.height / occluderGridSize
+
+	for i, occ := range occluders {
+		// Find all grid cells this occluder overlaps
+		minGX := int(occ.X / cellW)
+		maxGX := int((occ.X + occ.Width) / cellW)
+		minGY := int(occ.Y / cellH)
+		maxGY := int((occ.Y + occ.Height) / cellH)
+
+		// Clamp to grid bounds
+		if minGX < 0 {
+			minGX = 0
+		}
+		if maxGX >= occluderGridSize {
+			maxGX = occluderGridSize - 1
+		}
+		if minGY < 0 {
+			minGY = 0
+		}
+		if maxGY >= occluderGridSize {
+			maxGY = occluderGridSize - 1
+		}
+
+		// Add to all overlapping cells
+		for gy := minGY; gy <= maxGY; gy++ {
+			for gx := minGX; gx <= maxGX; gx++ {
+				sm.occluderGrid[gy][gx] = append(sm.occluderGrid[gy][gx], i)
+			}
+		}
+	}
+}
+
+// getOccludersAlongRay returns indices of occluders in cells along the ray path.
+func (sm *ShadowMap) getOccludersAlongRay(x0, y0, x1, y1, cellW, cellH float32) []int {
+	// Use a simple approach: collect occluders from the start cell and end cell,
+	// plus cells in between using Bresenham-like stepping
+	seen := make(map[int]bool)
+	var result []int
+
+	// Helper to add occluders from a grid cell
+	addCell := func(gx, gy int) {
+		if gx < 0 || gx >= occluderGridSize || gy < 0 || gy >= occluderGridSize {
+			return
+		}
+		for _, idx := range sm.occluderGrid[gy][gx] {
+			if !seen[idx] {
+				seen[idx] = true
+				result = append(result, idx)
+			}
+		}
+	}
+
+	// Start and end grid cells
+	gx0 := int(x0 / cellW)
+	gy0 := int(y0 / cellH)
+	gx1 := int(x1 / cellW)
+	gy1 := int(y1 / cellH)
+
+	// Clamp
+	if gx0 < 0 {
+		gx0 = 0
+	}
+	if gx0 >= occluderGridSize {
+		gx0 = occluderGridSize - 1
+	}
+	if gy0 < 0 {
+		gy0 = 0
+	}
+	if gy0 >= occluderGridSize {
+		gy0 = occluderGridSize - 1
+	}
+	if gx1 < 0 {
+		gx1 = 0
+	}
+	if gx1 >= occluderGridSize {
+		gx1 = occluderGridSize - 1
+	}
+	if gy1 < 0 {
+		gy1 = 0
+	}
+	if gy1 >= occluderGridSize {
+		gy1 = occluderGridSize - 1
+	}
+
+	// Simple line traversal - add all cells in the bounding box of the ray
+	// This is a conservative approximation but fast
+	minGX, maxGX := gx0, gx1
+	if minGX > maxGX {
+		minGX, maxGX = maxGX, minGX
+	}
+	minGY, maxGY := gy0, gy1
+	if minGY > maxGY {
+		minGY, maxGY = maxGY, minGY
+	}
+
+	for gy := minGY; gy <= maxGY; gy++ {
+		for gx := minGX; gx <= maxGX; gx++ {
+			addCell(gx, gy)
+		}
+	}
+
+	return result
+}
+
+// getOccludersAlongRayFast is an allocation-free version using pre-allocated buffers.
+func (sm *ShadowMap) getOccludersAlongRayFast(x0, y0, x1, y1, cellW, cellH float32) []int {
+	// Reset candidate buffer
+	sm.candidateBuf = sm.candidateBuf[:0]
+
+	// Start and end grid cells
+	gx0 := int(x0 / cellW)
+	gy0 := int(y0 / cellH)
+	gx1 := int(x1 / cellW)
+	gy1 := int(y1 / cellH)
+
+	// Clamp to grid bounds
+	if gx0 < 0 {
+		gx0 = 0
+	}
+	if gx0 >= occluderGridSize {
+		gx0 = occluderGridSize - 1
+	}
+	if gy0 < 0 {
+		gy0 = 0
+	}
+	if gy0 >= occluderGridSize {
+		gy0 = occluderGridSize - 1
+	}
+	if gx1 < 0 {
+		gx1 = 0
+	}
+	if gx1 >= occluderGridSize {
+		gx1 = occluderGridSize - 1
+	}
+	if gy1 < 0 {
+		gy1 = 0
+	}
+	if gy1 >= occluderGridSize {
+		gy1 = occluderGridSize - 1
+	}
+
+	// Get bounding box of the ray
+	minGX, maxGX := gx0, gx1
+	if minGX > maxGX {
+		minGX, maxGX = maxGX, minGX
+	}
+	minGY, maxGY := gy0, gy1
+	if minGY > maxGY {
+		minGY, maxGY = maxGY, minGY
+	}
+
+	// Collect unique occluders using generation-based deduplication
+	gen := sm.seenGeneration
+	for gy := minGY; gy <= maxGY; gy++ {
+		for gx := minGX; gx <= maxGX; gx++ {
+			for _, idx := range sm.occluderGrid[gy][gx] {
+				if idx < len(sm.occluderSeen) && sm.occluderSeen[idx] != gen {
+					sm.occluderSeen[idx] = gen
+					sm.candidateBuf = append(sm.candidateBuf, idx)
+				}
+			}
+		}
+	}
+
+	return sm.candidateBuf
 }
 
 // rayIntersectsAABB checks if a ray from point to sun intersects an AABB.

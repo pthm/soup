@@ -43,6 +43,7 @@ type Organism struct {
 	BreedingCooldown  int32
 	AllocationMode    AllocationMode
 	TargetCells       uint8 // Desired cell count based on conditions
+	DeadTime          int32 // Ticks since death (for decomposition/removal)
 }
 
 // Cell represents a single cell within an organism.

@@ -6,7 +6,9 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/mlange-42/ark/ecs"
@@ -21,8 +23,60 @@ var (
 	initialSpeed = flag.Int("speed", 1, "Initial simulation speed (1-10)")
 	logInterval  = flag.Int("log", 0, "Log world state every N ticks (0 = disabled)")
 	logFile      = flag.String("logfile", "", "Write logs to file instead of stdout")
+	perfLog      = flag.Bool("perf", false, "Enable performance logging")
 	logWriter    *os.File
 )
+
+// PerfStats tracks execution time for each system
+type PerfStats struct {
+	samples    map[string][]time.Duration
+	maxSamples int
+}
+
+func NewPerfStats() *PerfStats {
+	return &PerfStats{
+		samples:    make(map[string][]time.Duration),
+		maxSamples: 120, // ~2 seconds of samples at 60fps
+	}
+}
+
+func (p *PerfStats) Record(name string, d time.Duration) {
+	p.samples[name] = append(p.samples[name], d)
+	if len(p.samples[name]) > p.maxSamples {
+		p.samples[name] = p.samples[name][1:]
+	}
+}
+
+func (p *PerfStats) Avg(name string) time.Duration {
+	s := p.samples[name]
+	if len(s) == 0 {
+		return 0
+	}
+	var total time.Duration
+	for _, d := range s {
+		total += d
+	}
+	return total / time.Duration(len(s))
+}
+
+func (p *PerfStats) Total() time.Duration {
+	var total time.Duration
+	for name := range p.samples {
+		total += p.Avg(name)
+	}
+	return total
+}
+
+func (p *PerfStats) SortedNames() []string {
+	names := make([]string, 0, len(p.samples))
+	for name := range p.samples {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return p.Avg(names[i]) > p.Avg(names[j])
+	})
+	return names
+}
 
 const (
 	screenWidth  = 1280
@@ -44,6 +98,7 @@ type Game struct {
 	tick          int32
 	paused        bool
 	stepsPerFrame int
+	perf          *PerfStats
 
 	// New systems
 	shadowMap      *systems.ShadowMap
@@ -55,6 +110,7 @@ type Game struct {
 	particles      *systems.ParticleSystem
 	particleRenderer *renderer.ParticleRenderer
 	allocation     *systems.AllocationSystem
+	spatialGrid    *systems.SpatialGrid
 
 	// Mappers for creating entities with components
 	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
@@ -90,6 +146,7 @@ func NewGame() *Game {
 		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
 		light:           renderer.LightState{PosX: 1.2, PosY: -0.15, Intensity: 1.0}, // Start off-screen right
 		stepsPerFrame: 1,
+		perf:          NewPerfStats(),
 
 		// New systems
 		shadowMap:      shadowMap,
@@ -100,6 +157,7 @@ func NewGame() *Game {
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
+		spatialGrid:   systems.NewSpatialGrid(screenWidth, screenHeight),
 		particleRenderer: renderer.NewParticleRenderer(),
 
 		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
@@ -268,53 +326,97 @@ func (g *Game) Update() {
 	for step := 0; step < g.stepsPerFrame; step++ {
 		g.tick++
 
+		// Helper to time a function
+		measure := func(name string, fn func()) {
+			if *perfLog {
+				start := time.Now()
+				fn()
+				g.perf.Record(name, time.Since(start))
+			} else {
+				fn()
+			}
+		}
+
 		// Update day/night cycle
-		g.updateDayNightCycle()
+		measure("dayNight", func() { g.updateDayNightCycle() })
 
 		// Update flow field particles (visual, independent)
-		g.flowField.Update(g.tick)
+		measure("flowField", func() { g.flowField.Update(g.tick) })
 
 		// Update shadow map (foundation for light-based systems)
-		sunX := g.light.PosX * g.bounds.Width
-		sunY := g.light.PosY * g.bounds.Height
-		occluders := g.collectOccluders()
-		g.shadowMap.Update(g.tick, sunX, sunY, occluders)
+		var occluders []systems.Occluder
+		measure("collectOccluders", func() {
+			occluders = g.collectOccluders()
+		})
+		measure("shadowMap", func() {
+			sunX := g.light.PosX * g.bounds.Width
+			sunY := g.light.PosY * g.bounds.Height
+			g.shadowMap.Update(g.tick, sunX, sunY, occluders)
+		})
 
 		// Collect position data for behavior system
-		floraPos, faunaPos := g.collectPositions()
-		floraOrgs, faunaOrgs := g.collectOrganisms()
+		var floraPos, faunaPos []components.Position
+		var floraOrgs, faunaOrgs []*components.Organism
+		measure("collectPositions", func() {
+			floraPos, faunaPos = g.collectPositions()
+			floraOrgs, faunaOrgs = g.collectOrganisms()
+		})
+
+		// Update spatial grid for O(1) neighbor lookups
+		measure("spatialGrid", func() { g.spatialGrid.Update(floraPos, faunaPos) })
 
 		// Update allocation modes (determines how organisms spend energy)
-		g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs)
+		measure("allocation", func() { g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs) })
 
 		// Run systems
-		g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs)
-		g.physics.Update(g.world)
-		g.feeding.Update()        // Fauna consume food
-		g.photosynthesis.Update() // Flora energy
-		g.energy.Update(g.world)  // Energy drain
-		g.cells.Update(g.world)
+		measure("behavior", func() { g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
+		measure("physics", func() { g.physics.Update(g.world) })
+		measure("feeding", func() { g.feeding.Update() })
+		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("energy", func() { g.energy.Update(g.world) })
+		measure("cells", func() { g.cells.Update(g.world) })
 
 		// Breeding (fauna reproduction)
-		g.breeding.Update(g.world, g.createOrganism)
+		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism) })
 
 		// Spores (flora reproduction)
-		g.spores.Update(g.tick, g.createOrganism)
+		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })
 
 		// Growth, spore spawning, and splitting
-		g.updateGrowth()
+		measure("growth", func() { g.updateGrowth() })
 
 		// Effect particles
-		g.particles.Update()
+		measure("particles", func() { g.particles.Update() })
 
 		// Cleanup
-		g.cleanupDead()
+		measure("cleanup", func() { g.cleanupDead() })
 
 		// Periodic logging
 		if *logInterval > 0 && g.tick%int32(*logInterval) == 0 {
 			g.logWorldState()
 		}
+
+		// Performance logging (every 120 ticks = ~2 seconds at 1x speed)
+		if *perfLog && g.tick%120 == 0 {
+			g.logPerfStats()
+		}
 	}
+}
+
+func (g *Game) logPerfStats() {
+	total := g.perf.Total()
+	logf("=== Perf @ Tick %d (speed %dx) ===", g.tick, g.stepsPerFrame)
+	logf("Total step time: %s", total.Round(time.Microsecond))
+
+	for _, name := range g.perf.SortedNames() {
+		avg := g.perf.Avg(name)
+		pct := float64(0)
+		if total > 0 {
+			pct = float64(avg) / float64(total) * 100
+		}
+		logf("  %-18s %10s  %5.1f%%", name, avg.Round(time.Microsecond), pct)
+	}
+	logf("")
 }
 
 func (g *Game) logWorldState() {
@@ -879,8 +981,27 @@ func (g *Game) updateDayNightCycle() {
 }
 
 func (g *Game) cleanupDead() {
-	// This would need entity removal - simplified for now
-	// In a full implementation, we'd track dead entities and remove them
+	const maxDeadTime = 600 // Remove after ~10 seconds at normal speed
+
+	// Collect entities to remove (can't modify during query)
+	var toRemove []ecs.Entity
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		_, _, org, _ := query.Get()
+
+		if org.Dead {
+			org.DeadTime++
+			if org.DeadTime > maxDeadTime {
+				toRemove = append(toRemove, query.Entity())
+			}
+		}
+	}
+
+	// Remove dead entities
+	for _, e := range toRemove {
+		g.world.RemoveEntity(e)
+	}
 }
 
 func (g *Game) Draw() {
@@ -1211,13 +1332,44 @@ func (g *Game) drawUI() {
 	// Draw stats
 	rl.DrawText("Primordial Soup", 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Flora: %d | Fauna: %d | Cells: %d", floraCount, faunaCount, totalCells), 10, 35, 16, rl.LightGray)
-	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | Spores: %d | Effects: %d", g.tick, g.stepsPerFrame, g.spores.Count(), g.particles.Count()), 10, 55, 16, rl.LightGray)
+	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | FPS: %d | Spores: %d", g.tick, g.stepsPerFrame, rl.GetFPS(), g.spores.Count()), 10, 55, 16, rl.LightGray)
 
 	statusText := "Running"
 	if g.paused {
 		statusText = "PAUSED"
 	}
 	rl.DrawText(statusText, 10, 75, 16, rl.Yellow)
+
+	// Performance stats (right side)
+	if *perfLog {
+		x := int32(screenWidth - 200)
+		y := int32(10)
+		rl.DrawText("System Performance", x, y, 16, rl.White)
+		y += 20
+
+		total := g.perf.Total()
+		rl.DrawText(fmt.Sprintf("Total: %s", total.Round(time.Microsecond)), x, y, 14, rl.Yellow)
+		y += 16
+
+		for i, name := range g.perf.SortedNames() {
+			if i >= 12 {
+				break // Limit display
+			}
+			avg := g.perf.Avg(name)
+			pct := float64(0)
+			if total > 0 {
+				pct = float64(avg) / float64(total) * 100
+			}
+			color := rl.LightGray
+			if pct > 20 {
+				color = rl.Red
+			} else if pct > 10 {
+				color = rl.Orange
+			}
+			rl.DrawText(fmt.Sprintf("%-16s %6s %5.1f%%", name, avg.Round(time.Microsecond), pct), x, y, 12, color)
+			y += 14
+		}
+	}
 
 	// Controls
 	rl.DrawText("SPACE: Pause | < >: Speed | Click: Add Herbivore | F: Flora | C: Carnivore", 10, int32(screenHeight-25), 14, rl.Gray)
