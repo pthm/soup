@@ -48,22 +48,24 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		}
 
 		// Class-based speed and energy drain based on cell count
+		// Key insight: Base drain is LOW (resting is efficient for all sizes)
+		// Activity cost scales with mass (moving is expensive for large organisms)
 		cellCount := int(cells.Count)
 		var baseSpeed, baseDrain float32
 
 		switch {
-		case cellCount <= 3: // Drifters: passive, efficient
+		case cellCount <= 3: // Drifters: small, efficient, fast for size
 			baseDrain = 0.002 + 0.0005*float32(cellCount)
 			baseSpeed = 0.5 + org.ShapeMetrics.Streamlining*0.2
 
-		case cellCount <= 10: // Generalists: balanced
+		case cellCount <= 10: // Generalists: balanced metabolism
 			penalty := float32(cellCount-1) * 0.08
-			baseDrain = 0.005 + 0.001*float32(cellCount)
+			baseDrain = 0.003 + 0.0008*float32(cellCount)
 			baseSpeed = float32(max(0.8, 2.0-float64(penalty))) * (0.8 + org.ShapeMetrics.Streamlining*0.4)
 
-		default: // Apex/Whales: powerful but costly to accelerate
+		default: // Apex: low resting metabolism, high activity cost (applied below)
 			penalty := float32(cellCount-1) * 0.04
-			baseDrain = 0.003 + 0.0008*float32(cellCount)
+			baseDrain = 0.004 + 0.0006*float32(cellCount) // Lower base than before
 			baseSpeed = float32(max(0.6, 1.4-float64(penalty))) * (0.7 + org.ShapeMetrics.Streamlining*0.5)
 		}
 
@@ -92,8 +94,12 @@ func (s *EnergySystem) Update(w *ecs.World) {
 			energyDrain *= 0.2
 		}
 
-		// Movement cost: active thrust × drag coefficient
-		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 0.008
+		// Movement cost: active thrust × drag coefficient × mass factor
+		// Larger organisms pay MORE to move - hunting is expensive for apex predators
+		// Using cells^0.7 instead of sqrt (cells^0.5) for steeper scaling
+		// 3-cell: 2.2x, 10-cell: 5.0x, 25-cell: 9.5x (vs sqrt: 1.7x, 3.2x, 5.0x)
+		massFactor := float32(math.Pow(float64(cells.Count), 0.7))
+		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 1.5 * massFactor
 		energyDrain += thrustCost
 		org.ActiveThrust = 0 // Reset for next tick
 

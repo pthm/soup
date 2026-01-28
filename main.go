@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	initialSpeed    = flag.Int("speed", 1, "Initial simulation speed (1-10)")
+	initialSpeed    = flag.Int("speed", 1, "Initial simulation speed (1-10, or 0 for full/uncapped in headless mode)")
 	logInterval     = flag.Int("log", 0, "Log world state every N ticks (0 = disabled)")
 	logFile         = flag.String("logfile", "", "Write logs to file instead of stdout")
 	perfLog         = flag.Bool("perf", false, "Enable performance logging")
@@ -1084,7 +1084,11 @@ func (g *Game) logNeuralStats() {
 
 		count := 0
 		query2 := g.allOrgFilter.Query()
-		for query2.Next() && count < 10 {
+		for query2.Next() {
+			if count >= 10 {
+				continue // Must consume entire query to release world lock
+			}
+
 			entity := query2.Entity()
 			pos, _, org, cells := query2.Get()
 
@@ -2154,7 +2158,11 @@ func main() {
 // runHeadless runs the simulation without graphics for logging/benchmarking
 func runHeadless() {
 	logf("Starting headless simulation...")
-	logf("  Speed: %dx, Max ticks: %d", *initialSpeed, *maxTicks)
+	if *initialSpeed == 0 {
+		logf("  Speed: FULL (uncapped), Max ticks: %d", *maxTicks)
+	} else {
+		logf("  Speed: %dx, Max ticks: %d", *initialSpeed, *maxTicks)
+	}
 	if *neuralLog {
 		logf("  Neural logging: enabled (detail=%v)", *neuralLogDetail)
 	}
@@ -2163,7 +2171,10 @@ func runHeadless() {
 	game := NewGameHeadless()
 
 	// Apply initial speed (in headless, this is steps per "frame")
-	if *initialSpeed > 0 && *initialSpeed <= 10 {
+	// Speed 0 = full/uncapped (run as many ticks as possible per iteration)
+	if *initialSpeed == 0 {
+		game.stepsPerFrame = 10000 // Uncapped - run many ticks per iteration
+	} else if *initialSpeed > 0 && *initialSpeed <= 10 {
 		game.stepsPerFrame = *initialSpeed
 	}
 

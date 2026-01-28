@@ -136,7 +136,17 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			steerY *= scale
 		}
 
-		// Track thrust magnitude for energy cost (before capping)
+		// Apply brain-controlled speed modulation
+		// SpeedMultiplier: 0 = stationary (ambush), 0.5 = slow stalk, 1 = full speed
+		// This affects both energy cost (via ActiveThrust) and visibility to prey
+		speedMult := outputs.SpeedMultiplier
+		if speedMult < 0.05 {
+			speedMult = 0.05 // Minimum movement for drift/flow
+		}
+		steerX *= speedMult
+		steerY *= speedMult
+
+		// Track thrust magnitude for energy cost and visibility
 		thrustMag := float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
 		org.ActiveThrust = thrustMag
 
@@ -390,13 +400,14 @@ func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Orga
 func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
 	// Prey have omnidirectional awareness of predators (survival instinct)
 	// Detection range is larger than normal vision - heightened alertness
-	maxDist := org.PerceptionRadius * 1.5
-	maxDistSq := maxDist * maxDist
-	closestDistSq := maxDistSq
+	// Visibility depends on: size (larger = more visible) and movement (moving = more visible)
+	baseDetectDist := org.PerceptionRadius * 1.5
+	maxSearchDist := baseDetectDist * 5 // Search wider area to find large/moving predators
+	closestDistSq := maxSearchDist * maxSearchDist
 	var closestX, closestY float32
 	found := false
 
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
+	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxSearchDist)
 	for _, i := range nearby {
 		if faunaOrgs[i] == org {
 			continue
@@ -407,7 +418,31 @@ func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.
 		if faunaOrgs[i].Dead {
 			continue
 		}
+
+		// Size visibility: larger predators are easier to spot
+		predatorCells := (faunaOrgs[i].MaxEnergy - 100) / 50
+		if predatorCells < 1 {
+			predatorCells = 1
+		}
+		sizeMultiplier := float32(math.Sqrt(float64(predatorCells)))
+
+		// Movement visibility: moving predators are MUCH easier to detect
+		// ActiveThrust represents how much they're actively moving (0 = stationary)
+		// Stationary: 0.3x visibility, Full movement: 1.5x visibility
+		thrust := faunaOrgs[i].ActiveThrust
+		movementMultiplier := float32(0.3) + thrust*40 // Scale thrust (typically 0-0.03) to visibility
+		if movementMultiplier > 1.5 {
+			movementMultiplier = 1.5
+		}
+
+		// Combined visibility: size × movement
+		detectDist := baseDetectDist * sizeMultiplier * movementMultiplier
+		detectDistSq := detectDist * detectDist
+
 		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
+		if distSq > detectDistSq {
+			continue // Predator too far/stealthy to detect
+		}
 		if distSq < closestDistSq {
 			closestDistSq = distSq
 			closestX = faunaPos[i].X

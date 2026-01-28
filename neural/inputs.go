@@ -115,6 +115,9 @@ type BehaviorOutputs struct {
 	GrowDrive     float32
 	BreedDrive    float32
 	ConserveDrive float32
+
+	// Movement control
+	SpeedMultiplier float32 // 0-1: how fast to move (0=stationary, 1=full speed)
 }
 
 // DecodeOutputs converts raw network outputs to usable behavior weights.
@@ -123,29 +126,34 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
 		// Return defaults if not enough outputs
 		return BehaviorOutputs{
-			SeekFoodWeight: 1.5,
-			FleeWeight:     3.0,
-			SeekMateWeight: 0.5,
-			HerdWeight:     1.2,
-			WanderWeight:   0.4,
-			GrowDrive:      0.5,
-			BreedDrive:     0.5,
-			ConserveDrive:  0.5,
+			SeekFoodWeight:  1.5,
+			FleeWeight:      3.0,
+			SeekMateWeight:  0.5,
+			HerdWeight:      1.2,
+			WanderWeight:    0.4,
+			GrowDrive:       0.5,
+			BreedDrive:      0.5,
+			ConserveDrive:   0.5,
+			SpeedMultiplier: 0.5,
 		}
 	}
 
 	return BehaviorOutputs{
 		// Scale sigmoid outputs to useful steering weight ranges
-		SeekFoodWeight: float32(raw[0]) * 3.0,        // 0-3
-		FleeWeight:     float32(raw[1]) * 5.0,        // 0-5
-		SeekMateWeight: float32(raw[2]) * 2.0,        // 0-2
-		HerdWeight:     float32(raw[3]) * 2.5,        // 0-2.5
-		WanderWeight:   float32(raw[4]) * 1.0,        // 0-1
+		SeekFoodWeight: float32(raw[0]) * 3.0, // 0-3
+		FleeWeight:     float32(raw[1]) * 5.0, // 0-5
+		SeekMateWeight: float32(raw[2]) * 2.0, // 0-2
+		HerdWeight:     float32(raw[3]) * 2.5, // 0-2.5
+		WanderWeight:   float32(raw[4]) * 1.0, // 0-1
 
 		// Allocation drives (raw 0-1 values)
 		GrowDrive:     float32(raw[5]),
 		BreedDrive:    float32(raw[6]),
 		ConserveDrive: float32(raw[7]),
+
+		// Speed control (raw 0-1 value)
+		// 0 = stationary (ambush), 0.5 = slow stalk, 1 = full speed chase
+		SpeedMultiplier: float32(raw[8]),
 	}
 }
 
@@ -153,14 +161,15 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		SeekFoodWeight: 1.5,
-		FleeWeight:     3.0,
-		SeekMateWeight: 0.5,
-		HerdWeight:     1.2,
-		WanderWeight:   0.4,
-		GrowDrive:      0.4,
-		BreedDrive:     0.3,
-		ConserveDrive:  0.3,
+		SeekFoodWeight:  1.5,
+		FleeWeight:      3.0,
+		SeekMateWeight:  0.5,
+		HerdWeight:      1.2,
+		WanderWeight:    0.4,
+		GrowDrive:       0.4,
+		BreedDrive:      0.3,
+		ConserveDrive:   0.3,
+		SpeedMultiplier: 0.7, // Default to moderate speed
 	}
 }
 

@@ -11,7 +11,8 @@ import (
 const BrainInputs = 14
 
 // BrainOutputs is the number of outputs from the brain network.
-const BrainOutputs = 8
+// Outputs: SeekFood, Flee, SeekMate, Herd, Wander, Grow, Breed, Conserve, Speed
+const BrainOutputs = 9
 
 // CPPNInputs is the number of inputs to the CPPN (x, y, d, a, bias).
 const CPPNInputs = 5

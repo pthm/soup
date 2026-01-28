@@ -44,11 +44,12 @@ type NeuralOrganismCreator func(x, y float32, t traits.Trait, energy float32, ne
 func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
 	// Collect all potential breeders
 	type breeder struct {
-		entity ecs.Entity
-		pos    *components.Position
-		vel    *components.Velocity
-		org    *components.Organism
-		cells  *components.CellBuffer
+		entity    ecs.Entity
+		pos       *components.Position
+		vel       *components.Velocity
+		org       *components.Organism
+		cells     *components.CellBuffer
+		speciesID int // Species ID for assortative mating
 	}
 
 	var breeders []breeder
@@ -67,12 +68,22 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			continue
 		}
 
+		// Get species ID if neural organism
+		speciesID := 0
+		entity := query.Entity()
+		if s.neuralMap.Has(entity) {
+			if ng := s.neuralMap.Get(entity); ng != nil {
+				speciesID = ng.SpeciesID
+			}
+		}
+
 		breeders = append(breeders, breeder{
-			entity: query.Entity(),
-			pos:    pos,
-			vel:    vel,
-			org:    org,
-			cells:  cells,
+			entity:    entity,
+			pos:       pos,
+			vel:       vel,
+			org:       org,
+			cells:     cells,
+			speciesID: speciesID,
 		})
 	}
 
@@ -92,7 +103,7 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			a := &breeders[i]
 			b := &breeders[j]
 
-			if s.isCompatible(a.org, b.org, a.pos, b.pos) {
+			if s.isCompatible(a.org, b.org, a.pos, b.pos, a.speciesID, b.speciesID) {
 				s.breed(a.entity, b.entity, a.pos, b.pos, a.org, b.org, a.cells, b.cells, createOrganism, createNeuralOrganism)
 				bred[a.entity] = true
 				bred[b.entity] = true
@@ -131,7 +142,7 @@ func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.
 	return true
 }
 
-func (s *BreedingSystem) isCompatible(a, b *components.Organism, posA, posB *components.Position) bool {
+func (s *BreedingSystem) isCompatible(a, b *components.Organism, posA, posB *components.Position, speciesA, speciesB int) bool {
 	// Must have opposite genders
 	aIsMale := a.Traits.Has(traits.Male)
 	bIsMale := b.Traits.Has(traits.Male)
@@ -146,6 +157,12 @@ func (s *BreedingSystem) isCompatible(a, b *components.Organism, posA, posB *com
 	if dist > 50 {
 		return false
 	}
+
+	// No breeding preference by species - organisms breed freely like aquatic species
+	// Species are tracked for genetic clustering, not reproductive barriers
+	// This allows maximum gene flow while still measuring genetic diversity
+	_ = speciesA // unused but kept for potential future use
+	_ = speciesB
 
 	return true
 }

@@ -127,8 +127,8 @@ func TestSensoryInputsNormalization(t *testing.T) {
 }
 
 func TestDecodeOutputs(t *testing.T) {
-	// Simulate sigmoid outputs (0-1 range)
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5}
+	// Simulate sigmoid outputs (0-1 range) - now 9 outputs including speed
+	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5, 0.6}
 
 	outputs := DecodeOutputs(raw)
 
@@ -146,6 +146,11 @@ func TestDecodeOutputs(t *testing.T) {
 	// Allocation drives should be raw values
 	if math.Abs(float64(outputs.GrowDrive-0.7)) > 0.01 {
 		t.Errorf("grow drive: expected 0.7, got %f", outputs.GrowDrive)
+	}
+
+	// Speed multiplier should be raw value
+	if math.Abs(float64(outputs.SpeedMultiplier-0.6)) > 0.01 {
+		t.Errorf("speed multiplier: expected 0.6, got %f", outputs.SpeedMultiplier)
 	}
 
 	t.Logf("Outputs: %+v", outputs)
@@ -206,7 +211,7 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 }
 
 func BenchmarkDecodeOutputs(b *testing.B) {
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5}
+	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5, 0.6}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
