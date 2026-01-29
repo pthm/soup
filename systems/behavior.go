@@ -71,15 +71,21 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			outputs = neural.DefaultOutputs()
 		}
 
-		// Store intents for other systems (feeding, breeding)
+		// Store intents for other systems (feeding, breeding, growth)
+		org.DesireAngle = outputs.DesireAngle
+		org.DesireDistance = outputs.DesireDistance
 		org.EatIntent = outputs.Eat
-		org.MateIntent = outputs.Mate
-		org.TurnOutput = outputs.Turn
-		org.ThrustOutput = outputs.Thrust
+		org.GrowIntent = outputs.Grow
+		org.BreedIntent = outputs.Breed
+
+		// Phase 4: Convert desire to turn/thrust (temporary until Phase 5 pathfinding)
+		turn, thrustIntent := outputs.ToTurnThrust()
+		org.TurnOutput = turn
+		org.ThrustOutput = thrustIntent
 
 		// Calculate actuator-driven forces
 		// Actuator positions and strengths determine how Turn/Thrust translate to movement
-		thrust, torque := calculateActuatorForces(cells, org.Heading, outputs.Thrust, outputs.Turn)
+		thrust, torque := calculateActuatorForces(cells, org.Heading, thrustIntent, turn)
 
 		// Apply torque to heading
 		org.Heading += torque
@@ -191,6 +197,13 @@ func (s *BehaviorSystem) getBrainOutputs(
 	var pv neural.PolarVision
 	pv.ScanEntities(visionParams, entities)
 
+	// Phase 3b: Sample directional light for gradient computation
+	var lightSampler func(x, y float32) float32
+	if s.shadowMap != nil {
+		lightSampler = s.shadowMap.SampleLight
+	}
+	pv.SampleDirectionalLight(pos.X, pos.Y, org.Heading, effectiveRadius, lightSampler)
+
 	// Build sensory inputs with polar vision data
 	sensory := neural.SensoryInputs{
 		PerceptionRadius: effectiveRadius,
@@ -219,12 +232,21 @@ func (s *BehaviorSystem) getBrainOutputs(
 	// Light level
 	sensory.LightLevel = lightLevel
 
-	// Flow field
+	// Flow alignment (Phase 4): dot product of flow direction with heading
+	// Positive = flow helping (pushing in direction we're facing)
+	// Negative = flow hindering (pushing against us)
 	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
-	sensory.FlowX = flowX
-	sensory.FlowY = flowY
+	headingX := float32(math.Cos(float64(org.Heading)))
+	headingY := float32(math.Sin(float64(org.Heading)))
+	flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
+	if flowMag > 0.001 {
+		// Normalize flow and compute dot product
+		sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
+	} else {
+		sensory.FlowAlignment = 0
+	}
 
-	// Terrain sensing (kept for Phase 5 pathfinding transition)
+	// Terrain sensing and openness (Phase 4b)
 	if s.terrain != nil {
 		terrainDist := s.terrain.DistanceToSolid(pos.X, pos.Y)
 		if terrainDist < effectiveRadius {
@@ -236,7 +258,17 @@ func (s *BehaviorSystem) getBrainOutputs(
 			sinH := float32(math.Sin(float64(-org.Heading)))
 			sensory.TerrainGradientX = gx*cosH - gy*sinH
 			sensory.TerrainGradientY = gx*sinH + gy*cosH
+
+			// Phase 4b: Openness = normalized distance to terrain
+			// 0 = touching terrain, 1 = terrain at edge of perception
+			sensory.Openness = terrainDist / effectiveRadius
+		} else {
+			// No terrain within perception range = fully open
+			sensory.Openness = 1.0
 		}
+	} else {
+		// No terrain system = assume fully open
+		sensory.Openness = 1.0
 	}
 
 	// Convert to neural inputs and run brain

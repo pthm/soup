@@ -56,10 +56,17 @@ type Organism struct {
 	DeadTime          int32        // Ticks since death (for decomposition/removal)
 	ShapeMetrics      ShapeMetrics // Physical shape characteristics
 	ActiveThrust      float32      // Thrust magnitude this tick (for energy cost)
-	EatIntent         float32      // Brain output: 0-1, >0.5 means try to eat
-	MateIntent        float32      // Brain output: 0-1, >0.5 means try to mate
-	TurnOutput        float32      // Brain output: -1 to +1, current turn output
-	ThrustOutput      float32      // Brain output: 0 to 1, current thrust output
+
+	// Brain outputs (Phase 4: intent-based)
+	DesireAngle    float32 // Brain output: -π to +π, where to go relative to heading
+	DesireDistance float32 // Brain output: 0-1, movement urgency
+	EatIntent      float32 // Brain output: 0-1, >0.5 means try to eat
+	GrowIntent     float32 // Brain output: 0-1, allocate energy to growth
+	BreedIntent    float32 // Brain output: 0-1, >0.5 means try to reproduce
+
+	// Derived motor outputs (computed from desire, will be replaced by pathfinding in Phase 5)
+	TurnOutput   float32 // -1 to +1, current turn output
+	ThrustOutput float32 // 0 to 1, current thrust output
 }
 
 // Cell represents a single cell within an organism.

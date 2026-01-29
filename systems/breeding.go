@@ -116,8 +116,8 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 }
 
 func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
-	// Check mate intent from brain (>0.5 means try to mate)
-	if org.MateIntent < 0.5 {
+	// Check breed intent from brain (>0.5 means try to reproduce)
+	if org.BreedIntent < 0.5 {
 		return false
 	}
 

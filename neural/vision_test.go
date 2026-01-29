@@ -381,3 +381,160 @@ func TestArmorReducesEdibility(t *testing.T) {
 			pvUnarmored.Food[ConeFront], pvArmored.Food[ConeFront])
 	}
 }
+
+// Phase 3b tests: Directional light awareness
+
+// TestLightGradientsUniformLight verifies gradients are zero when illumination is uniform.
+func TestLightGradientsUniformLight(t *testing.T) {
+	var pv PolarVision
+
+	// Uniform light sampler: returns 0.5 everywhere
+	uniformSampler := func(x, y float32) float32 {
+		return 0.5
+	}
+
+	pv.SampleDirectionalLight(0, 0, 0, 100, uniformSampler)
+	lightFB, lightLR := pv.LightGradients()
+
+	// Both gradients should be ~0 with uniform light
+	if math.Abs(float64(lightFB)) > 0.01 {
+		t.Errorf("Light FB gradient = %v, want ~0 for uniform light", lightFB)
+	}
+	if math.Abs(float64(lightLR)) > 0.01 {
+		t.Errorf("Light LR gradient = %v, want ~0 for uniform light", lightLR)
+	}
+}
+
+// TestLightGradientsBrighterAhead verifies positive FB gradient when light is ahead.
+func TestLightGradientsBrighterAhead(t *testing.T) {
+	var pv PolarVision
+
+	// Directional light: brighter in positive X direction (front when heading=0)
+	directionalSampler := func(x, y float32) float32 {
+		// Light increases with X, normalized to [0, 1]
+		light := (x + 100) / 200 // Maps [-100, 100] to [0, 1]
+		if light < 0 {
+			light = 0
+		}
+		if light > 1 {
+			light = 1
+		}
+		return light
+	}
+
+	// Heading = 0 (facing positive X)
+	pv.SampleDirectionalLight(0, 0, 0, 100, directionalSampler)
+	lightFB, lightLR := pv.LightGradients()
+
+	// Front-back gradient should be positive (brighter ahead)
+	if lightFB <= 0 {
+		t.Errorf("Light FB gradient = %v, want > 0 when brighter ahead", lightFB)
+	}
+
+	// Left-right gradient should be ~0 (light varies on X axis only)
+	if math.Abs(float64(lightLR)) > 0.1 {
+		t.Errorf("Light LR gradient = %v, want ~0 when light varies on X only", lightLR)
+	}
+}
+
+// TestLightGradientsBrighterBehind verifies negative FB gradient when light is behind.
+func TestLightGradientsBrighterBehind(t *testing.T) {
+	var pv PolarVision
+
+	// Directional light: brighter in negative X direction (behind when heading=0)
+	directionalSampler := func(x, y float32) float32 {
+		light := (-x + 100) / 200 // Brighter at negative X
+		if light < 0 {
+			light = 0
+		}
+		if light > 1 {
+			light = 1
+		}
+		return light
+	}
+
+	pv.SampleDirectionalLight(0, 0, 0, 100, directionalSampler)
+	lightFB, _ := pv.LightGradients()
+
+	// Front-back gradient should be negative (brighter behind)
+	if lightFB >= 0 {
+		t.Errorf("Light FB gradient = %v, want < 0 when brighter behind", lightFB)
+	}
+}
+
+// TestLightGradientsBrighterRight verifies positive LR gradient when light is to the right.
+func TestLightGradientsBrighterRight(t *testing.T) {
+	var pv PolarVision
+
+	// Directional light: brighter in positive Y direction (right when heading=0)
+	directionalSampler := func(x, y float32) float32 {
+		light := (y + 100) / 200 // Brighter at positive Y
+		if light < 0 {
+			light = 0
+		}
+		if light > 1 {
+			light = 1
+		}
+		return light
+	}
+
+	pv.SampleDirectionalLight(0, 0, 0, 100, directionalSampler)
+	_, lightLR := pv.LightGradients()
+
+	// Left-right gradient should be positive (brighter to the right)
+	if lightLR <= 0 {
+		t.Errorf("Light LR gradient = %v, want > 0 when brighter to the right", lightLR)
+	}
+}
+
+// TestLightGradientsWithHeading verifies gradients account for organism heading.
+func TestLightGradientsWithHeading(t *testing.T) {
+	var pv PolarVision
+
+	// Light source at positive X
+	directionalSampler := func(x, y float32) float32 {
+		light := (x + 100) / 200
+		if light < 0 {
+			light = 0
+		}
+		if light > 1 {
+			light = 1
+		}
+		return light
+	}
+
+	// Heading = π/2 (facing positive Y)
+	// In standard math convention with counter-clockwise positive angles:
+	// - Front samples at heading + 0 = π/2 (+Y direction)
+	// - Right samples at heading + π/2 = π (-X direction)
+	// - Left samples at heading - π/2 = 0 (+X direction)
+	// So positive X (light source) is to our LEFT
+	pv.SampleDirectionalLight(0, 0, math.Pi/2, 100, directionalSampler)
+	lightFB, lightLR := pv.LightGradients()
+
+	// FB should be ~0 (light varies on X axis only, perpendicular to our heading)
+	if math.Abs(float64(lightFB)) > 0.1 {
+		t.Errorf("Light FB gradient = %v, want ~0 when facing perpendicular to light", lightFB)
+	}
+	// LR should be negative (brighter to the left, which is +X)
+	if lightLR >= 0 {
+		t.Errorf("Light LR gradient = %v, want < 0 when light source is to the left", lightLR)
+	}
+}
+
+// TestLightGradientsNilSampler verifies graceful handling of nil sampler.
+func TestLightGradientsNilSampler(t *testing.T) {
+	var pv PolarVision
+
+	// Nil sampler should not panic and should produce neutral gradients
+	pv.SampleDirectionalLight(0, 0, 0, 100, nil)
+	lightFB, lightLR := pv.LightGradients()
+
+	// With nil sampler, all cones get 0.5, so gradients should be ~0
+	if math.Abs(float64(lightFB)) > 0.01 {
+		t.Errorf("Light FB gradient = %v, want ~0 with nil sampler", lightFB)
+	}
+	if math.Abs(float64(lightLR)) > 0.01 {
+		t.Errorf("Light LR gradient = %v, want ~0 with nil sampler", lightLR)
+	}
+}

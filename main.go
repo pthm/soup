@@ -683,8 +683,9 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 		SporeInterval:    400,
 		BreedingCooldown: 300,
 		TargetCells:      uint8(cellCount),
-		EatIntent:        0.5,
-		MateIntent:       0.3,
+		EatIntent:   0.5,
+		GrowIntent:  0.3,
+		BreedIntent: 0.3,
 	}
 
 	// Create cells from morphology
@@ -2498,8 +2499,12 @@ func (g *Game) drawInfoPanel() {
 		g.drawOutputBar(panelX+padding, y, "Eat", org.EatIntent, panelWidth-padding*2)
 		y += lineHeight + 2
 
-		// Mate intent
-		g.drawOutputBar(panelX+padding, y, "Mate", org.MateIntent, panelWidth-padding*2)
+		// Grow intent (Phase 4)
+		g.drawOutputBar(panelX+padding, y, "Grow", org.GrowIntent, panelWidth-padding*2)
+		y += lineHeight + 2
+
+		// Breed intent (Phase 4)
+		g.drawOutputBar(panelX+padding, y, "Breed", org.BreedIntent, panelWidth-padding*2)
 		y += lineHeight + 6
 
 		// === BRAIN NETWORK GRAPH ===

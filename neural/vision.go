@@ -29,6 +29,66 @@ type PolarVision struct {
 	Food   [NumCones]float32 // Edible entities intensity per cone
 	Threat [NumCones]float32 // Threatening entities intensity per cone
 	Friend [NumCones]float32 // Genetically similar entities intensity per cone
+	Light  [NumCones]float32 // Light level sampled in each cone direction (Phase 3b)
+}
+
+// LightSampleDistance is how far from the organism to sample directional light.
+// Expressed as a fraction of the effective perception radius.
+const LightSampleDistance = 0.5
+
+// LightGradientEpsilon prevents division by zero in gradient calculations.
+const LightGradientEpsilon = 1e-6
+
+// SampleDirectionalLight samples light levels in each cone direction.
+// sampler is a function that returns light level (0-1) at world coordinates.
+// Returns per-cone light values for gradient computation.
+func (pv *PolarVision) SampleDirectionalLight(
+	posX, posY, heading, sampleRadius float32,
+	sampler func(x, y float32) float32,
+) {
+	if sampler == nil {
+		// No shadow map available; assume uniform light
+		for i := 0; i < NumCones; i++ {
+			pv.Light[i] = 0.5
+		}
+		return
+	}
+
+	// Sample light at a point in each cone direction
+	distance := sampleRadius * LightSampleDistance
+
+	for cone := 0; cone < NumCones; cone++ {
+		// Get cone center angle (relative to heading)
+		coneAngle := ConeCenter(cone)
+		// Convert to world angle
+		worldAngle := heading + coneAngle
+
+		// Sample point in this direction
+		sampleX := posX + distance*float32(math.Cos(float64(worldAngle)))
+		sampleY := posY + distance*float32(math.Sin(float64(worldAngle)))
+
+		pv.Light[cone] = sampler(sampleX, sampleY)
+	}
+}
+
+// LightGradients computes front-back and left-right light gradients.
+// Returns (light_fb, light_lr) where:
+//   - light_fb = (front - back) / (front + back + epsilon)
+//   - light_lr = (right - left) / (right + left + epsilon)
+//
+// Values range from -1 to +1:
+//   - light_fb > 0 means brighter ahead
+//   - light_lr > 0 means brighter to the right
+func (pv *PolarVision) LightGradients() (lightFB, lightLR float32) {
+	front := pv.Light[ConeFront]
+	back := pv.Light[ConeBack]
+	right := pv.Light[ConeRight]
+	left := pv.Light[ConeLeft]
+
+	lightFB = (front - back) / (front + back + LightGradientEpsilon)
+	lightLR = (right - left) / (right + left + LightGradientEpsilon)
+
+	return lightFB, lightLR
 }
 
 // SensorCell represents minimal sensor data needed for vision weighting.

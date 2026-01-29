@@ -5,7 +5,7 @@ import (
 )
 
 // SensoryInputs holds the raw sensory data before normalization.
-// Phase 3: Uses polar vision cones instead of nearest-target sensing.
+// Phase 4b: Uses polar vision cones with intent-based outputs and terrain awareness.
 type SensoryInputs struct {
 	// Polar vision (Phase 3) - 4 cones × 3 channels = 12 inputs
 	// Cones: [Front, Right, Back, Left]
@@ -15,9 +15,14 @@ type SensoryInputs struct {
 	ConeFriend [NumCones]float32 // Friend (genetic similarity) intensity per direction
 
 	// Environment
-	LightLevel float32 // 0-1 from shadowmap
-	FlowX      float32 // Local flow field
-	FlowY      float32
+	LightLevel    float32 // 0-1 from shadowmap (ambient)
+	FlowAlignment float32 // Phase 4: dot(flow_direction, heading) [-1, 1]
+	Openness      float32 // Phase 4b: local free space (1.0 = open, 0 = dense terrain)
+
+	// Directional light (Phase 3b)
+	// Gradients indicate where light is brighter (-1 to +1)
+	LightFB float32 // Front-back gradient: >0 means brighter ahead
+	LightLR float32 // Left-right gradient: >0 means brighter to the right
 
 	// Terrain awareness (kept for Phase 5 pathfinding transition)
 	TerrainDistance  float32 // Distance to nearest solid terrain
@@ -42,7 +47,7 @@ type SensoryInputs struct {
 }
 
 // ToInputs converts sensory data to normalized neural network inputs.
-// Phase 3 layout: 12 cone inputs + 5 environment/state inputs = 17 total
+// Phase 4b layout: 12 cone inputs + 5 environment + 2 light gradients = 19 total
 //
 // Input mapping:
 //
@@ -50,9 +55,12 @@ type SensoryInputs struct {
 //	[4-7]   ConeThreat (front, right, back, left)
 //	[8-11]  ConeFriend (front, right, back, left)
 //	[12]    Energy ratio
-//	[13]    Light level
-//	[14-15] Flow field X, Y
-//	[16]    Bias
+//	[13]    Light level (ambient)
+//	[14]    Flow alignment (Phase 4: dot(flow, heading))
+//	[15]    Openness (Phase 4b: local free space)
+//	[16]    Light gradient front-back (Phase 3b)
+//	[17]    Light gradient left-right (Phase 3b)
+//	[18]    Bias
 func (s *SensoryInputs) ToInputs() []float64 {
 	inputs := make([]float64, BrainInputs)
 
@@ -81,37 +89,54 @@ func (s *SensoryInputs) ToInputs() []float64 {
 	// [13] Light level (already 0-1)
 	inputs[13] = float64(clampf(s.LightLevel, 0, 1))
 
-	// [14-15] Flow field (small values, clamp to [-1, 1])
-	inputs[14] = float64(clampf(s.FlowX, -1, 1))
-	inputs[15] = float64(clampf(s.FlowY, -1, 1))
+	// [14] Flow alignment (Phase 4) - range [-1, 1]
+	// Positive = flow helping (pushing in direction of heading)
+	// Negative = flow hindering (pushing against heading)
+	inputs[14] = float64(clampf(s.FlowAlignment, -1, 1))
 
-	// [16] Bias (always 1.0)
-	inputs[16] = 1.0
+	// [15] Openness (Phase 4b) - range [0, 1]
+	// 1.0 = clear open space, 0 = dense terrain nearby
+	inputs[15] = float64(clampf(s.Openness, 0, 1))
+
+	// [16-17] Light gradients (Phase 3b) - range [-1, 1]
+	inputs[16] = float64(clampf(s.LightFB, -1, 1))
+	inputs[17] = float64(clampf(s.LightLR, -1, 1))
+
+	// [18] Bias (always 1.0)
+	inputs[18] = 1.0
 
 	return inputs
 }
 
 // FromPolarVision populates cone inputs from a PolarVision scan result.
 // Normalizes the values for neural network input.
+// Phase 3b: Also extracts directional light gradients.
 func (s *SensoryInputs) FromPolarVision(pv *PolarVision) {
 	normalized := pv.NormalizeForBrain()
 	s.ConeFood = normalized.Food
 	s.ConeThreat = normalized.Threat
 	s.ConeFriend = normalized.Friend
+
+	// Phase 3b: Extract light gradients
+	s.LightFB, s.LightLR = pv.LightGradients()
 }
 
 // BehaviorOutputs holds the decoded outputs from the brain network.
-// This is the simplified 4-output direct control system.
+// Phase 4: Intent-based system with 5 outputs.
 type BehaviorOutputs struct {
-	// Direct control outputs
-	Turn   float32 // -1 to +1: heading adjustment (radians/tick)
-	Thrust float32 // 0 to 1: forward speed multiplier
-	Eat    float32 // 0 to 1: feeding intent (>0.5 = try to eat)
-	Mate   float32 // 0 to 1: breeding intent (>0.5 = try to mate)
+	// Movement intent (Phase 4)
+	DesireAngle    float32 // -π to +π: where to go relative to heading
+	DesireDistance float32 // 0 to 1: urgency (0 = stay, 1 = max pursuit)
+
+	// Action intents
+	Eat   float32 // 0 to 1: feeding intent (>0.5 = try to eat)
+	Grow  float32 // 0 to 1: growth intent (allocate energy to new cells)
+	Breed float32 // 0 to 1: reproduction intent (>0.5 = try to reproduce)
 }
 
-// DecodeOutputs converts raw network outputs to direct control values.
+// DecodeOutputs converts raw network outputs to intent values.
 // Raw outputs are in [0, 1] range from sigmoid activation.
+// Phase 4 layout: [DesireAngle, DesireDistance, Eat, Grow, Breed]
 func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
 		// Return defaults if not enough outputs
@@ -119,14 +144,16 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 	}
 
 	return BehaviorOutputs{
-		// Turn: sigmoid [0,1] -> tanh-like [-1,1]
-		Turn: (float32(raw[0]) - 0.5) * 2.0,
-		// Thrust: sigmoid [0,1] -> [0,1]
-		Thrust: float32(raw[1]),
+		// DesireAngle: sigmoid [0,1] -> [-π, π]
+		DesireAngle: (float32(raw[0]) - 0.5) * 2.0 * math.Pi,
+		// DesireDistance: sigmoid [0,1] -> [0,1]
+		DesireDistance: float32(raw[1]),
 		// Eat: sigmoid [0,1] -> [0,1]
 		Eat: float32(raw[2]),
-		// Mate: sigmoid [0,1] -> [0,1]
-		Mate: float32(raw[3]),
+		// Grow: sigmoid [0,1] -> [0,1]
+		Grow: float32(raw[3]),
+		// Breed: sigmoid [0,1] -> [0,1]
+		Breed: float32(raw[4]),
 	}
 }
 
@@ -134,11 +161,27 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		Turn:   0.0, // No turning
-		Thrust: 0.5, // Medium speed
-		Eat:    0.5, // Neutral eating intent
-		Mate:   0.3, // Low mating intent
+		DesireAngle:    0.0, // No change in direction
+		DesireDistance: 0.5, // Medium urgency
+		Eat:            0.5, // Neutral eating intent
+		Grow:           0.3, // Low growth intent
+		Breed:          0.3, // Low breeding intent
 	}
+}
+
+// ToTurnThrust converts desire-based outputs to direct Turn/Thrust values.
+// This is a temporary bridge until Phase 5 pathfinding is implemented.
+// Turn is proportional to desire angle, Thrust is proportional to desire distance.
+func (b *BehaviorOutputs) ToTurnThrust() (turn, thrust float32) {
+	// Turn: scale desire angle to turn rate
+	// Larger angles = faster turning
+	// Normalize from [-π, π] to [-1, 1]
+	turn = b.DesireAngle / math.Pi
+
+	// Thrust: desire distance directly maps to thrust
+	thrust = b.DesireDistance
+
+	return turn, thrust
 }
 
 func clampf(v, min, max float32) float32 {

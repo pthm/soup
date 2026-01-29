@@ -8,11 +8,12 @@ import (
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
-const BrainInputs = 17
+// Phase 4b: 12 cone inputs + 5 environment + 2 light gradients = 19 total
+const BrainInputs = 19
 
 // BrainOutputs is the number of outputs from the brain network.
-// Outputs: Turn, Thrust, Eat, Mate (direct control)
-const BrainOutputs = 4
+// Phase 4: DesireAngle, DesireDistance, Eat, Grow, Breed (intent-based)
+const BrainOutputs = 5
 
 // CPPNInputs is the number of inputs to the CPPN.
 // Inputs: x, y, distance, angle, bias
