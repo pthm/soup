@@ -104,10 +104,18 @@ func (s *SporeSystem) Update(tick int32, createOrganism func(x, y float32, t tra
 					for spore.Y > 0 && s.terrain.IsSolid(spore.X, spore.Y) {
 						spore.Y--
 					}
-					spore.Landed = true
-					spore.Rooted = true // Landing on terrain = rooted
-					spore.VelX = 0
-					spore.VelY = 0
+					// Only allow rooting below the top 25% of screen
+					// (don't let flora blot out the sun at the top)
+					if spore.Y > s.bounds.Height*0.25 {
+						spore.Landed = true
+						spore.Rooted = true // Landing on terrain = rooted
+						spore.VelX = 0
+						spore.VelY = 0
+					} else {
+						// Bounce off terrain near top - become floating
+						spore.VelY = 0.3 // Push down
+						spore.Rooted = false
+					}
 				}
 			}
 
@@ -210,16 +218,17 @@ func (s *SporeSystem) germinate(spore *SporeEntity, createOrganism func(x, y flo
 	// Build new flora traits
 	newTraits := traits.Flora
 
-	// Check if landed on terrain
-	onTerrain := s.terrain != nil && s.terrain.IsSolid(spore.X, spore.Y+4)
+	// Check if landed on terrain (but not in top 25% where it would block sun)
+	inTopZone := spore.Y < s.bounds.Height*0.25
+	onTerrain := s.terrain != nil && s.terrain.IsSolid(spore.X, spore.Y+4) && !inTopZone
 	onSeafloor := spore.Y >= s.bounds.Height-10
 
-	// If landed on terrain or seafloor, always root
-	if onTerrain || onSeafloor || spore.Rooted {
+	// If landed on terrain or seafloor (and not in top zone), root
+	if (onTerrain || onSeafloor || spore.Rooted) && !inTopZone {
 		newTraits = newTraits.Add(traits.Rooted)
 	} else {
 		// Inherit parent traits with 80% probability each
-		if spore.ParentTraits.Has(traits.Rooted) && rand.Float32() < 0.8 {
+		if spore.ParentTraits.Has(traits.Rooted) && rand.Float32() < 0.8 && !inTopZone {
 			newTraits = newTraits.Add(traits.Rooted)
 		} else if spore.ParentTraits.Has(traits.Floating) && rand.Float32() < 0.8 {
 			newTraits = newTraits.Add(traits.Floating)

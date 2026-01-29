@@ -29,6 +29,12 @@ type SensoryInputs struct {
 	FlowX      float32 // Local flow field
 	FlowY      float32
 
+	// Terrain awareness
+	TerrainDistance  float32 // Distance to nearest solid terrain
+	TerrainGradientX float32 // Direction away from terrain (world X)
+	TerrainGradientY float32 // Direction away from terrain (world Y)
+	TerrainFound     bool    // True if terrain is within sensing range
+
 	// Internal state
 	Energy           float32
 	MaxEnergy        float32
@@ -101,8 +107,21 @@ func (s *SensoryInputs) ToInputs() []float64 {
 	// This gives the brain awareness of its perceptual capacity
 	inputs[12] = float64(clampf(s.TotalSensorGain/4.0, 0, 1))
 
-	// [13] Bias (always 1.0)
-	inputs[13] = 1.0
+	// [13-15] Terrain: distance (normalized), gradient X, gradient Y (heading-relative)
+	if s.TerrainFound && s.PerceptionRadius > 0 {
+		// Distance: 0 = touching terrain, 1 = far away
+		inputs[13] = float64(clampf(s.TerrainDistance/s.PerceptionRadius, 0, 1))
+		// Gradient is already in heading-relative coords from behavior system
+		inputs[14] = float64(clampf(s.TerrainGradientX, -1, 1))
+		inputs[15] = float64(clampf(s.TerrainGradientY, -1, 1))
+	} else {
+		inputs[13] = 1.0 // No terrain nearby = max distance
+		inputs[14] = 0.0 // No gradient
+		inputs[15] = 0.0
+	}
+
+	// [16] Bias (always 1.0)
+	inputs[16] = 1.0
 
 	return inputs
 }

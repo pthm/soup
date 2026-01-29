@@ -25,6 +25,7 @@ type Bounds struct {
 // Occluder represents something that blocks light.
 type Occluder struct {
 	X, Y, Width, Height float32
+	Density             float32 // 0-1, how much light is blocked (1 = fully solid, 0.3 = sparse like foliage)
 }
 
 // NewPhysicsSystem creates a new physics system.

@@ -108,8 +108,15 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 				occ := occluders[idx]
 				if sm.rayIntersectsAABB(worldX, worldY, sunX, sunY, occ) {
 					// Shadow strength based on occluder density
-					occluderArea := occ.Width * occ.Height
-					density := float32(math.Min(float64(occluderArea)/(15*15), 1.0))
+					var density float32
+					if occ.Density > 0 {
+						// Use provided density (e.g., flora has lower density for light filtering)
+						density = occ.Density
+					} else {
+						// Default: calculate from area
+						occluderArea := occ.Width * occ.Height
+						density = float32(math.Min(float64(occluderArea)/(15*15), 1.0))
+					}
 					light *= (1 - density*0.7)
 
 					// Early termination - if very dark, stop checking

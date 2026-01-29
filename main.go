@@ -176,7 +176,7 @@ func NewGame() *Game {
 		physics:         systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
 		energy:          systems.NewEnergySystem(world),
 		cells:           systems.NewCellSystem(world),
-		behavior:        systems.NewBehaviorSystem(world, shadowMap),
+		behavior:        systems.NewBehaviorSystem(world, shadowMap, terrain),
 		flowField:       systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
 		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
 		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
@@ -253,7 +253,7 @@ func NewGameHeadless() *Game {
 		physics:          systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
 		energy:           systems.NewEnergySystem(world),
 		cells:            systems.NewCellSystem(world),
-		behavior:         systems.NewBehaviorSystem(world, shadowMap),
+		behavior:         systems.NewBehaviorSystem(world, shadowMap, terrain),
 		flowField:        systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
 		// Skip renderers - they require raylib
 		flowRenderer:     nil,
@@ -1245,54 +1245,27 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 }
 
 func (g *Game) collectOccluders() []systems.Occluder {
-	// Start with terrain occluders (static, cached)
+	// Start with terrain occluders (static, cached, full density)
 	occluders := append([]systems.Occluder{}, g.terrain.GetOccluders()...)
 
-	// Add organism occluders
-	query := g.allOrgFilter.Query()
+	// Add flora occluders only (fauna don't cast shadows)
+	// Flora has reduced density to simulate light filtering through gaps in leaves/vines
+	query := g.floraFilter.Query()
 	for query.Next() {
-		pos, _, org, cells := query.Get()
+		pos, org, _ := query.Get()
 
-		if org.Dead || cells.Count == 0 {
+		if org.Dead {
 			continue
 		}
 
-		// Calculate organism bounds
-		minX, minY := pos.X, pos.Y
-		maxX, maxY := pos.X, pos.Y
-
-		for i := uint8(0); i < cells.Count; i++ {
-			cell := &cells.Cells[i]
-			if !cell.Alive {
-				continue
-			}
-			cellX := pos.X + float32(cell.GridX)*org.CellSize
-			cellY := pos.Y + float32(cell.GridY)*org.CellSize
-			if cellX < minX {
-				minX = cellX
-			}
-			if cellX > maxX {
-				maxX = cellX
-			}
-			if cellY < minY {
-				minY = cellY
-			}
-			if cellY > maxY {
-				maxY = cellY
-			}
-		}
-
-		// Add cell size padding
-		minX -= org.CellSize / 2
-		minY -= org.CellSize / 2
-		maxX += org.CellSize / 2
-		maxY += org.CellSize / 2
-
+		// Simple bounding box based on cell count estimate
+		size := org.CellSize * 3
 		occluders = append(occluders, systems.Occluder{
-			X:      minX,
-			Y:      minY,
-			Width:  maxX - minX,
-			Height: maxY - minY,
+			X:       pos.X - size/2,
+			Y:       pos.Y - size/2,
+			Width:   size,
+			Height:  size,
+			Density: 0.3, // Sparse foliage - lets most light through
 		})
 	}
 

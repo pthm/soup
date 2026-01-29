@@ -19,16 +19,18 @@ type BehaviorSystem struct {
 	noise     *PerlinNoise
 	tick      int32
 	shadowMap *ShadowMap
+	terrain   *TerrainSystem
 }
 
 // NewBehaviorSystem creates a new behavior system.
-func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
+func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSystem) *BehaviorSystem {
 	return &BehaviorSystem{
 		filter:    *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
 		brainMap:  ecs.NewMap[components.Brain](w),
 		cellsMap:  ecs.NewMap[components.CellBuffer](w),
 		noise:     NewPerlinNoise(rand.Int63()),
 		shadowMap: shadowMap,
+		terrain:   terrain,
 	}
 }
 
@@ -211,6 +213,27 @@ func (s *BehaviorSystem) getBrainOutputs(
 	sensory.FlowX = flowX
 	sensory.FlowY = flowY
 
+	// Terrain sensing - detect nearby walls/obstacles
+	if s.terrain != nil {
+		terrainDist := s.terrain.DistanceToSolid(pos.X, pos.Y)
+		// Consider terrain "found" if within effective perception radius
+		if terrainDist < effectiveRadius {
+			sensory.TerrainFound = true
+			sensory.TerrainDistance = terrainDist
+
+			// Get gradient (direction away from terrain) and convert to heading-relative
+			gx, gy := s.terrain.GetGradient(pos.X, pos.Y)
+
+			// Rotate gradient into heading-relative coordinates
+			// If heading is 0 (facing right), gradient stays as-is
+			// If heading is Pi/2 (facing down), we rotate gradient -Pi/2
+			cosH := float32(math.Cos(float64(-org.Heading)))
+			sinH := float32(math.Sin(float64(-org.Heading)))
+			sensory.TerrainGradientX = gx*cosH - gy*sinH
+			sensory.TerrainGradientY = gx*sinH + gy*cosH
+		}
+	}
+
 	// Convert to neural inputs and run brain
 	inputs := sensory.ToInputs()
 	rawOutputs, err := brain.Controller.Think(inputs)
@@ -283,6 +306,14 @@ func (s *BehaviorSystem) findMateWeighted(
 		}
 
 		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
+		if distSq > maxDistSq {
+			continue
+		}
+
+		// Check line of sight - can't see through terrain
+		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
+			continue
+		}
 
 		// Apply sensor directional weighting - targets in sensor-covered directions are easier to detect
 		targetAngle := float32(math.Atan2(float64(faunaPos[i].Y-pos.Y), float64(faunaPos[i].X-pos.X))) - org.Heading
@@ -403,6 +434,11 @@ func (s *BehaviorSystem) findFoodWeighted(
 				continue
 			}
 
+			// Check line of sight - can't see through terrain
+			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y) {
+				continue
+			}
+
 			// Calculate direction to target and apply sensor weighting
 			targetAngle := float32(math.Atan2(float64(floraPos[i].Y-pos.Y), float64(floraPos[i].X-pos.X))) - org.Heading
 			sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
@@ -429,6 +465,11 @@ func (s *BehaviorSystem) findFoodWeighted(
 
 			distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
 			if distSq > maxDistSq {
+				continue
+			}
+
+			// Check line of sight - can't see through terrain
+			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
 				continue
 			}
 
@@ -586,6 +627,11 @@ func (s *BehaviorSystem) findPredatorWeighted(
 
 		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
 		if distSq > detectDistSq {
+			continue
+		}
+
+		// Check line of sight - can't see through terrain
+		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
 			continue
 		}
 

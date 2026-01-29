@@ -208,12 +208,13 @@ func (t *TerrainSystem) buildOccluderCache() {
 				continue
 			}
 
-			// Create an occluder for each solid cell
+			// Create an occluder for each solid cell (full density for solid terrain)
 			t.occluderCache = append(t.occluderCache, Occluder{
-				X:      float32(x) * t.cellSize,
-				Y:      float32(y) * t.cellSize,
-				Width:  t.cellSize,
-				Height: t.cellSize,
+				X:       float32(x) * t.cellSize,
+				Y:       float32(y) * t.cellSize,
+				Width:   t.cellSize,
+				Height:  t.cellSize,
+				Density: 1.0,
 			})
 		}
 	}
@@ -406,6 +407,38 @@ func (t *TerrainSystem) DistanceToSolid(x, y float32) float32 {
 	}
 
 	return minDist
+}
+
+// HasLineOfSight returns true if there is no solid terrain between two points.
+// Uses a simple raycast with steps smaller than cell size.
+func (t *TerrainSystem) HasLineOfSight(x1, y1, x2, y2 float32) bool {
+	dx := x2 - x1
+	dy := y2 - y1
+	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+	if dist < 0.001 {
+		return true // Same point
+	}
+
+	// Step size should be smaller than cell size to avoid missing walls
+	stepSize := t.cellSize * 0.4
+	steps := int(dist/stepSize) + 1
+
+	// Normalize direction
+	dx /= dist
+	dy /= dist
+
+	// Check points along the line (skip start and end points)
+	for i := 1; i < steps; i++ {
+		checkX := x1 + dx*float32(i)*stepSize
+		checkY := y1 + dy*float32(i)*stepSize
+
+		if t.IsSolid(checkX, checkY) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // CellSize returns the size of a terrain cell (square) in world coordinates.

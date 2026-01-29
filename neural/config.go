@@ -8,7 +8,7 @@ import (
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
-const BrainInputs = 14
+const BrainInputs = 17
 
 // BrainOutputs is the number of outputs from the brain network.
 // Outputs: Turn, Thrust, Eat, Mate (direct control)
