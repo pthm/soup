@@ -405,8 +405,8 @@ func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Orga
 	return closestX, closestY, found
 }
 
-// findFoodWeighted finds food using sensor-weighted perception.
-// Sensors facing the food direction contribute more to detection.
+// findFoodWeighted finds food using sensor-weighted perception and capability matching.
+// Uses the organism's digestive spectrum to determine what counts as food.
 func (s *BehaviorSystem) findFoodWeighted(
 	pos *components.Position,
 	org *components.Organism,
@@ -421,8 +421,22 @@ func (s *BehaviorSystem) findFoodWeighted(
 	var closestX, closestY float32
 	found := false
 
-	// Herbivores seek flora
-	if org.Traits.Has(traits.Herbivore) {
+	// Compute our digestive spectrum from cells
+	var myDigestive float32 = 0.5 // Default: omnivore
+	if cells != nil {
+		caps := cells.ComputeCapabilities()
+		myDigestive = caps.DigestiveSpectrum()
+	}
+
+	// Flora composition is 1.0 (pure photosynthetic)
+	// Edibility for flora = 1 - |digestive + 1.0 - 1| = 1 - |digestive|
+	// So herbivores (digestive~0) have high edibility, carnivores (digestive~1) have low
+	floraEdibility := neural.Edibility(myDigestive, 1.0)
+
+	// Check if we can eat flora (edibility > typical flora armor of 0.1)
+	canEatFlora := floraEdibility > 0.1
+
+	if canEatFlora {
 		nearby := grid.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
 		for _, i := range nearby {
 			if floraOrgs[i].Dead {
@@ -443,8 +457,8 @@ func (s *BehaviorSystem) findFoodWeighted(
 			targetAngle := float32(math.Atan2(float64(floraPos[i].Y-pos.Y), float64(floraPos[i].X-pos.X))) - org.Heading
 			sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
 
-			// Better sensor coverage = effectively shorter distance
-			effectiveDistSq := distSq / (sensorBonus * sensorBonus)
+			// Better sensor coverage and higher edibility = effectively shorter distance
+			effectiveDistSq := distSq / (sensorBonus * sensorBonus * floraEdibility)
 
 			if effectiveDistSq < closestEffectiveDistSq {
 				closestEffectiveDistSq = effectiveDistSq
@@ -455,8 +469,15 @@ func (s *BehaviorSystem) findFoodWeighted(
 		}
 	}
 
-	// Carnivores seek fauna
-	if org.Traits.Has(traits.Carnivore) {
+	// Fauna composition is ~0 (pure actuator, no photosynthesis)
+	// Edibility for fauna = 1 - |digestive + 0 - 1| = 1 - |digestive - 1|
+	// So carnivores (digestive~1) have high edibility, herbivores (digestive~0) have low
+	faunaEdibility := neural.Edibility(myDigestive, 0.0)
+
+	// Check if we can eat fauna (edibility > 0 with no armor consideration for detection)
+	canEatFauna := faunaEdibility > 0.2
+
+	if canEatFauna {
 		nearby := grid.GetNearbyFauna(pos.X, pos.Y, effectiveRadius)
 		for _, i := range nearby {
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
@@ -475,7 +496,9 @@ func (s *BehaviorSystem) findFoodWeighted(
 
 			targetAngle := float32(math.Atan2(float64(faunaPos[i].Y-pos.Y), float64(faunaPos[i].X-pos.X))) - org.Heading
 			sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-			effectiveDistSq := distSq / (sensorBonus * sensorBonus)
+
+			// Better sensor coverage and higher edibility = effectively shorter distance
+			effectiveDistSq := distSq / (sensorBonus * sensorBonus * faunaEdibility)
 
 			if effectiveDistSq < closestEffectiveDistSq {
 				closestEffectiveDistSq = effectiveDistSq
@@ -581,8 +604,8 @@ func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.
 	return closestX, closestY, found
 }
 
-// findPredatorWeighted finds predators using sensor-weighted perception.
-// Predator detection is semi-omnidirectional but sensors still help.
+// findPredatorWeighted finds predators using sensor-weighted perception and capability matching.
+// A predator is anything that can eat us based on digestive spectrum vs our composition.
 func (s *BehaviorSystem) findPredatorWeighted(
 	pos *components.Position,
 	org *components.Organism,
@@ -592,6 +615,15 @@ func (s *BehaviorSystem) findPredatorWeighted(
 	faunaOrgs []*components.Organism,
 	grid *SpatialGrid,
 ) (float32, float32, bool) {
+	// Compute our composition (how flora-like vs fauna-like we are)
+	var myComposition float32 = 0.0 // Default: pure fauna (no photosynthesis)
+	var myArmor float32 = 0.0
+	if cells != nil {
+		caps := cells.ComputeCapabilities()
+		myComposition = caps.Composition()
+		myArmor = caps.StructuralArmor
+	}
+
 	// Base detection range scaled by sensor capability
 	baseDetectDist := effectiveRadius * 1.5
 	maxSearchDist := baseDetectDist * 3
@@ -604,8 +636,22 @@ func (s *BehaviorSystem) findPredatorWeighted(
 		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 			continue
 		}
-		if !faunaOrgs[i].Traits.Has(traits.Carnivore) {
-			continue
+
+		// Estimate their digestive spectrum from traits as a proxy
+		// (In full capability model, we'd have their cells to compute this)
+		// Carnivore trait suggests high digestive spectrum (~1.0)
+		// Herbivore trait suggests low digestive spectrum (~0.0)
+		var theirDigestive float32 = 0.5 // Default: omnivore
+		if faunaOrgs[i].Traits.Has(traits.Carnivore) {
+			theirDigestive = 0.85
+		} else if faunaOrgs[i].Traits.Has(traits.Herbivore) {
+			theirDigestive = 0.15
+		}
+
+		// Check if they can eat us (are they a threat?)
+		threatLevel := neural.ThreatLevel(theirDigestive, myComposition, myArmor)
+		if threatLevel <= 0 {
+			continue // They can't eat us, not a threat
 		}
 
 		// Size visibility: larger predators are easier to spot
@@ -640,8 +686,9 @@ func (s *BehaviorSystem) findPredatorWeighted(
 
 		// Predator detection is partially omnidirectional (survival instinct)
 		// but sensors still provide a bonus for covered directions
+		// Higher threat level also makes them easier to detect (more alarming)
 		sensorBonus := 0.5 + 0.5*sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-		effectiveDistSq := distSq / (sensorBonus * sensorBonus)
+		effectiveDistSq := distSq / (sensorBonus * sensorBonus * (0.5 + threatLevel*0.5))
 
 		if effectiveDistSq < closestEffectiveDistSq {
 			closestEffectiveDistSq = effectiveDistSq

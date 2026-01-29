@@ -160,6 +160,89 @@ func (cb *CellBuffer) RemoveCell(idx uint8) {
 	cb.Cells[idx] = cb.Cells[cb.Count]
 }
 
+// Capabilities holds computed capability values from cells.
+type Capabilities struct {
+	PhotoWeight     float32 // Total photosynthetic strength
+	ActuatorWeight  float32 // Total actuator strength
+	SensorWeight    float32 // Total sensor strength
+	MouthSize       float32 // Total mouth strength (for feeding)
+	DigestiveSum    float32 // Sum of digestive spectrum weighted by strength
+	DigestiveCount  int     // Number of digestive cells
+	StructuralArmor float32 // Average structural armor
+	StorageCapacity float32 // Average storage capacity
+}
+
+// Composition returns the flora/fauna composition ratio.
+// 1.0 = pure photosynthetic (flora-like), 0.0 = pure actuator (fauna-like)
+func (c *Capabilities) Composition() float32 {
+	const epsilon = 1e-6
+	total := c.PhotoWeight + c.ActuatorWeight
+	if total < epsilon {
+		return 0.5 // Neutral for organisms with neither
+	}
+	return c.PhotoWeight / total
+}
+
+// DigestiveSpectrum returns the average digestive spectrum.
+// 0.0 = herbivore, 0.5 = omnivore, 1.0 = carnivore
+func (c *Capabilities) DigestiveSpectrum() float32 {
+	if c.DigestiveCount == 0 {
+		return 0.5 // Neutral if no digestive cells
+	}
+	return c.DigestiveSum / float32(c.DigestiveCount)
+}
+
+// ComputeCapabilities calculates capability totals from all alive cells.
+func (cb *CellBuffer) ComputeCapabilities() Capabilities {
+	var caps Capabilities
+	var armorSum, storageSum float32
+	aliveCount := 0
+
+	for i := uint8(0); i < cb.Count; i++ {
+		cell := &cb.Cells[i]
+		if !cell.Alive {
+			continue
+		}
+		aliveCount++
+
+		// Accumulate function strengths
+		caps.PhotoWeight += cell.GetFunctionStrength(neural.CellTypePhotosynthetic)
+		caps.ActuatorWeight += cell.GetFunctionStrength(neural.CellTypeActuator)
+		caps.SensorWeight += cell.GetFunctionStrength(neural.CellTypeSensor)
+		caps.MouthSize += cell.GetFunctionStrength(neural.CellTypeMouth)
+
+		// Digestive cells contribute to spectrum
+		digestiveStr := cell.GetFunctionStrength(neural.CellTypeDigestive)
+		if digestiveStr > 0 {
+			caps.DigestiveSum += cell.DigestiveSpectrum * digestiveStr
+			caps.DigestiveCount++
+		}
+
+		// Modifiers
+		armorSum += cell.StructuralArmor
+		storageSum += cell.StorageCapacity
+	}
+
+	// Average modifiers
+	if aliveCount > 0 {
+		caps.StructuralArmor = armorSum / float32(aliveCount)
+		caps.StorageCapacity = storageSum / float32(aliveCount)
+	}
+
+	return caps
+}
+
+// HasMouth returns true if any alive cell has mouth capability.
+func (cb *CellBuffer) HasMouth() bool {
+	for i := uint8(0); i < cb.Count; i++ {
+		cell := &cb.Cells[i]
+		if cell.Alive && cell.HasFunction(neural.CellTypeMouth) {
+			return true
+		}
+	}
+	return false
+}
+
 // Spore represents a spore entity.
 type Spore struct {
 	ParentTraits traits.Trait

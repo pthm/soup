@@ -7,35 +7,42 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/traits"
 )
 
 const (
-	feedingDistance    = 8.0   // Distance to consume food (slightly more forgiving)
-	herbivoreEatAmount = 3.0   // Base energy gained per tick while eating flora
-	carnivoreEatAmount = 3.5   // Base energy gained per tick while eating fauna
-	carrionEatAmount   = 5.0   // Base energy gained per tick while eating dead
-	floraDamageRate    = 0.015 // Decomposition added to flora cell when eaten
+	feedingDistance = 8.0  // Distance to consume food
+	baseBiteSize    = 0.05 // Fraction of target energy per bite
+	feedEfficiency  = 0.8  // Energy transfer efficiency
+	floraDamageRate = 0.015 // Decomposition added to flora cell when eaten
 
-	// Social hunting constants
-	herdRadius = 30.0 // How close allies must be to count as herd/pack
+	// Default flora armor (flora don't have cells with armor values)
+	defaultFloraArmor = 0.1
 )
 
 // biteSizeMultiplier returns how much food an organism can consume per tick.
-// Larger organisms take bigger bites - they have bigger mouths/bodies.
-// Uses MaxEnergy as proxy for size (MaxEnergy = 100 + cellCount*50).
-func biteSizeMultiplier(org *components.Organism) float32 {
+// Based on mouth cell strength and organism size.
+func biteSizeMultiplier(org *components.Organism, mouthSize float32) float32 {
 	// Derive cell count from MaxEnergy
 	cellCount := (org.MaxEnergy - 100) / 50
 	if cellCount < 1 {
 		cellCount = 1
 	}
-	// Bite size scales with sqrt of cell count:
-	// 1-cell: 1.0x, 4-cell: 2.0x, 9-cell: 3.0x, 16-cell: 4.0x, 25-cell: 5.0x
-	return float32(math.Sqrt(float64(cellCount)))
+	// Base bite scales with sqrt of cell count
+	sizeMultiplier := float32(math.Sqrt(float64(cellCount)))
+
+	// Mouth size affects bite capability (0 = can't bite, 1 = full bite)
+	// Minimum 0.1 to allow some feeding even without dedicated mouth cells
+	mouthMultiplier := float32(0.1)
+	if mouthSize > 0.1 {
+		mouthMultiplier = mouthSize
+	}
+
+	return sizeMultiplier * mouthMultiplier
 }
 
-// FeedingSystem handles fauna consuming food sources.
+// FeedingSystem handles fauna consuming food sources using capability matching.
 type FeedingSystem struct {
 	faunaFilter ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
 	floraFilter ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Flora]
@@ -51,27 +58,48 @@ func NewFeedingSystem(w *ecs.World) *FeedingSystem {
 	}
 }
 
-// Update processes feeding for all fauna.
-func (s *FeedingSystem) Update() {
-	// Collect flora (both alive for herbivores and dead for carrion)
-	var floraList []floraData
+// entityData holds data needed for capability matching.
+type entityData struct {
+	pos         *components.Position
+	org         *components.Organism
+	cells       *components.CellBuffer
+	caps        components.Capabilities
+	speciesID   int
+	isFlora     bool
+}
 
+// Update processes feeding for all fauna using capability matching.
+func (s *FeedingSystem) Update() {
+	// Collect all potential food sources with their capabilities
+	var targets []entityData
+
+	// Collect flora
 	floraQuery := s.floraFilter.Query()
 	for floraQuery.Next() {
 		pos, org, cells, _ := floraQuery.Get()
-		floraList = append(floraList, floraData{pos, org, cells})
+		// Flora have fixed composition (photo=1, actuator=0)
+		caps := components.Capabilities{
+			PhotoWeight:     1.0,
+			ActuatorWeight:  0.0,
+			StructuralArmor: defaultFloraArmor,
+		}
+		targets = append(targets, entityData{
+			pos:     pos,
+			org:     org,
+			cells:   cells,
+			caps:    caps,
+			isFlora: true,
+		})
 	}
 
-	// Collect fauna for carnivores and carrion eaters
-	var faunaList []faunaData
-
-	// First pass: collect all fauna with species info
+	// Collect fauna with their computed capabilities
 	faunaQuery := s.faunaFilter.Query()
 	for faunaQuery.Next() {
 		entity := faunaQuery.Entity()
 		pos, _, org, cells := faunaQuery.Get()
 
-		// Get species ID for kin recognition
+		caps := cells.ComputeCapabilities()
+
 		speciesID := 0
 		if s.neuralMap.Has(entity) {
 			if ng := s.neuralMap.Get(entity); ng != nil {
@@ -79,20 +107,27 @@ func (s *FeedingSystem) Update() {
 			}
 		}
 
-		faunaList = append(faunaList, faunaData{pos, org, cells, speciesID})
+		targets = append(targets, entityData{
+			pos:       pos,
+			org:       org,
+			cells:     cells,
+			caps:      caps,
+			speciesID: speciesID,
+			isFlora:   false,
+		})
 	}
 
-	// Second pass: process feeding
+	// Process feeding for each fauna
 	faunaQuery2 := s.faunaFilter.Query()
 	for faunaQuery2.Next() {
 		entity := faunaQuery2.Entity()
-		pos, _, org, _ := faunaQuery2.Get()
+		pos, _, org, cells := faunaQuery2.Get()
 
 		if org.Dead {
 			continue
 		}
 
-		// Skip flora (they don't eat)
+		// Skip flora (they don't actively feed)
 		if traits.IsFlora(org.Traits) {
 			continue
 		}
@@ -102,191 +137,132 @@ func (s *FeedingSystem) Update() {
 			continue
 		}
 
-		// Get predator's species ID
-		predatorSpecies := 0
+		// Compute this organism's capabilities
+		myCaps := cells.ComputeCapabilities()
+		myDigestive := myCaps.DigestiveSpectrum()
+
+		// Get species ID for kin avoidance
+		mySpeciesID := 0
 		if s.neuralMap.Has(entity) {
 			if ng := s.neuralMap.Get(entity); ng != nil {
-				predatorSpecies = ng.SpeciesID
+				mySpeciesID = ng.SpeciesID
 			}
 		}
 
-		// Herbivores eat flora
-		if org.Traits.Has(traits.Herbivore) {
-			s.tryEatFlora(pos, org, floraList)
-		}
-
-		// Carnivores eat other fauna (alive) - with species discrimination
-		if org.Traits.Has(traits.Carnivore) {
-			s.tryEatFauna(pos, org, faunaList, false, predatorSpecies)
-		}
-
-		// Carrion eaters eat dead fauna and dead flora
-		// Note: carrion eating ignores species - scavenging dead kin is allowed
-		if org.Traits.Has(traits.Carrion) {
-			s.tryEatFauna(pos, org, faunaList, true, 0) // 0 = ignore species check
-			s.tryEatDeadFlora(pos, org, floraList)
-		}
+		// Try to feed on the best available target
+		s.tryFeed(pos, org, cells, myCaps, myDigestive, mySpeciesID, targets)
 	}
 }
 
-type floraData struct {
-	pos   *components.Position
-	org   *components.Organism
-	cells *components.CellBuffer
-}
+// tryFeed attempts to feed on nearby targets using capability matching.
+func (s *FeedingSystem) tryFeed(
+	pos *components.Position,
+	org *components.Organism,
+	cells *components.CellBuffer,
+	myCaps components.Capabilities,
+	myDigestive float32,
+	mySpeciesID int,
+	targets []entityData,
+) {
+	feedDistSq := float32(feedingDistance * feedingDistance)
 
-type faunaData struct {
-	pos       *components.Position
-	org       *components.Organism
-	cells     *components.CellBuffer
-	speciesID int // For kin recognition (avoid cannibalism)
-}
+	var bestTarget *entityData
+	var bestPenetration float32
+	var bestDistSq float32 = feedDistSq + 1
 
+	for i := range targets {
+		target := &targets[i]
 
-func (s *FeedingSystem) tryEatFlora(predPos *components.Position, predOrg *components.Organism, floraList []floraData) {
-	for _, flora := range floraList {
-		if flora.org.Dead || flora.cells.Count == 0 {
-			continue
-		}
-
-		// Check distance
-		dx := predPos.X - flora.pos.X
-		dy := predPos.Y - flora.pos.Y
-		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-		if dist > feedingDistance {
-			continue
-		}
-
-		// Eat! Transfer energy
-		// Larger organisms take bigger bites - but also have higher metabolism (handled in energy.go)
-		biteMultiplier := biteSizeMultiplier(predOrg)
-		eatAmount := float32(herbivoreEatAmount) * biteMultiplier
-		if eatAmount > flora.org.Energy {
-			eatAmount = flora.org.Energy
-		}
-
-		predOrg.Energy += eatAmount
-		flora.org.Energy -= eatAmount * 0.8 // Flora loses most of eaten amount
-
-		// Damage a random cell
-		if flora.cells.Count > 0 {
-			cellIdx := uint8(0) // Damage first alive cell
-			for i := uint8(0); i < flora.cells.Count; i++ {
-				if flora.cells.Cells[i].Alive {
-					cellIdx = i
-					break
-				}
-			}
-			flora.cells.Cells[cellIdx].Decomposition += floraDamageRate
-		}
-
-		// Only eat from one flora per tick
-		return
-	}
-}
-
-func (s *FeedingSystem) tryEatDeadFlora(predPos *components.Position, predOrg *components.Organism, floraList []floraData) {
-	for _, flora := range floraList {
-		// Only eat dead flora
-		if !flora.org.Dead {
-			continue
-		}
-
-		// Check distance
-		dx := predPos.X - flora.pos.X
-		dy := predPos.Y - flora.pos.Y
-		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-		if dist > feedingDistance {
-			continue
-		}
-
-		// Eat! Transfer energy
-		// Larger organisms take bigger bites of carrion
-		biteMultiplier := biteSizeMultiplier(predOrg)
-		eatAmount := float32(carrionEatAmount) * biteMultiplier
-		if eatAmount > flora.org.Energy {
-			eatAmount = flora.org.Energy
-		}
-
-		predOrg.Energy += eatAmount
-		flora.org.Energy -= eatAmount
-
-		// Only eat from one source per tick
-		return
-	}
-}
-
-func (s *FeedingSystem) tryEatFauna(predPos *components.Position, predOrg *components.Organism, faunaList []faunaData, wantDead bool, predatorSpecies int) {
-	for _, prey := range faunaList {
 		// Skip self
-		if prey.org == predOrg {
+		if target.org == org {
 			continue
 		}
 
-		// Carrion wants dead, carnivore wants alive
-		if wantDead && !prey.org.Dead {
-			continue
-		}
-		if !wantDead && prey.org.Dead {
+		// Calculate distance
+		dx := pos.X - target.pos.X
+		dy := pos.Y - target.pos.Y
+		distSq := dx*dx + dy*dy
+
+		if distSq > feedDistSq {
 			continue
 		}
 
-		// Kin recognition: prefer to avoid hunting same species (cannibalism avoidance)
-		// Only applies to live prey hunting (predatorSpecies > 0)
-		// Carrion eating passes 0 to skip this check
-		// 70% chance to avoid same-species prey, 30% will still hunt kin (desperation)
-		if predatorSpecies > 0 && prey.speciesID == predatorSpecies {
+		// Calculate capability match
+		targetComposition := target.caps.Composition()
+		targetArmor := target.caps.StructuralArmor
+
+		edibility := neural.Edibility(myDigestive, targetComposition)
+		penetration := neural.Penetration(edibility, targetArmor)
+
+		// Can't feed if penetration is 0
+		if penetration <= 0 {
+			continue
+		}
+
+		// For living fauna targets, apply kin avoidance
+		if !target.isFlora && !target.org.Dead && mySpeciesID > 0 && target.speciesID == mySpeciesID {
+			// 70% chance to avoid hunting your own species
 			if rand.Float32() < 0.70 {
-				continue // Avoid hunting your own kind (most of the time)
+				continue
 			}
 		}
 
-		// Check distance
-		dx := predPos.X - prey.pos.X
-		dy := predPos.Y - prey.pos.Y
-		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-		if dist > feedingDistance {
-			continue
+		// Prefer targets with higher penetration, then closer distance
+		if penetration > bestPenetration || (penetration == bestPenetration && distSq < bestDistSq) {
+			bestTarget = target
+			bestPenetration = penetration
+			bestDistSq = distSq
 		}
+	}
 
-		// Calculate base bite
-		biteMultiplier := biteSizeMultiplier(predOrg)
-		var baseRate float32
-		if wantDead {
-			baseRate = carrionEatAmount
-		} else {
-			baseRate = carnivoreEatAmount
-		}
-
-		eatAmount := baseRate * biteMultiplier
-
-		// Can only eat what prey has
-		if eatAmount > prey.org.Energy {
-			eatAmount = prey.org.Energy
-		}
-
-		predOrg.Energy += eatAmount
-		prey.org.Energy -= eatAmount
-
-		// Carnivores deal damage to prey
-		if !wantDead && prey.cells.Count > 0 {
-			for i := uint8(0); i < prey.cells.Count; i++ {
-				if prey.cells.Cells[i].Alive {
-					prey.cells.Cells[i].Decomposition += 0.02
-					break
-				}
-			}
-		}
-
-		// Kill prey if energy depleted
-		if prey.org.Energy <= 0 {
-			prey.org.Dead = true
-		}
-
-		// Only eat from one prey per tick
+	if bestTarget == nil {
 		return
+	}
+
+	// Execute feeding
+	s.executeFeed(org, cells, myCaps, bestTarget, bestPenetration)
+}
+
+// executeFeed performs the actual energy transfer.
+func (s *FeedingSystem) executeFeed(
+	predOrg *components.Organism,
+	predCells *components.CellBuffer,
+	predCaps components.Capabilities,
+	target *entityData,
+	penetration float32,
+) {
+	// Calculate bite amount
+	biteMultiplier := biteSizeMultiplier(predOrg, predCaps.MouthSize)
+
+	// Base bite is fraction of target's current energy
+	baseBite := target.org.Energy * baseBiteSize * biteMultiplier
+
+	// Penetration affects how much we can actually extract
+	// Higher penetration = more efficient feeding
+	effectiveBite := baseBite * penetration * feedEfficiency
+
+	// Can only eat what target has
+	if effectiveBite > target.org.Energy {
+		effectiveBite = target.org.Energy
+	}
+
+	// Transfer energy
+	predOrg.Energy += effectiveBite
+	target.org.Energy -= effectiveBite
+
+	// Damage target cells
+	if target.cells.Count > 0 {
+		// Find first alive cell to damage
+		for i := uint8(0); i < target.cells.Count; i++ {
+			if target.cells.Cells[i].Alive {
+				target.cells.Cells[i].Decomposition += floraDamageRate
+				break
+			}
+		}
+	}
+
+	// Kill target if energy depleted
+	if target.org.Energy <= 0 {
+		target.org.Dead = true
 	}
 }
