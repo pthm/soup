@@ -21,11 +21,12 @@ type FlowParticle struct {
 
 // FlowFieldSystem manages flow particles for visualization.
 type FlowFieldSystem struct {
-	Particles     []FlowParticle
-	noise         *PerlinNoise
-	bounds        Bounds
-	targetCount   int
-	spawnRate     int
+	Particles   []FlowParticle
+	noise       *PerlinNoise
+	bounds      Bounds
+	targetCount int
+	spawnRate   int
+	terrain     *TerrainSystem
 }
 
 // NewFlowFieldSystem creates a new flow field visualization system.
@@ -39,6 +40,18 @@ func NewFlowFieldSystem(bounds Bounds, targetCount int) *FlowFieldSystem {
 	}
 }
 
+// NewFlowFieldSystemWithTerrain creates a flow field system with terrain awareness.
+func NewFlowFieldSystemWithTerrain(bounds Bounds, targetCount int, terrain *TerrainSystem) *FlowFieldSystem {
+	return &FlowFieldSystem{
+		Particles:   make([]FlowParticle, 0, targetCount),
+		noise:       NewPerlinNoise(rand.Int63()),
+		bounds:      bounds,
+		targetCount: targetCount,
+		spawnRate:   50,
+		terrain:     terrain,
+	}
+}
+
 // Update updates all flow particles.
 func (s *FlowFieldSystem) Update(tick int32) {
 	// Spawn new particles if below target
@@ -47,6 +60,12 @@ func (s *FlowFieldSystem) Update(tick int32) {
 			lifespan := int32(800 + rand.Intn(600))
 			x := rand.Float32() * s.bounds.Width
 			y := rand.Float32() * s.bounds.Height
+
+			// Reject positions inside terrain
+			if s.terrain != nil && s.terrain.IsSolid(x, y) {
+				continue
+			}
+
 			s.Particles = append(s.Particles, FlowParticle{
 				X:           x,
 				Y:           y,
@@ -103,6 +122,18 @@ func (s *FlowFieldSystem) Update(tick int32) {
 		p.X += p.VelX
 		p.Y += p.VelY
 
+		// Terrain collision - particles bounce off terrain
+		if s.terrain != nil && s.terrain.IsSolid(p.X, p.Y) {
+			// Move back
+			p.X -= p.VelX
+			p.Y -= p.VelY
+			// Reflect velocity
+			p.VelX *= -0.5
+			p.VelY *= -0.5
+			// Clear trail to avoid lines through terrain
+			p.TrailLen = 0
+		}
+
 		// Wrap at edges (and clear trail to avoid long lines across screen)
 		wrapped := false
 		if p.X < 0 {
@@ -148,6 +179,17 @@ func (s *FlowFieldSystem) getFlowForce(x, y float32, tick int32) (float32, float
 	// Add slight downward drift
 	flowY += 0.01
 	flowX += float32(math.Sin(float64(tick)*0.0002)) * 0.005
+
+	// Deflect flow around terrain
+	if s.terrain != nil {
+		dist := s.terrain.DistanceToSolid(x, y)
+		if dist < 40 { // Within influence range
+			gradX, gradY := s.terrain.GetGradient(x, y)
+			blend := 1.0 - dist/40.0
+			flowX += gradX * blend * 0.1
+			flowY += gradY * blend * 0.1
+		}
+	}
 
 	return flowX, flowY
 }

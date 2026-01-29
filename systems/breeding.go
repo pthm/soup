@@ -152,11 +152,11 @@ func (s *BreedingSystem) isCompatible(a, b *components.Organism, posA, posB *com
 		return false
 	}
 
-	// Must be within proximity (50 units)
+	// Must be within proximity (80 units - more forgiving for sparse populations)
 	dx := posA.X - posB.X
 	dy := posA.Y - posB.Y
 	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-	if dist > 50 {
+	if dist > 80 {
 		return false
 	}
 
@@ -194,13 +194,13 @@ func (s *BreedingSystem) breed(
 		createOrganism(x, y, offspringTraits, 50)
 	}
 
-	// Cost to parents
-	orgA.Energy -= 20
-	orgB.Energy -= 20
+	// Cost to parents (reduced for faster population growth)
+	orgA.Energy -= 15
+	orgB.Energy -= 15
 
-	// Set cooldowns
-	orgA.BreedingCooldown = 180
-	orgB.BreedingCooldown = 180
+	// Set cooldowns (reduced for more frequent breeding)
+	orgA.BreedingCooldown = 120
+	orgB.BreedingCooldown = 120
 }
 
 func (s *BreedingSystem) breedNeural(
@@ -272,8 +272,8 @@ func (s *BreedingSystem) breedNeural(
 		Controller: brainController,
 	}
 
-	// Create the offspring
-	createNeuralOrganism(x, y, offspringTraits, 50, childNeural, childBrain)
+	// Create the offspring with enough energy to survive
+	createNeuralOrganism(x, y, offspringTraits, 100, childNeural, childBrain)
 }
 
 func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {

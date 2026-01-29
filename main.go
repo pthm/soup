@@ -107,6 +107,10 @@ type Game struct {
 	stepsPerFrame int
 	perf          *PerfStats
 
+	// Terrain
+	terrain         *systems.TerrainSystem
+	terrainRenderer *renderer.TerrainRenderer
+
 	// New systems
 	shadowMap      *systems.ShadowMap
 	photosynthesis *systems.PhotosynthesisSystem
@@ -159,30 +163,37 @@ func NewGame() *Game {
 	// Create shadow map first as other systems depend on it
 	shadowMap := systems.NewShadowMap(screenWidth, screenHeight)
 
+	// Create terrain
+	terrain := systems.NewTerrainSystem(screenWidth, screenHeight, time.Now().UnixNano())
+
 	// Neural evolution config
 	neuralConfig := neural.DefaultConfig()
 	genomeIDGen := neural.NewGenomeIDGenerator()
 
 	g := &Game{
-		world:         world,
-		bounds:        bounds,
-		physics:       systems.NewPhysicsSystem(world, bounds),
-		energy:        systems.NewEnergySystem(world),
-		cells:         systems.NewCellSystem(world),
-		behavior:      systems.NewBehaviorSystem(world, shadowMap),
-		flowField:       systems.NewFlowFieldSystem(bounds, 8000),
+		world:           world,
+		bounds:          bounds,
+		physics:         systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
+		energy:          systems.NewEnergySystem(world),
+		cells:           systems.NewCellSystem(world),
+		behavior:        systems.NewBehaviorSystem(world, shadowMap),
+		flowField:       systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
 		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
 		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
 		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
 		light:           renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0}, // Static sun at top center
-		stepsPerFrame: 1,
-		perf:          NewPerfStats(),
+		stepsPerFrame:   1,
+		perf:            NewPerfStats(),
+
+		// Terrain
+		terrain:         terrain,
+		terrainRenderer: renderer.NewTerrainRenderer(screenWidth, screenHeight),
 
 		// New systems
 		shadowMap:      shadowMap,
 		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:        systems.NewFeedingSystem(world),
-		spores:         systems.NewSporeSystem(bounds),
+		spores:         systems.NewSporeSystemWithTerrain(bounds, terrain),
 		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
@@ -229,32 +240,39 @@ func NewGameHeadless() *Game {
 	// Create shadow map (still needed for photosynthesis calculations)
 	shadowMap := systems.NewShadowMap(screenWidth, screenHeight)
 
+	// Create terrain
+	terrain := systems.NewTerrainSystem(screenWidth, screenHeight, time.Now().UnixNano())
+
 	// Neural evolution config
 	neuralConfig := neural.DefaultConfig()
 	genomeIDGen := neural.NewGenomeIDGenerator()
 
 	g := &Game{
-		world:         world,
-		bounds:        bounds,
-		physics:       systems.NewPhysicsSystem(world, bounds),
-		energy:        systems.NewEnergySystem(world),
-		cells:         systems.NewCellSystem(world),
-		behavior:      systems.NewBehaviorSystem(world, shadowMap),
-		flowField:     systems.NewFlowFieldSystem(bounds, 8000),
+		world:            world,
+		bounds:           bounds,
+		physics:          systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
+		energy:           systems.NewEnergySystem(world),
+		cells:            systems.NewCellSystem(world),
+		behavior:         systems.NewBehaviorSystem(world, shadowMap),
+		flowField:        systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
 		// Skip renderers - they require raylib
-		flowRenderer:    nil,
-		waterBackground: nil,
-		sunRenderer:     nil,
+		flowRenderer:     nil,
+		waterBackground:  nil,
+		sunRenderer:      nil,
+		terrainRenderer:  nil,
 		particleRenderer: nil,
-		light:           renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
-		stepsPerFrame:   1,
-		perf:            NewPerfStats(),
+		light:            renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
+		stepsPerFrame:    1,
+		perf:             NewPerfStats(),
+
+		// Terrain
+		terrain: terrain,
 
 		// Systems
 		shadowMap:      shadowMap,
 		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:        systems.NewFeedingSystem(world),
-		spores:         systems.NewSporeSystem(bounds),
+		spores:         systems.NewSporeSystemWithTerrain(bounds, terrain),
 		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
@@ -289,33 +307,33 @@ func NewGameHeadless() *Game {
 }
 
 func (g *Game) seedUniverse() {
-	// Create rooted flora along the bottom
-	for i := 0; i < 60; i++ {
-		g.createOrganism(
-			rand.Float32()*(g.bounds.Width-100)+50,
-			g.bounds.Height-3,
+	// Spawn initial spores that will drift and root naturally on terrain
+	// Rooted spores (will sink and attach to terrain/seafloor)
+	for i := 0; i < 80; i++ {
+		g.spores.SpawnSpore(
+			rand.Float32()*g.bounds.Width,
+			rand.Float32()*g.bounds.Height*0.5, // Upper half
 			traits.Flora|traits.Rooted,
-			80,
 		)
 	}
 
-	// Create floating flora
-	for i := 0; i < 40; i++ {
-		g.createOrganism(
-			rand.Float32()*(g.bounds.Width-100)+50,
-			rand.Float32()*(g.bounds.Height-250)+100,
+	// Floating spores (will drift and settle in water column)
+	for i := 0; i < 50; i++ {
+		g.spores.SpawnSpore(
+			rand.Float32()*g.bounds.Width,
+			rand.Float32()*g.bounds.Height*0.6+50,
 			traits.Flora|traits.Floating,
-			80,
 		)
 	}
 
 	// Create herbivores with neural brains (CPPN morphology + evolved behavior)
+	// Higher initial energy gives untrained brains more time to find food
 	for i := 0; i < 50; i++ {
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			traits.Herbivore,
-			100,
+			200,
 		)
 	}
 
@@ -325,7 +343,7 @@ func (g *Game) seedUniverse() {
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			traits.Carnivore,
-			120,
+			200,
 		)
 	}
 
@@ -335,19 +353,17 @@ func (g *Game) seedUniverse() {
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			traits.Carrion,
-			80,
+			150,
 		)
 	}
 }
 
-func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.Entity {
-	// Assign gender if fauna (all fauna can breed)
-	if traits.IsFauna(t) {
-		if rand.Float32() > 0.5 {
-			t = t.Add(traits.Male)
-		} else {
-			t = t.Add(traits.Female)
-		}
+// createFlora creates a non-neural flora organism.
+// Flora don't have neural brains - they photosynthesize and reproduce via spores.
+func (g *Game) createFlora(x, y float32, t traits.Trait, energy float32) ecs.Entity {
+	// Ensure it's flora
+	if !traits.IsFlora(t) {
+		t = traits.Flora | traits.Rooted
 	}
 
 	pos := &components.Position{X: x, Y: y}
@@ -356,7 +372,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		Traits:           t,
 		Energy:           energy,
 		MaxEnergy:        150,
-		CellSize:         2.5,
+		CellSize:         5,
 		MaxSpeed:         1.5,
 		MaxForce:         0.03,
 		PerceptionRadius: 100,
@@ -365,7 +381,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		GrowthTimer:      0,
 		GrowthInterval:   120,
 		SporeTimer:       0,
-		SporeInterval:    300, // Reduced from 600
+		SporeInterval:    400,
 		BreedingCooldown: 0,
 	}
 
@@ -376,7 +392,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 		GridY:    0,
 		Age:      0,
 		MaxAge:   3000 + rand.Int31n(2000),
-		Trait:    t & (traits.Flora | traits.Herbivore | traits.Carnivore | traits.Carrion),
+		Trait:    traits.Flora,
 		Mutation: traits.NoMutation,
 		Alive:    true,
 	})
@@ -384,11 +400,7 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 	// Calculate shape metrics
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
 
-	// Create entity with appropriate tag
-	if traits.IsFlora(t) {
-		return g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
-	}
-	return g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
+	return g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
 }
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
@@ -444,7 +456,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		Traits:           t,
 		Energy:           energy,
 		MaxEnergy:        maxEnergy,
-		CellSize:         2.5,
+		CellSize:         5,
 		MaxSpeed:         1.5,
 		MaxForce:         0.03,
 		PerceptionRadius: 100,
@@ -453,7 +465,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		GrowthTimer:      0,
 		GrowthInterval:   120,
 		SporeTimer:       0,
-		SporeInterval:    300,
+		SporeInterval:    400,
 		BreedingCooldown: 0,
 	}
 
@@ -538,8 +550,15 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 	// Generate morphology from CPPN first (needed for brain building)
 	morph, err := neural.GenerateMorphology(bodyGenome, neural.InitialMaxCells, g.neuralConfig.CPPN.CellThreshold)
 	if err != nil {
-		// Fallback to traditional organism if morphology generation fails
-		return g.createOrganism(x, y, baseTrait, energy)
+		// Retry with a new genome
+		bodyGenome = neural.CreateCPPNGenome(g.genomeIDGen.NextID())
+		morph, err = neural.GenerateMorphology(bodyGenome, neural.InitialMaxCells, g.neuralConfig.CPPN.CellThreshold)
+		if err != nil {
+			// Use minimal morphology as last resort
+			morph = neural.MorphologyResult{
+				Cells: []neural.CellSpec{{GridX: 0, GridY: 0, Type: neural.CellTypeSensor}},
+			}
+		}
 	}
 
 	// Build brain from CPPN using HyperNEAT (CPPN determines connection weights)
@@ -549,7 +568,9 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 		brainGenome := neural.CreateBrainGenome(g.genomeIDGen.NextID(), g.neuralConfig.Brain.InitialConnectionProb)
 		brainController, err = neural.NewBrainController(brainGenome)
 		if err != nil {
-			return g.createOrganism(x, y, baseTrait, energy)
+			// Last resort - minimal brain
+			brainGenome = neural.CreateMinimalBrainGenome(g.genomeIDGen.NextID())
+			brainController, _ = neural.NewBrainController(brainGenome)
 		}
 	}
 
@@ -690,9 +711,9 @@ func (g *Game) Update() {
 	// Left-click: select organism (or Shift+click to spawn herbivore)
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
-			// Shift+click: spawn herbivore (old behavior)
+			// Shift+click: spawn neural herbivore
 			pos := rl.GetMousePosition()
-			g.createOrganism(pos.X, pos.Y, traits.Herbivore, 100)
+			g.createInitialNeuralOrganism(pos.X, pos.Y, traits.Herbivore, 100)
 		} else {
 			// Regular click: select organism
 			entity, found := g.findOrganismAtClick()
@@ -705,7 +726,7 @@ func (g *Game) Update() {
 		}
 	}
 	if rl.IsKeyPressed(rl.KeyF) {
-		g.createOrganism(
+		g.createFlora(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			g.bounds.Height-4,
 			traits.Flora|traits.Rooted,
@@ -713,7 +734,7 @@ func (g *Game) Update() {
 		)
 	}
 	if rl.IsKeyPressed(rl.KeyC) {
-		g.createOrganism(
+		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
 			traits.Carnivore,
@@ -794,10 +815,10 @@ func (g *Game) Update() {
 		measure("cells", func() { g.cells.Update(g.world) })
 
 		// Breeding (fauna reproduction with CPPN morphology generation)
-		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, g.createNeuralOrganism) })
+		measure("breeding", func() { g.breeding.Update(g.world, g.createFlora, g.createNeuralOrganism) })
 
 		// Spores (flora reproduction)
-		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })
+		measure("spores", func() { g.spores.Update(g.tick, g.createFlora) })
 
 		// Growth, spore spawning, and splitting
 		measure("growth", func() { g.updateGrowth() })
@@ -886,10 +907,10 @@ func (g *Game) UpdateHeadless() {
 		measure("cells", func() { g.cells.Update(g.world) })
 
 		// Breeding
-		measure("breeding", func() { g.breeding.Update(g.world, g.createOrganism, g.createNeuralOrganism) })
+		measure("breeding", func() { g.breeding.Update(g.world, g.createFlora, g.createNeuralOrganism) })
 
 		// Spores
-		measure("spores", func() { g.spores.Update(g.tick, g.createOrganism) })
+		measure("spores", func() { g.spores.Update(g.tick, g.createFlora) })
 
 		// Growth
 		measure("growth", func() { g.updateGrowth() })
@@ -1224,8 +1245,10 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 }
 
 func (g *Game) collectOccluders() []systems.Occluder {
-	var occluders []systems.Occluder
+	// Start with terrain occluders (static, cached)
+	occluders := append([]systems.Occluder{}, g.terrain.GetOccluders()...)
 
+	// Add organism occluders
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		pos, _, org, cells := query.Get()
@@ -1373,9 +1396,9 @@ func (g *Game) updateGrowth() {
 		if traits.IsFlora(org.Traits) {
 			org.SporeTimer++
 			// Queue spore spawn for after query completes
-			if org.SporeTimer >= org.SporeInterval && org.Energy > 30 {
+			if org.SporeTimer >= org.SporeInterval && org.Energy > 40 {
 				org.SporeTimer = 0
-				org.Energy -= 10 // Reduced cost from 20
+				org.Energy -= 15 // Cost per spore
 				pendingSpores = append(pendingSpores, sporeRequest{pos.X, pos.Y - org.CellSize, org.Traits})
 			}
 		}
@@ -1383,7 +1406,7 @@ func (g *Game) updateGrowth() {
 
 	// Process deferred splits (after query iteration completes)
 	for _, req := range pendingSplits {
-		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, g.createOrganism, g.particles)
+		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, g.createFlora, g.particles)
 	}
 
 	// Process deferred spore spawns
@@ -1663,7 +1686,12 @@ func (g *Game) Draw() {
 	// Draw animated water background
 	g.waterBackground.Draw(float32(g.tick) * 0.016) // Convert tick to approximate seconds
 
-	// Draw flow field particles (on top of water)
+	// Draw terrain (after water, before flow field)
+	if g.terrainRenderer != nil {
+		g.terrainRenderer.Draw(g.terrain, g.tick)
+	}
+
+	// Draw flow field particles (on top of water and terrain)
 	g.flowRenderer.Draw(g.flowField.Particles, g.tick)
 
 	// Collect occluders from organisms for shadow casting

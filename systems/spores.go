@@ -22,10 +22,11 @@ type SporeEntity struct {
 
 // SporeSystem handles flora reproduction via spores.
 type SporeSystem struct {
-	Spores       []SporeEntity
-	noise        *PerlinNoise
-	bounds       Bounds
-	maxSpores    int
+	Spores    []SporeEntity
+	noise     *PerlinNoise
+	bounds    Bounds
+	maxSpores int
+	terrain   *TerrainSystem
 }
 
 // NewSporeSystem creates a new spore system.
@@ -35,6 +36,17 @@ func NewSporeSystem(bounds Bounds) *SporeSystem {
 		noise:     NewPerlinNoise(rand.Int63()),
 		bounds:    bounds,
 		maxSpores: 200,
+	}
+}
+
+// NewSporeSystemWithTerrain creates a spore system with terrain awareness.
+func NewSporeSystemWithTerrain(bounds Bounds, terrain *TerrainSystem) *SporeSystem {
+	return &SporeSystem{
+		Spores:    make([]SporeEntity, 0, 200),
+		noise:     NewPerlinNoise(rand.Int63()),
+		bounds:    bounds,
+		maxSpores: 200,
+		terrain:   terrain,
 	}
 }
 
@@ -84,20 +96,37 @@ func (s *SporeSystem) Update(tick int32, createOrganism func(x, y float32, t tra
 			// Drift with Perlin noise
 			s.updateDrift(spore, tick)
 
-			// Check for landing
-			if spore.Rooted {
-				// Rooted spores land when reaching bottom
-				if spore.Y >= s.bounds.Height-4 {
-					spore.Y = s.bounds.Height - 4
+			// Check for landing on terrain
+			if s.terrain != nil {
+				// Check if spore hit terrain
+				if s.terrain.IsSolid(spore.X, spore.Y+2) {
+					// Find the surface position
+					for spore.Y > 0 && s.terrain.IsSolid(spore.X, spore.Y) {
+						spore.Y--
+					}
 					spore.Landed = true
+					spore.Rooted = true // Landing on terrain = rooted
 					spore.VelX = 0
 					spore.VelY = 0
 				}
-			} else {
-				// Floating spores have random chance to settle
-				velMag := float32(math.Sqrt(float64(spore.VelX*spore.VelX + spore.VelY*spore.VelY)))
-				if velMag < 0.1 && rand.Float32() < 0.002 {
-					spore.Landed = true
+			}
+
+			// Check for landing (non-terrain cases)
+			if !spore.Landed {
+				if spore.Rooted {
+					// Rooted spores land when reaching bottom
+					if spore.Y >= s.bounds.Height-4 {
+						spore.Y = s.bounds.Height - 4
+						spore.Landed = true
+						spore.VelX = 0
+						spore.VelY = 0
+					}
+				} else {
+					// Floating spores have random chance to settle
+					velMag := float32(math.Sqrt(float64(spore.VelX*spore.VelX + spore.VelY*spore.VelY)))
+					if velMag < 0.1 && rand.Float32() < 0.002 {
+						spore.Landed = true
+					}
 				}
 			}
 		}
@@ -139,8 +168,24 @@ func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
 	}
 
 	// Update position
-	spore.X += spore.VelX
-	spore.Y += spore.VelY
+	newX := spore.X + spore.VelX
+	newY := spore.Y + spore.VelY
+
+	// Check terrain collision before moving
+	if s.terrain != nil && s.terrain.IsSolid(newX, newY) {
+		// Bounce off terrain
+		if s.terrain.IsSolid(newX, spore.Y) {
+			spore.VelX *= -0.5
+			newX = spore.X
+		}
+		if s.terrain.IsSolid(spore.X, newY) {
+			spore.VelY *= -0.3
+			newY = spore.Y
+		}
+	}
+
+	spore.X = newX
+	spore.Y = newY
 
 	// Horizontal wrap-around
 	if spore.X < 0 {
@@ -165,19 +210,23 @@ func (s *SporeSystem) germinate(spore *SporeEntity, createOrganism func(x, y flo
 	// Build new flora traits
 	newTraits := traits.Flora
 
-	// Inherit parent traits with 80% probability each
-	if spore.ParentTraits.Has(traits.Rooted) && rand.Float32() < 0.8 {
-		newTraits = newTraits.Add(traits.Rooted)
-	}
-	if spore.ParentTraits.Has(traits.Floating) && rand.Float32() < 0.8 {
-		newTraits = newTraits.Add(traits.Floating)
-	}
+	// Check if landed on terrain
+	onTerrain := s.terrain != nil && s.terrain.IsSolid(spore.X, spore.Y+4)
+	onSeafloor := spore.Y >= s.bounds.Height-10
 
-	// If neither rooted nor floating, pick one based on landing position
-	if !newTraits.Has(traits.Rooted) && !newTraits.Has(traits.Floating) {
-		if spore.Rooted || spore.Y >= s.bounds.Height-10 {
+	// If landed on terrain or seafloor, always root
+	if onTerrain || onSeafloor || spore.Rooted {
+		newTraits = newTraits.Add(traits.Rooted)
+	} else {
+		// Inherit parent traits with 80% probability each
+		if spore.ParentTraits.Has(traits.Rooted) && rand.Float32() < 0.8 {
 			newTraits = newTraits.Add(traits.Rooted)
-		} else {
+		} else if spore.ParentTraits.Has(traits.Floating) && rand.Float32() < 0.8 {
+			newTraits = newTraits.Add(traits.Floating)
+		}
+
+		// If neither rooted nor floating, default to floating
+		if !newTraits.Has(traits.Rooted) && !newTraits.Has(traits.Floating) {
 			newTraits = newTraits.Add(traits.Floating)
 		}
 	}

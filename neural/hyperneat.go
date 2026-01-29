@@ -393,13 +393,40 @@ func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResu
 		}
 	}
 
-	// Ensure minimum connectivity
-	if len(genes) < BrainOutputs {
+	// Ensure each output has at least one connection
+	// This is critical for behaviors like Eat and Mate to be expressible
+	outputConnections := make([]int, BrainOutputs)
+	for _, gene := range genes {
 		for j := 0; j < BrainOutputs; j++ {
+			if gene.Link.OutNode.Id == BrainInputs+j+1 {
+				outputConnections[j]++
+			}
+		}
+	}
+
+	for j := 0; j < BrainOutputs; j++ {
+		if outputConnections[j] == 0 {
+			// Connect relevant inputs to this output
+			// Turn (0): connect to predator angle inputs
+			// Thrust (1): connect to food distance and energy
+			// Eat (2): connect to food distance and energy
+			// Mate (3): connect to mate distance and energy
+			var inputIdx int
+			switch j {
+			case 0: // Turn
+				inputIdx = 4 // Predator angle sin
+			case 1: // Thrust
+				inputIdx = 11 // Energy ratio
+			case 2: // Eat
+				inputIdx = 0 // Food distance
+			case 3: // Mate
+				inputIdx = 11 // Energy ratio - high energy = want to mate
+			}
+
 			gene := genetics.NewGeneWithTrait(
 				nil,
-				0.5,
-				nodes[j%BrainInputs],
+				1.5, // Positive weight to bias toward action
+				nodes[inputIdx],
 				nodes[BrainInputs+j],
 				false,
 				innovNum,

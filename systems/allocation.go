@@ -122,8 +122,9 @@ func (s *AllocationSystem) determineMode(
 	// For fauna with breeding capability (all fauna can breed, just need cooldown)
 	canBreed := !isFlora && org.BreedingCooldown == 0
 
-	// BREED mode: healthy, at target size, and can breed
-	if !isFlora && canBreed && cellCount >= targetCells && energyRatio > 0.5 {
+	// BREED mode: healthy enough and wants to breed
+	// Lower threshold (35%) to allow more breeding opportunities
+	if !isFlora && canBreed && cellCount >= 1 && energyRatio > 0.35 {
 		return components.ModeBreed
 	}
 

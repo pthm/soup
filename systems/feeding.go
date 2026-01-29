@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	feedingDistance    = 6.0   // Distance to consume food (scaled for smaller cells)
-	herbivoreEatAmount = 1.5   // Base energy gained per tick while eating flora
-	carnivoreEatAmount = 2.5   // Base energy gained per tick while eating fauna
-	carrionEatAmount   = 4.0   // Base energy gained per tick while eating dead
-	floraDamageRate    = 0.008 // Decomposition added to flora cell when eaten
+	feedingDistance    = 8.0   // Distance to consume food (slightly more forgiving)
+	herbivoreEatAmount = 3.0   // Base energy gained per tick while eating flora
+	carnivoreEatAmount = 3.5   // Base energy gained per tick while eating fauna
+	carrionEatAmount   = 5.0   // Base energy gained per tick while eating dead
+	floraDamageRate    = 0.015 // Decomposition added to flora cell when eaten
 
 	// Social hunting constants
 	herdRadius = 30.0 // How close allies must be to count as herd/pack
@@ -167,7 +167,7 @@ func (s *FeedingSystem) tryEatFlora(predPos *components.Position, predOrg *compo
 		}
 
 		predOrg.Energy += eatAmount
-		flora.org.Energy -= eatAmount * 0.5 // Flora loses half (regenerates)
+		flora.org.Energy -= eatAmount * 0.8 // Flora loses most of eaten amount
 
 		// Damage a random cell
 		if flora.cells.Count > 0 {

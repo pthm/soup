@@ -34,13 +34,9 @@ func (s *PhotosynthesisSystem) Update() {
 		// Sample light at organism position
 		light := s.shadowMap.SampleLight(pos.X, pos.Y)
 
-		// Rooted flora is adapted to lower light (anchored, can't move to light)
-		// They get a minimum light floor and bonus in shadows
-		if org.Traits.Has(traits.Rooted) {
-			// Rooted flora has adapted to partial shade
-			if light < 0.5 {
-				light = 0.5 + (light * 0.5) // Minimum 0.5, scaled bonus up to 0.75
-			}
+		// Rooted flora is slightly adapted to lower light but not immune to shade
+		if org.Traits.Has(traits.Rooted) && light < 0.3 {
+			light = 0.3 // Minimum 30% light for rooted flora
 		}
 
 		// Check for disease - reduces effective max energy
@@ -53,16 +49,21 @@ func (s *PhotosynthesisSystem) Update() {
 		}
 
 		// Energy gain based on light (direct gain, not target-seeking)
-		// Base rate: 0.5/tick in full light, scaled by light level
-		baseGain := float32(0.5) * light
+		// Base rate: 0.3/tick in full light, scaled by light level
+		baseGain := float32(0.3) * light
 
 		// Disease reduces photosynthesis efficiency
 		if hasDisease {
 			baseGain *= 0.5
 		}
 
-		// More cells = more photosynthesis (stronger scaling)
-		baseGain *= (1 + float32(cells.Count)*0.15)
+		// More cells = more photosynthesis, but with diminishing returns (sqrt scaling)
+		// 1 cell = 1.0x, 4 cells = 1.5x, 9 cells = 2.0x, 16 cells = 2.5x
+		cellMultiplier := float32(1.0) + float32(cells.Count-1)*0.05
+		if cellMultiplier > 2.5 {
+			cellMultiplier = 2.5 // Cap at 2.5x
+		}
+		baseGain *= cellMultiplier
 
 		org.Energy += baseGain
 

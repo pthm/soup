@@ -14,6 +14,7 @@ import (
 type PhysicsSystem struct {
 	filter  ecs.Filter3[components.Position, components.Velocity, components.Organism]
 	bounds  Bounds
+	terrain *TerrainSystem
 }
 
 // Bounds represents the simulation bounds.
@@ -31,6 +32,15 @@ func NewPhysicsSystem(w *ecs.World, bounds Bounds) *PhysicsSystem {
 	return &PhysicsSystem{
 		filter: *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
 		bounds: bounds,
+	}
+}
+
+// NewPhysicsSystemWithTerrain creates a physics system with terrain collision.
+func NewPhysicsSystemWithTerrain(w *ecs.World, bounds Bounds, terrain *TerrainSystem) *PhysicsSystem {
+	return &PhysicsSystem{
+		filter:  *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
+		bounds:  bounds,
+		terrain: terrain,
 	}
 }
 
@@ -62,6 +72,19 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		// Update position
 		pos.X += vel.X
 		pos.Y += vel.Y
+
+		// Terrain collision
+		if s.terrain != nil {
+			radius := org.CellSize * 3
+			if s.terrain.CheckCircleCollision(pos.X, pos.Y, radius) {
+				openX, openY, nx, ny := s.terrain.FindNearestOpen(pos.X, pos.Y, radius)
+				pos.X, pos.Y = openX, openY
+				// Reflect velocity
+				dot := vel.X*nx + vel.Y*ny
+				vel.X = (vel.X - 2*dot*nx) * 0.3
+				vel.Y = (vel.Y - 2*dot*ny) * 0.3
+			}
+		}
 
 		// Shape-based friction: streamlined organisms coast further
 		baseFriction := float32(0.98)
