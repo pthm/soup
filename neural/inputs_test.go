@@ -6,24 +6,16 @@ import (
 )
 
 func TestSensoryInputsToInputs(t *testing.T) {
+	// Phase 3: Test cone-based sensory inputs
 	sensory := SensoryInputs{
-		FoodDistance:     50,
-		FoodAngle:        0.5,
-		FoodFound:        true,
-		PredatorDistance: 30,
-		PredatorAngle:    -0.3,
-		PredatorFound:    true,
-		MateDistance:     80,
-		MateFound:        true,
-		HerdCount:        5,
-		LightLevel:       0.7,
-		FlowX:            0.1,
-		FlowY:            -0.2,
-		Energy:           75,
-		MaxEnergy:        100,
-		CellCount:        4,
-		MaxCells:         16,
-		PerceptionRadius: 100,
+		ConeFood:   [4]float32{0.8, 0.2, 0.1, 0.3},
+		ConeThreat: [4]float32{0.1, 0.0, 0.5, 0.0},
+		ConeFriend: [4]float32{0.4, 0.4, 0.2, 0.3},
+		LightLevel: 0.7,
+		FlowX:      0.1,
+		FlowY:      -0.2,
+		Energy:     75,
+		MaxEnergy:  100,
 	}
 
 	inputs := sensory.ToInputs()
@@ -32,96 +24,129 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		t.Errorf("expected %d inputs, got %d", BrainInputs, len(inputs))
 	}
 
-	// Check food distance is normalized
-	expectedFoodDist := 50.0 / 100.0 // 0.5
-	if math.Abs(inputs[0]-expectedFoodDist) > 0.01 {
-		t.Errorf("food distance: expected %f, got %f", expectedFoodDist, inputs[0])
+	// Check food cones [0-3]
+	for i := 0; i < NumCones; i++ {
+		expected := float64(sensory.ConeFood[i])
+		if math.Abs(inputs[i]-expected) > 0.01 {
+			t.Errorf("food cone %d: expected %f, got %f", i, expected, inputs[i])
+		}
 	}
 
-	// Check food angle sin/cos
-	if math.Abs(inputs[1]-math.Sin(0.5)) > 0.01 {
-		t.Errorf("food angle sin: expected %f, got %f", math.Sin(0.5), inputs[1])
+	// Check threat cones [4-7]
+	for i := 0; i < NumCones; i++ {
+		expected := float64(sensory.ConeThreat[i])
+		if math.Abs(inputs[4+i]-expected) > 0.01 {
+			t.Errorf("threat cone %d: expected %f, got %f", i, expected, inputs[4+i])
+		}
 	}
 
-	// Check energy ratio
+	// Check friend cones [8-11]
+	for i := 0; i < NumCones; i++ {
+		expected := float64(sensory.ConeFriend[i])
+		if math.Abs(inputs[8+i]-expected) > 0.01 {
+			t.Errorf("friend cone %d: expected %f, got %f", i, expected, inputs[8+i])
+		}
+	}
+
+	// Check energy ratio [12]
 	expectedEnergy := 75.0 / 100.0
-	if math.Abs(inputs[11]-expectedEnergy) > 0.01 {
-		t.Errorf("energy ratio: expected %f, got %f", expectedEnergy, inputs[11])
+	if math.Abs(inputs[12]-expectedEnergy) > 0.01 {
+		t.Errorf("energy ratio: expected %f, got %f", expectedEnergy, inputs[12])
 	}
 
-	// Check bias
-	if inputs[13] != 1.0 {
-		t.Errorf("bias: expected 1.0, got %f", inputs[13])
+	// Check light level [13]
+	if math.Abs(inputs[13]-0.7) > 0.01 {
+		t.Errorf("light level: expected 0.7, got %f", inputs[13])
+	}
+
+	// Check flow [14-15]
+	if math.Abs(inputs[14]-0.1) > 0.01 {
+		t.Errorf("flow X: expected 0.1, got %f", inputs[14])
+	}
+	if math.Abs(inputs[15]-(-0.2)) > 0.01 {
+		t.Errorf("flow Y: expected -0.2, got %f", inputs[15])
+	}
+
+	// Check bias [16]
+	if inputs[16] != 1.0 {
+		t.Errorf("bias: expected 1.0, got %f", inputs[16])
 	}
 
 	t.Logf("Inputs: %v", inputs)
 }
 
-func TestSensoryInputsNoFood(t *testing.T) {
+func TestSensoryInputsZeroCones(t *testing.T) {
+	// Test with zero cone values (no nearby entities)
 	sensory := SensoryInputs{
-		FoodFound:        false,
-		PerceptionRadius: 100,
-		Energy:           50,
-		MaxEnergy:        100,
+		ConeFood:   [4]float32{0, 0, 0, 0},
+		ConeThreat: [4]float32{0, 0, 0, 0},
+		ConeFriend: [4]float32{0, 0, 0, 0},
+		Energy:     50,
+		MaxEnergy:  100,
 	}
 
 	inputs := sensory.ToInputs()
 
-	// No food should give max distance (1.0)
-	if inputs[0] != 1.0 {
-		t.Errorf("no food distance: expected 1.0, got %f", inputs[0])
-	}
-
-	// Angles should be zero
-	if inputs[1] != 0.0 || inputs[2] != 0.0 {
-		t.Errorf("no food angles: expected 0,0, got %f,%f", inputs[1], inputs[2])
+	// All cone values should be zero
+	for i := 0; i < 12; i++ {
+		if inputs[i] != 0.0 {
+			t.Errorf("input %d should be 0, got %f", i, inputs[i])
+		}
 	}
 }
 
 func TestSensoryInputsNormalization(t *testing.T) {
 	// Test clamping of extreme values
 	sensory := SensoryInputs{
-		FoodDistance:     200, // Beyond perception radius
-		FoodFound:        true,
-		HerdCount:        20, // Beyond expected max
-		LightLevel:       1.5, // Beyond 1.0
-		FlowX:            2.0, // Beyond expected range
-		Energy:           150, // Beyond max
-		MaxEnergy:        100,
-		PerceptionRadius: 100,
+		ConeFood:   [4]float32{1.5, -0.1, 0.5, 2.0}, // Some out of range
+		ConeThreat: [4]float32{0.5, 0.5, 1.5, -0.5},
+		ConeFriend: [4]float32{0, 0, 0, 0},
+		LightLevel: 1.5, // Beyond 1.0
+		FlowX:      2.0, // Beyond expected range
+		Energy:     150, // Beyond max
+		MaxEnergy:  100,
 	}
 
 	inputs := sensory.ToInputs()
 
-	// Food distance should be clamped to 1.0
-	if inputs[0] > 1.0 {
-		t.Errorf("food distance not clamped: got %f", inputs[0])
-	}
-
-	// Herd density should be clamped to 1.0
-	if inputs[7] > 1.0 {
-		t.Errorf("herd density not clamped: got %f", inputs[7])
+	// All cone values should be clamped to [0, 1]
+	for i := 0; i < 12; i++ {
+		if inputs[i] < 0 || inputs[i] > 1 {
+			t.Errorf("cone input %d out of range [0,1]: %f", i, inputs[i])
+		}
 	}
 
 	// Light level should be clamped to 1.0
-	if inputs[8] > 1.0 {
-		t.Errorf("light level not clamped: got %f", inputs[8])
+	if inputs[13] > 1.0 {
+		t.Errorf("light level not clamped: got %f", inputs[13])
 	}
 
 	// Flow should be clamped to 1.0
-	if inputs[9] > 1.0 {
-		t.Errorf("flow X not clamped: got %f", inputs[9])
+	if inputs[14] > 1.0 {
+		t.Errorf("flow X not clamped: got %f", inputs[14])
 	}
 
-	// All values should be in valid range
-	for i, v := range inputs {
-		if v < -1.0 || v > 1.0 {
-			// Only sin/cos can be negative, rest should be 0-1
-			if i != 1 && i != 2 && i != 4 && i != 5 && i != 9 && i != 10 {
-				if v < 0 || v > 1 {
-					t.Errorf("input %d out of range [0,1]: %f", i, v)
-				}
-			}
+	// Energy ratio should be clamped
+	if inputs[12] > 1.0 {
+		t.Errorf("energy ratio not clamped: got %f", inputs[12])
+	}
+}
+
+func TestFromPolarVision(t *testing.T) {
+	// Create a polar vision result
+	pv := PolarVision{
+		Food:   [4]float32{1.0, 0.5, 0.1, 0.2},
+		Threat: [4]float32{0.0, 0.8, 0.0, 0.3},
+		Friend: [4]float32{0.5, 0.5, 0.5, 0.5},
+	}
+
+	var sensory SensoryInputs
+	sensory.FromPolarVision(&pv)
+
+	// Values should be normalized
+	for i := 0; i < NumCones; i++ {
+		if sensory.ConeFood[i] < 0 || sensory.ConeFood[i] > 1 {
+			t.Errorf("food cone %d out of normalized range: %f", i, sensory.ConeFood[i])
 		}
 	}
 }
@@ -192,14 +217,17 @@ func TestDefaultOutputs(t *testing.T) {
 	t.Logf("Default outputs: %+v", outputs)
 }
 
-func BenchmarkSensoryToInputs(b *testing.B) {
-	sensory := SensoryInputs{
+// Test legacy inputs (for backward compatibility during migration)
+func TestLegacySensoryInputsToInputs(t *testing.T) {
+	sensory := LegacySensoryInputs{
 		FoodDistance:     50,
 		FoodAngle:        0.5,
 		FoodFound:        true,
 		PredatorDistance: 30,
 		PredatorAngle:    -0.3,
 		PredatorFound:    true,
+		MateDistance:     80,
+		MateFound:        true,
 		HerdCount:        5,
 		LightLevel:       0.7,
 		FlowX:            0.1,
@@ -209,6 +237,44 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 		CellCount:        4,
 		MaxCells:         16,
 		PerceptionRadius: 100,
+	}
+
+	inputs := sensory.ToInputs()
+
+	if len(inputs) != BrainInputs {
+		t.Errorf("expected %d inputs, got %d", BrainInputs, len(inputs))
+	}
+
+	// Check food distance is normalized
+	expectedFoodDist := 50.0 / 100.0 // 0.5
+	if math.Abs(inputs[0]-expectedFoodDist) > 0.01 {
+		t.Errorf("food distance: expected %f, got %f", expectedFoodDist, inputs[0])
+	}
+
+	// Check food angle sin/cos
+	if math.Abs(inputs[1]-math.Sin(0.5)) > 0.01 {
+		t.Errorf("food angle sin: expected %f, got %f", math.Sin(0.5), inputs[1])
+	}
+
+	// Check energy ratio
+	expectedEnergy := 75.0 / 100.0
+	if math.Abs(inputs[11]-expectedEnergy) > 0.01 {
+		t.Errorf("energy ratio: expected %f, got %f", expectedEnergy, inputs[11])
+	}
+
+	t.Logf("Legacy Inputs: %v", inputs)
+}
+
+func BenchmarkSensoryToInputs(b *testing.B) {
+	sensory := SensoryInputs{
+		ConeFood:   [4]float32{0.8, 0.2, 0.1, 0.3},
+		ConeThreat: [4]float32{0.1, 0.0, 0.5, 0.0},
+		ConeFriend: [4]float32{0.4, 0.4, 0.2, 0.3},
+		LightLevel: 0.7,
+		FlowX:      0.1,
+		FlowY:      -0.2,
+		Energy:     75,
+		MaxEnergy:  100,
 	}
 
 	b.ResetTimer()

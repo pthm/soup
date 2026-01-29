@@ -117,7 +117,8 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 	}
 }
 
-// getBrainOutputs gathers sensory inputs and runs the brain network.
+// getBrainOutputs gathers sensory inputs using polar vision and runs the brain network.
+// Phase 3: Uses 4-cone × 3-channel polar vision instead of nearest-target sensing.
 func (s *BehaviorSystem) getBrainOutputs(
 	entity ecs.Entity,
 	pos *components.Position,
@@ -132,7 +133,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 		return neural.DefaultOutputs()
 	}
 
-	// Get cell data for sensor weighting
+	// Get cell data for sensor weighting and capabilities
 	var cells *components.CellBuffer
 	if s.cellsMap.Has(entity) {
 		cells = s.cellsMap.Get(entity)
@@ -141,16 +142,65 @@ func (s *BehaviorSystem) getBrainOutputs(
 	// Calculate effective perception radius based on sensor capability
 	effectiveRadius := getEffectivePerceptionRadius(org.PerceptionRadius, cells)
 
-	// Gather sensory inputs
+	// Get our capabilities for vision parameters
+	var myComposition, myDigestiveSpec, myArmor float32
+	if cells != nil {
+		caps := cells.ComputeCapabilities()
+		myComposition = caps.Composition()
+		myDigestiveSpec = caps.DigestiveSpectrum()
+		myArmor = caps.StructuralArmor
+	} else {
+		// Fallback: estimate from traits
+		myComposition = 0.0 // Fauna-like
+		if org.Traits.Has(traits.Carnivore) {
+			myDigestiveSpec = 0.85
+		} else if org.Traits.Has(traits.Herbivore) {
+			myDigestiveSpec = 0.15
+		} else {
+			myDigestiveSpec = 0.5
+		}
+		myArmor = 0.0
+	}
+
+	// Get light level for vision
+	var lightLevel float32 = 0.5
+	if s.shadowMap != nil {
+		lightLevel = s.shadowMap.SampleLight(pos.X, pos.Y)
+	}
+
+	// Build sensor cells for vision weighting
+	sensorCells := buildSensorCells(cells)
+
+	// Build vision parameters
+	visionParams := neural.VisionParams{
+		PosX:            pos.X,
+		PosY:            pos.Y,
+		Heading:         org.Heading,
+		MyComposition:   myComposition,
+		MyDigestiveSpec: myDigestiveSpec,
+		MyArmor:         myArmor,
+		EffectiveRadius: effectiveRadius,
+		LightLevel:      lightLevel,
+		Sensors:         sensorCells,
+	}
+
+	// Build entity list for vision scan
+	entities := s.buildEntityList(pos, org, effectiveRadius, floraPos, faunaPos, floraOrgs, faunaOrgs, grid)
+
+	// Perform polar vision scan
+	var pv neural.PolarVision
+	pv.ScanEntities(visionParams, entities)
+
+	// Build sensory inputs with polar vision data
 	sensory := neural.SensoryInputs{
-		PerceptionRadius:  effectiveRadius,
-		Energy:            org.Energy,
-		MaxEnergy:         org.MaxEnergy,
-		MaxCells:          16,
-		SensorCount:       getSensorCount(cells),
-		TotalSensorGain:   getTotalSensorGain(cells),
-		ActuatorCount:     getActuatorCount(cells),
-		TotalActuatorStr:  getTotalActuatorStrength(cells),
+		PerceptionRadius: effectiveRadius,
+		Energy:           org.Energy,
+		MaxEnergy:        org.MaxEnergy,
+		MaxCells:         16,
+		SensorCount:      getSensorCount(cells),
+		TotalSensorGain:  getTotalSensorGain(cells),
+		ActuatorCount:    getActuatorCount(cells),
+		TotalActuatorStr: getTotalActuatorStrength(cells),
 	}
 
 	// Cell count from actual cells if available
@@ -163,70 +213,25 @@ func (s *BehaviorSystem) getBrainOutputs(
 		}
 	}
 
-	// Food detection with sensor weighting
-	foodX, foodY, foundFood := s.findFoodWeighted(pos, org, cells, effectiveRadius, floraPos, faunaPos, floraOrgs, faunaOrgs, grid)
-	if foundFood {
-		sensory.FoodFound = true
-		rawDist := distance(pos.X, pos.Y, foodX, foodY)
-		rawAngle := float32(math.Atan2(float64(foodY-pos.Y), float64(foodX-pos.X))) - org.Heading
+	// Copy normalized polar vision to sensory inputs
+	sensory.FromPolarVision(&pv)
 
-		// Apply sensor weighting - sensors facing the food perceive it better
-		sensory.FoodDistance = rawDist
-		sensory.FoodAngle = rawAngle
-	}
-
-	// Predator detection with sensor weighting
-	predX, predY, foundPred := s.findPredatorWeighted(pos, org, cells, effectiveRadius, faunaPos, faunaOrgs, grid)
-	if foundPred {
-		sensory.PredatorFound = true
-		rawDist := distance(pos.X, pos.Y, predX, predY)
-		rawAngle := float32(math.Atan2(float64(predY-pos.Y), float64(predX-pos.X))) - org.Heading
-
-		sensory.PredatorDistance = rawDist
-		sensory.PredatorAngle = rawAngle
-	}
-
-	// Mate detection with sensor weighting
-	mateX, mateY, foundMate := s.findMateWeighted(pos, org, cells, effectiveRadius, faunaPos, faunaOrgs, grid)
-	if foundMate {
-		sensory.MateFound = true
-		rawDist := distance(pos.X, pos.Y, mateX, mateY)
-		rawAngle := float32(math.Atan2(float64(mateY-pos.Y), float64(mateX-pos.X))) - org.Heading
-
-		sensory.MateDistance = rawDist
-		sensory.MateAngle = rawAngle
-	}
-
-	// Herd count (nearby same-type organisms)
-	sensory.HerdCount = s.countNearbySameType(pos, org, faunaPos, faunaOrgs, grid)
-
-	// Light level - weighted by sensors facing upward (positive Y sensors)
-	if s.shadowMap != nil {
-		rawLight := s.shadowMap.SampleLight(pos.X, pos.Y)
-		sensory.LightLevel = sensorWeightedIntensity(cells, org.Heading, -math.Pi/2, rawLight)
-	} else {
-		sensory.LightLevel = 0.5
-	}
+	// Light level
+	sensory.LightLevel = lightLevel
 
 	// Flow field
 	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 	sensory.FlowX = flowX
 	sensory.FlowY = flowY
 
-	// Terrain sensing - detect nearby walls/obstacles
+	// Terrain sensing (kept for Phase 5 pathfinding transition)
 	if s.terrain != nil {
 		terrainDist := s.terrain.DistanceToSolid(pos.X, pos.Y)
-		// Consider terrain "found" if within effective perception radius
 		if terrainDist < effectiveRadius {
 			sensory.TerrainFound = true
 			sensory.TerrainDistance = terrainDist
 
-			// Get gradient (direction away from terrain) and convert to heading-relative
 			gx, gy := s.terrain.GetGradient(pos.X, pos.Y)
-
-			// Rotate gradient into heading-relative coordinates
-			// If heading is 0 (facing right), gradient stays as-is
-			// If heading is Pi/2 (facing down), we rotate gradient -Pi/2
 			cosH := float32(math.Cos(float64(-org.Heading)))
 			sinH := float32(math.Sin(float64(-org.Heading)))
 			sensory.TerrainGradientX = gx*cosH - gy*sinH
@@ -242,6 +247,113 @@ func (s *BehaviorSystem) getBrainOutputs(
 	}
 
 	return neural.DecodeOutputs(rawOutputs)
+}
+
+// buildSensorCells extracts sensor cell data for vision weighting.
+func buildSensorCells(cells *components.CellBuffer) []neural.SensorCell {
+	if cells == nil {
+		return nil
+	}
+
+	var sensorCells []neural.SensorCell
+	for i := uint8(0); i < cells.Count; i++ {
+		cell := &cells.Cells[i]
+		if !cell.Alive {
+			continue
+		}
+		strength := cell.GetSensorStrength()
+		if strength > 0 {
+			sensorCells = append(sensorCells, neural.SensorCell{
+				GridX:    cell.GridX,
+				GridY:    cell.GridY,
+				Strength: strength,
+			})
+		}
+	}
+	return sensorCells
+}
+
+// buildEntityList creates the entity info list for polar vision scanning.
+func (s *BehaviorSystem) buildEntityList(
+	pos *components.Position,
+	org *components.Organism,
+	effectiveRadius float32,
+	floraPos, faunaPos []components.Position,
+	floraOrgs, faunaOrgs []*components.Organism,
+	grid *SpatialGrid,
+) []neural.EntityInfo {
+	var entities []neural.EntityInfo
+
+	// Add nearby flora
+	nearbyFlora := grid.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
+	for _, i := range nearbyFlora {
+		if floraOrgs[i].Dead {
+			continue
+		}
+		// Check line of sight
+		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y) {
+			continue
+		}
+		entities = append(entities, neural.EntityInfo{
+			X:               floraPos[i].X,
+			Y:               floraPos[i].Y,
+			Composition:     1.0, // Flora is pure photosynthetic
+			DigestiveSpec:   0.0, // Flora doesn't eat
+			StructuralArmor: 0.1, // Standard flora armor
+			GeneticDistance: -1,  // No genetic comparison with flora
+			IsFlora:         true,
+		})
+	}
+
+	// Add nearby fauna
+	nearbyFauna := grid.GetNearbyFauna(pos.X, pos.Y, effectiveRadius*1.5) // Extended range for threats
+	for _, i := range nearbyFauna {
+		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
+			continue
+		}
+		// Check line of sight
+		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
+			continue
+		}
+
+		other := faunaOrgs[i]
+
+		// Estimate other organism's capabilities from traits
+		// (In full model, we'd access their cells)
+		var theirDigestive float32 = 0.5
+		if other.Traits.Has(traits.Carnivore) {
+			theirDigestive = 0.85
+		} else if other.Traits.Has(traits.Herbivore) {
+			theirDigestive = 0.15
+		}
+
+		// Estimate composition (fauna have low photo, high actuator)
+		var theirComposition float32 = 0.0
+
+		// Estimate armor (simplified - could be enhanced with cell access)
+		var theirArmor float32 = 0.0
+
+		// Calculate genetic distance for friend channel
+		// Use trait similarity as a proxy for genetic distance
+		// Same diet type = more similar = lower distance
+		var geneticDistance float32 = 2.0 // Default: somewhat different
+		if org.Traits.Has(traits.Carnivore) == other.Traits.Has(traits.Carnivore) &&
+			org.Traits.Has(traits.Herbivore) == other.Traits.Has(traits.Herbivore) {
+			geneticDistance = 0.5 // Same diet type = more similar
+		}
+
+		entities = append(entities, neural.EntityInfo{
+			X:               faunaPos[i].X,
+			Y:               faunaPos[i].Y,
+			Composition:     theirComposition,
+			DigestiveSpec:   theirDigestive,
+			StructuralArmor: theirArmor,
+			GeneticDistance: geneticDistance,
+			IsFlora:         false,
+		})
+	}
+
+	return entities
 }
 
 // findMate finds a compatible mate for breeding.

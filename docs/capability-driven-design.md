@@ -468,7 +468,7 @@ Parameter defaults:
 
 ## Migration Path
 
-### Phase 1: Cell Type Expansion
+### Phase 1: Cell Type Expansion (implemented)
 - Expand CPPN outputs for new cell types and multi-functional cell weighting
 - Add new cell properties (mouth/digestive/photosynthetic/structural/storage/reproductive)
 - Update energy capacity and actuation/sensing to use new cell weights
@@ -482,7 +482,7 @@ Test (programmatic):
 - Validate new cell fields populate in morphology generation (non-zero for expected CPPN outputs)
 - Snapshot test for morphology viability rules (at least one sensor/actuator)
 
-### Phase 2: Capability Matching + Feeding
+### Phase 2: Capability Matching + Feeding (implemented)
 - Implement composition/edibility/penetration functions
 - Replace trait-based feeding and threat checks
 - Align flora entities with composition (photo=1, actuator=0)
@@ -496,7 +496,7 @@ Test (programmatic):
 - Feeding integration test: mock predator/prey with known composition/armor and assert energy transfer
 - Threat detection test: verify food/threat classification flips when swapping digestive/composition
 
-### Phase 3: Polar Vision
+### Phase 3: Polar Vision (implemented)
 - Implement 4-cone × 3-channel perception (food/threat/friend)
 - Replace old nearest-target sensory queries
 - Use capability matching for cone relevance
@@ -509,6 +509,16 @@ Test (programmatic):
 - Unit test cone binning: entities in each quadrant contribute to correct cone only
 - Unit test intensity falloff vs distance and light modifier
 - Sensor weighting test: sensors aligned to a cone increase that cone’s output
+
+### Phase 3b: Light Awareness (Directional + Ambient)
+- Keep ambient `light_level` scalar input (context)
+- Add optional derived light gradients from the 4 cones:
+  - `light_fb = (front - back) / (front + back + epsilon)`
+  - `light_lr = (right - left) / (right + left + epsilon)`
+
+Test (programmatic):
+- Derived light gradients are zero when illumination is uniform
+- Gradients are signed correctly for a directional light source
 
 ### Phase 4: New Brain I/O
 - Switch to 15 inputs, 5 outputs (desire angle/distance + eat/grow/breed)
@@ -525,6 +535,13 @@ Test (programmatic):
 - Decode test for desire angle/distance normalization
 - End-to-end brain tick test with fixed inputs produces 5 outputs in range
 
+### Phase 4b: Terrain Awareness Scalar
+- Add `openness` input (local free space around organism)
+- Keep feedforward only; do not add recurrence yet
+
+Test (programmatic):
+- `openness` is 1.0 in clear open space, approaches 0 near dense terrain
+
 ### Phase 5: Pathfinding Layer
 - Implement potential-field navigation from desire vector
 - Insert between brain and actuators
@@ -538,6 +555,13 @@ Test (programmatic):
 - Pathfinding unit tests on synthetic terrain (attraction vs repulsion)
 - Regression test: with no terrain, pathfinding follows desire vector
 - Collision avoidance test: agent does not intersect solid cells under repeated updates
+
+### Phase 5b: Bioluminescence Vision Rule
+- Emitted light contributes to vision intensity
+- Self-emitted light does not contribute to photosynthesis
+
+Test (programmatic):
+- Photosynthesis does not increase when only self light is present
 
 ### Phase 6: Reproduction Spectrum
 - Replace gender and mating checks with reproductive_mode spectrum
@@ -567,6 +591,10 @@ Test (programmatic):
 - Floating flora drift test: position changes with flow; bounded by world
 - Feeding integration test: fauna can consume flora entities via capability matching
 
+### Phase 7b: Flora Evolution Deferred
+- Keep flora static/procedural until feeding dynamics are stable
+- Revisit evolving flora only after stability benchmarks are met
+
 ### Phase 8: Cleanup
 - Remove trait system
 - Remove old brain code and inputs
@@ -582,23 +610,24 @@ Test (programmatic):
 
 ---
 
-## Open Questions
+## Decisions
 
-1. **Disease**: Keep as a mechanic? Could spread between organisms in contact.
+1. **Disease**: Disabled by default. Keep as an optional system for later (too destabilizing during core ecology tuning).
 
-2. **Terrain awareness**: Add back as simple scalar if behaviors too dumb?
-   - `openness`: free space around organism
-   - `nearest_cover`: distance to hiding spots
+2. **Terrain awareness**: Add a single scalar input `openness` (local free space). Skip `nearest_cover` until needed.
 
-3. **Memory/state**: Should brain have recurrent connections? Or keep feedforward?
+3. **Memory/state**: Keep feedforward brains initially. Add recurrence only if behaviors need temporal context.
 
-4. **Cone count**: 4 cones enough? Or 6/8 for finer directional resolution?
+4. **Cone count**: Keep 4 cones. If directional resolution is too coarse, add derived gradient inputs
+   (`front-back`, `left-right`) before increasing cone count.
 
-5. **Flora evolution**: Do photosynthetic organisms evolve too? Or static?
+5. **Flora evolution**: Flora remain static/lightweight at first. Consider evolving flora only after
+   feeding loops and balance stabilize.
 
-6. **Bioluminescence interaction**: How does emitted light affect nearby organisms' vision?
+6. **Bioluminescence interaction**: Emitted light affects vision, but self-emitted light does not
+   contribute to photosynthesis (prevents energy loops).
 
-7. **Structural armor**: Does it also slow movement? Energy cost to maintain?
+7. **Structural armor**: Yes, armor adds movement drag and metabolic cost (see Structural/Storage Costs).
 
 ---
 
