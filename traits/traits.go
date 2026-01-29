@@ -11,25 +11,9 @@ const (
 	Carnivore                   // Eats fauna
 	Carrion                     // Eats dead organisms
 
-	// Behavior traits
-	Herding  // Flocks with similar organisms
-	Breeding // Can reproduce sexually
-
 	// Flora-specific traits
 	Rooted   // Anchored to bottom
 	Floating // Drifts in space
-
-	// Vision traits (fauna only)
-	PredatorEyes // Narrow forward vision (90 deg), longer range
-	PreyEyes     // Wide peripheral vision (270 deg), shorter range
-	FarSight     // Increased perception radius
-
-	// Physical traits (fauna only)
-	Speed // Faster movement, overcomes size penalty
-
-	// Light sensitivity traits (fauna only)
-	Photophilic // Seeks light, thrives in bright areas
-	Photophobic // Avoids light, thrives in shadows
 
 	// Gender (for breeding)
 	Male
@@ -81,24 +65,16 @@ func IsOmnivore(t Trait) bool {
 var FloraOnlyTraits = Flora | Rooted | Floating
 
 // FaunaOnlyTraits are traits that only apply to fauna.
-var FaunaOnlyTraits = Herbivore | Carnivore | Carrion | Herding | Breeding | PredatorEyes | PreyEyes | FarSight | Speed | Photophilic | Photophobic
+var FaunaOnlyTraits = Herbivore | Carnivore | Carrion
 
 // TraitWeights for random selection (higher = more common).
 var TraitWeights = map[Trait]float32{
-	Flora:        0.15,
-	Herbivore:    0.25,
-	Carnivore:    0.08,
-	Carrion:      0.12,
-	Herding:      0.15,
-	Breeding:     0.10,
-	Rooted:       0.05,
-	Floating:     0.03,
-	PredatorEyes: 0.06,
-	PreyEyes:     0.08,
-	FarSight:     0.05,
-	Speed:        0.06,
-	Photophilic:  0.08,
-	Photophobic:  0.08,
+	Flora:     0.15,
+	Herbivore: 0.25,
+	Carnivore: 0.08,
+	Carrion:   0.12,
+	Rooted:    0.05,
+	Floating:  0.03,
 }
 
 // MutationWeights for random mutation selection.
@@ -109,35 +85,6 @@ var MutationWeights = map[Mutation]float32{
 	Splitting: 0.02,
 }
 
-// VisionParams holds vision parameters.
-type VisionParams struct {
-	FOV             float32 // Field of view in radians
-	RangeMultiplier float32 // Perception radius multiplier
-}
-
-// GetVisionParams returns vision parameters based on traits.
-func GetVisionParams(t Trait) VisionParams {
-	const Pi = 3.14159265358979323846
-
-	params := VisionParams{
-		FOV:             Pi, // Default 180 degrees
-		RangeMultiplier: 1.0,
-	}
-
-	if t.Has(PredatorEyes) {
-		params.FOV = Pi / 2         // 90 degree narrow cone
-		params.RangeMultiplier = 1.5 // See further forward
-	} else if t.Has(PreyEyes) {
-		params.FOV = Pi * 1.5       // 270 degree wide vision
-		params.RangeMultiplier = 0.7 // Shorter range but wider
-	}
-
-	if t.Has(FarSight) {
-		params.RangeMultiplier *= 1.5
-	}
-
-	return params
-}
 
 // TraitNames returns human-readable names for traits.
 func TraitNames(t Trait) []string {
@@ -154,35 +101,11 @@ func TraitNames(t Trait) []string {
 	if t.Has(Carrion) {
 		names = append(names, "Carrion")
 	}
-	if t.Has(Herding) {
-		names = append(names, "Herding")
-	}
-	if t.Has(Breeding) {
-		names = append(names, "Breeding")
-	}
 	if t.Has(Rooted) {
 		names = append(names, "Rooted")
 	}
 	if t.Has(Floating) {
 		names = append(names, "Floating")
-	}
-	if t.Has(PredatorEyes) {
-		names = append(names, "Predator Eyes")
-	}
-	if t.Has(PreyEyes) {
-		names = append(names, "Prey Eyes")
-	}
-	if t.Has(FarSight) {
-		names = append(names, "Far Sight")
-	}
-	if t.Has(Speed) {
-		names = append(names, "Speed")
-	}
-	if t.Has(Photophilic) {
-		names = append(names, "Photophilic")
-	}
-	if t.Has(Photophobic) {
-		names = append(names, "Photophobic")
 	}
 	if t.Has(Male) {
 		names = append(names, "Male")

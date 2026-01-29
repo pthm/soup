@@ -11,11 +11,15 @@ import (
 const BrainInputs = 14
 
 // BrainOutputs is the number of outputs from the brain network.
-// Outputs: SeekFood, Flee, SeekMate, Herd, Wander, Grow, Breed, Conserve, Speed
-const BrainOutputs = 9
+// Outputs: Turn, Thrust, Eat, Mate (direct control)
+const BrainOutputs = 4
 
-// CPPNInputs is the number of inputs to the CPPN (x, y, d, a, bias).
-const CPPNInputs = 5
+// CPPNInputs is the number of inputs to the CPPN.
+// Inputs: x, y, d, a, sin(d*Pi), cos(d*Pi), sin(a*2), bias
+const CPPNInputs = 8
+
+// InitialMaxCells constrains generation-0 organisms to small sizes.
+const InitialMaxCells = 4
 
 // CPPNOutputs is the number of outputs from the CPPN (presence, diet, traits, priority).
 const CPPNOutputs = 4
@@ -29,9 +33,11 @@ type Config struct {
 
 // CPPNConfig holds CPPN-specific settings.
 type CPPNConfig struct {
-	GridSize      int     `yaml:"grid_size"`
-	MaxCells      int     `yaml:"max_cells"`
-	CellThreshold float64 `yaml:"cell_threshold"`
+	GridSize        int     `yaml:"grid_size"`
+	MaxCells        int     `yaml:"max_cells"`
+	MinCells        int     `yaml:"min_cells"`
+	CellThreshold   float64 `yaml:"cell_threshold"`
+	EnforceSymmetry bool    `yaml:"enforce_symmetry"`
 }
 
 // BrainConfig holds brain network settings.
@@ -46,9 +52,11 @@ func DefaultConfig() *Config {
 	return &Config{
 		NEAT: DefaultNEATOptions(),
 		CPPN: CPPNConfig{
-			GridSize:      8,
-			MaxCells:      32,
-			CellThreshold: 0.0,
+			GridSize:        8,
+			MaxCells:        16,
+			MinCells:        1,
+			CellThreshold:   0.3,
+			EnforceSymmetry: false,
 		},
 		Brain: BrainConfig{
 			Inputs:                BrainInputs,
@@ -85,11 +93,11 @@ func DefaultNEATOptions() *neat.Options {
 		MateOnlyProb:          0.2,
 		RecurOnlyProb:         0.0,
 
-		// Speciation
-		CompatThreshold: 2.3,
+		// Speciation - Lower threshold for more species diversity
+		CompatThreshold: 1.0,
 		DisjointCoeff:   1.0,
 		ExcessCoeff:     1.0,
-		MutdiffCoeff:    0.4,
+		MutdiffCoeff:    0.6,
 
 		// Species management
 		DropOffAge:      15,

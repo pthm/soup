@@ -97,10 +97,6 @@ func (s *AllocationSystem) calculateTargetCells(org *components.Organism, curren
 			baseTarget = 4
 		}
 
-		// Speed trait prefers smaller size
-		if org.Traits.Has(traits.Speed) {
-			baseTarget = max(baseTarget-1, 2)
-		}
 	}
 
 	return uint8(min(baseTarget, 10))
@@ -123,8 +119,8 @@ func (s *AllocationSystem) determineMode(
 		return components.ModeSurvive
 	}
 
-	// For fauna with breeding capability
-	canBreed := org.Traits.Has(traits.Breeding) && org.BreedingCooldown == 0
+	// For fauna with breeding capability (all fauna can breed, just need cooldown)
+	canBreed := !isFlora && org.BreedingCooldown == 0
 
 	// BREED mode: healthy, at target size, and can breed
 	if !isFlora && canBreed && cellCount >= targetCells && energyRatio > 0.5 {

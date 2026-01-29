@@ -71,11 +71,6 @@ func (s *EnergySystem) Update(w *ecs.World) {
 
 		energyDrain = baseDrain
 
-		// Speed trait still provides boost
-		if org.Traits.Has(traits.Speed) {
-			baseSpeed = float32(max(float64(baseSpeed), 1.8))
-		}
-
 		// Rage mutation gives speed boost but drains energy
 		if hasRage {
 			energyDrain += 0.03

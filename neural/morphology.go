@@ -20,11 +20,8 @@ type CellSpec struct {
 
 // MorphologyResult holds the output of CPPN morphology generation.
 type MorphologyResult struct {
-	Cells       []CellSpec // Cell positions and properties
-	DietBias    float32    // Average diet bias across all cells
-	SpeedTrait  bool       // Whether organism should have speed trait
-	HerdTrait   bool       // Whether organism should have herding trait
-	VisionTrait bool       // Whether organism should have far sight trait
+	Cells    []CellSpec // Cell positions and properties
+	DietBias float32    // Average diet bias across all cells
 }
 
 // candidate holds intermediate data during morphology generation.
@@ -66,8 +63,17 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 			d := math.Sqrt(x*x + y*y)
 			a := math.Atan2(y, x)
 
-			// CPPN inputs: x, y, distance, angle, bias
-			inputs := []float64{x, y, d, a, 1.0}
+			// Enhanced CPPN inputs: x, y, d, a, sin(d*Pi), cos(d*Pi), sin(a*2), bias
+			inputs := []float64{
+				x,
+				y,
+				d,
+				a,
+				math.Sin(d * math.Pi), // Radial wave
+				math.Cos(d * math.Pi), // Radial wave offset
+				math.Sin(a * 2),       // Angular wave (bilateral pattern)
+				1.0,                   // Bias
+			}
 
 			if err := phenotype.LoadSensors(inputs); err != nil {
 				continue
@@ -133,7 +139,7 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 		Cells: make([]CellSpec, len(candidates)),
 	}
 
-	var totalDiet, totalTraits float64
+	var totalDiet float64
 	for i, c := range candidates {
 		result.Cells[i] = CellSpec{
 			GridX:    c.gridX,
@@ -141,20 +147,11 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 			DietBias: float32(c.diet),
 		}
 		totalDiet += c.diet
-		totalTraits += c.traits
 	}
 
 	// Calculate averages
 	n := float64(len(candidates))
 	result.DietBias = float32(totalDiet / n)
-	avgTraits := totalTraits / n
-
-	// Decode trait flags from average traits output
-	// Traits output is in [-1, 1] range (tanh)
-	// Map different regions to different traits
-	result.SpeedTrait = avgTraits > 0.3
-	result.HerdTrait = avgTraits > -0.3 && avgTraits < 0.5
-	result.VisionTrait = avgTraits < -0.2
 
 	return result, nil
 }

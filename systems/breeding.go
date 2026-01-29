@@ -114,8 +114,8 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 }
 
 func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
-	// Must have Breeding trait
-	if !org.Traits.Has(traits.Breeding) {
+	// Check mate intent from brain (>0.5 means try to mate)
+	if org.MateIntent < 0.5 {
 		return false
 	}
 
@@ -271,19 +271,14 @@ func (s *BreedingSystem) breedNeural(
 func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {
 	var result traits.Trait
 
-	// Inheritable traits (50% from each parent)
-	inheritableTraits := []traits.Trait{
+	// Inheritable diet traits (50% from each parent)
+	dietTraits := []traits.Trait{
 		traits.Herbivore,
 		traits.Carnivore,
 		traits.Carrion,
-		traits.Herding,
-		traits.PredatorEyes,
-		traits.PreyEyes,
-		traits.FarSight,
-		traits.Speed,
 	}
 
-	for _, t := range inheritableTraits {
+	for _, t := range dietTraits {
 		// 50% chance to inherit if either parent has it
 		if (a.Has(t) || b.Has(t)) && rand.Float32() < 0.5 {
 			result = result.Add(t)
@@ -312,23 +307,15 @@ func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {
 		}
 	}
 
-	// Always gets Breeding trait (gender will be assigned in createOrganism)
-	result = result.Add(traits.Breeding)
-
 	return result
 }
 
 func countSharedTraits(a, b traits.Trait) int {
-	// Traits to check (excluding gender and breeding)
+	// Traits to check (diet only)
 	checkTraits := []traits.Trait{
 		traits.Herbivore,
 		traits.Carnivore,
 		traits.Carrion,
-		traits.Herding,
-		traits.PredatorEyes,
-		traits.PreyEyes,
-		traits.FarSight,
-		traits.Speed,
 	}
 
 	count := 0

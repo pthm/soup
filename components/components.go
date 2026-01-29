@@ -56,6 +56,10 @@ type Organism struct {
 	DeadTime          int32        // Ticks since death (for decomposition/removal)
 	ShapeMetrics      ShapeMetrics // Physical shape characteristics
 	ActiveThrust      float32      // Thrust magnitude this tick (for energy cost)
+	EatIntent         float32      // Brain output: 0-1, >0.5 means try to eat
+	MateIntent        float32      // Brain output: 0-1, >0.5 means try to mate
+	TurnOutput        float32      // Brain output: -1 to +1, current turn output
+	ThrustOutput      float32      // Brain output: 0 to 1, current thrust output
 }
 
 // Cell represents a single cell within an organism.
@@ -73,13 +77,13 @@ type Cell struct {
 // CellBuffer holds the cells of an organism.
 // Using a fixed-size array for better cache locality.
 type CellBuffer struct {
-	Cells [32]Cell
+	Cells [16]Cell
 	Count uint8
 }
 
 // AddCell adds a cell to the buffer.
 func (cb *CellBuffer) AddCell(c Cell) bool {
-	if cb.Count >= 32 {
+	if cb.Count >= 16 {
 		return false
 	}
 	cb.Cells[cb.Count] = c

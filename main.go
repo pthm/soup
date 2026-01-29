@@ -12,6 +12,8 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/mlange-42/ark/ecs"
+	"github.com/yaricom/goNEAT/v4/neat/genetics"
+	"github.com/yaricom/goNEAT/v4/neat/network"
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
@@ -126,6 +128,10 @@ type Game struct {
 	// Display settings
 	showSpeciesColors bool // Toggle species coloring with 'S' key
 	showNeuralStats   bool // Toggle neural stats panel with 'N' key
+
+	// Selection state
+	selectedEntity ecs.Entity
+	hasSelection   bool
 
 	// Mappers for creating entities with components
 	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
@@ -305,22 +311,20 @@ func (g *Game) seedUniverse() {
 
 	// Create herbivores with neural brains (CPPN morphology + evolved behavior)
 	for i := 0; i < 50; i++ {
-		t := traits.Herbivore | traits.Breeding
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			t,
+			traits.Herbivore,
 			100,
 		)
 	}
 
 	// Create carnivores with neural brains
 	for i := 0; i < 20; i++ {
-		t := traits.Carnivore | traits.Breeding
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			t,
+			traits.Carnivore,
 			120,
 		)
 	}
@@ -330,15 +334,15 @@ func (g *Game) seedUniverse() {
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carrion|traits.Breeding,
+			traits.Carrion,
 			80,
 		)
 	}
 }
 
 func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.Entity {
-	// Assign gender if breeding
-	if t.Has(traits.Breeding) {
+	// Assign gender if fauna (all fauna can breed)
+	if traits.IsFauna(t) {
 		if rand.Float32() > 0.5 {
 			t = t.Add(traits.Male)
 		} else {
@@ -389,8 +393,8 @@ func (g *Game) createOrganism(x, y float32, t traits.Trait, energy float32) ecs.
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
 func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain) ecs.Entity {
-	// Assign gender if breeding
-	if t.Has(traits.Breeding) {
+	// Assign gender if fauna (all fauna can breed)
+	if traits.IsFauna(t) {
 		if rand.Float32() > 0.5 {
 			t = t.Add(traits.Male)
 		} else {
@@ -416,16 +420,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		}
 	}
 
-	// Apply morphology-derived traits
-	if morph.SpeedTrait {
-		t = t.Add(traits.Speed)
-	}
-	if morph.HerdTrait {
-		t = t.Add(traits.Herding)
-	}
-	if morph.VisionTrait {
-		t = t.Add(traits.FarSight)
-	}
+	// Morphology-derived traits are simplified - only diet matters now
 
 	// Adjust diet traits based on morphology (if not already set)
 	if !t.Has(traits.Herbivore) && !t.Has(traits.Carnivore) && !t.Has(traits.Carrion) {
@@ -531,6 +526,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 
 // createInitialNeuralOrganism creates a new neural organism with fresh genomes.
 // This is used during seeding to create the initial neural population.
+// Initial organisms are constrained to 1-4 cells for easier evolution.
 func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait, energy float32) ecs.Entity {
 	// Create fresh genome pair
 	bodyGenome, brainGenome := neural.CreateInitialGenomePair(g.genomeIDGen, g.neuralConfig.Brain.InitialConnectionProb)
@@ -554,7 +550,110 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 		Controller: brainController,
 	}
 
-	return g.createNeuralOrganism(x, y, baseTrait, energy, neuralGenome, brain)
+	return g.createNeuralOrganismConstrained(x, y, baseTrait, energy, neuralGenome, brain, neural.InitialMaxCells)
+}
+
+// createNeuralOrganismConstrained creates a neural organism with cell count constraint.
+func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain, maxCells int) ecs.Entity {
+	// Assign gender if fauna (all fauna can breed)
+	if traits.IsFauna(t) {
+		if rand.Float32() > 0.5 {
+			t = t.Add(traits.Male)
+		} else {
+			t = t.Add(traits.Female)
+		}
+	}
+
+	// Generate morphology from CPPN with constrained cell count
+	var morph neural.MorphologyResult
+	if neuralGenome != nil && neuralGenome.BodyGenome != nil {
+		var err error
+		morph, err = neural.GenerateMorphology(neuralGenome.BodyGenome, maxCells, g.neuralConfig.CPPN.CellThreshold)
+		if err != nil {
+			// Fallback to single cell
+			morph = neural.MorphologyResult{
+				Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+			}
+		}
+	} else {
+		// No CPPN genome, single cell fallback
+		morph = neural.MorphologyResult{
+			Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+		}
+	}
+
+	// Adjust diet traits based on morphology (if not already set)
+	if !t.Has(traits.Herbivore) && !t.Has(traits.Carnivore) && !t.Has(traits.Carrion) {
+		if morph.IsCarnivore() {
+			t = t.Add(traits.Carnivore)
+		} else if morph.IsHerbivore() {
+			t = t.Add(traits.Herbivore)
+		} else {
+			// Omnivore - add both
+			t = t.Add(traits.Herbivore)
+		}
+	}
+
+	// Calculate max energy based on cell count
+	cellCount := morph.CellCount()
+	maxEnergy := float32(100 + cellCount*50)
+
+	pos := &components.Position{X: x, Y: y}
+	vel := &components.Velocity{X: 0, Y: 0}
+	org := &components.Organism{
+		Traits:           t,
+		Energy:           energy,
+		MaxEnergy:        maxEnergy,
+		CellSize:         5,
+		MaxSpeed:         1.5,
+		MaxForce:         0.1,
+		PerceptionRadius: 60,
+		Heading:          rand.Float32() * 3.14159 * 2,
+		GrowthInterval:   200,
+		SporeInterval:    400,
+		BreedingCooldown: 300,
+		TargetCells:      uint8(cellCount),
+		EatIntent:        0.5,
+		MateIntent:       0.3,
+	}
+
+	// Create cells from morphology
+	cells := &components.CellBuffer{Count: 0}
+	for _, cellSpec := range morph.Cells {
+		cell := components.Cell{
+			GridX:  cellSpec.GridX,
+			GridY:  cellSpec.GridY,
+			Age:    0,
+			MaxAge: 3000 + rand.Int31n(1000),
+			Trait:  t,
+			Alive:  true,
+		}
+		cells.AddCell(cell)
+	}
+
+	// Calculate shape metrics from morphology
+	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+
+	// Create entity
+	var entity ecs.Entity
+	if traits.IsFlora(t) {
+		entity = g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
+	} else {
+		entity = g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
+	}
+
+	// Add neural components
+	g.neuralGenomeMap.Add(entity, neuralGenome)
+	g.brainMap.Add(entity, brain)
+
+	// Register with species manager
+	if neuralGenome.BrainGenome != nil && g.speciesManager != nil {
+		speciesID := g.speciesManager.AssignSpecies(neuralGenome.BrainGenome)
+		neuralGenome.SpeciesID = speciesID
+		g.speciesManager.AddMember(speciesID, int(entity.ID()))
+	}
+
+	return entity
 }
 
 func (g *Game) Update() {
@@ -573,10 +672,22 @@ func (g *Game) Update() {
 		}
 	}
 
-	// Add organisms on click
+	// Left-click: select organism (or Shift+click to spawn herbivore)
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-		pos := rl.GetMousePosition()
-		g.createOrganism(pos.X, pos.Y, traits.Herbivore|traits.Breeding, 100)
+		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
+			// Shift+click: spawn herbivore (old behavior)
+			pos := rl.GetMousePosition()
+			g.createOrganism(pos.X, pos.Y, traits.Herbivore, 100)
+		} else {
+			// Regular click: select organism
+			entity, found := g.findOrganismAtClick()
+			if found {
+				g.selectedEntity = entity
+				g.hasSelection = true
+			} else {
+				g.hasSelection = false
+			}
+		}
 	}
 	if rl.IsKeyPressed(rl.KeyF) {
 		g.createOrganism(
@@ -590,7 +701,7 @@ func (g *Game) Update() {
 		g.createOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carnivore|traits.Breeding,
+			traits.Carnivore,
 			120,
 		)
 	}
@@ -889,11 +1000,13 @@ func (g *Game) logWorldState() {
 	logf("Dead: %d, Spores: %d, Particles: %d",
 		deadCount, g.spores.Count(), g.particles.Count())
 
-	// Count breeding-eligible fauna and trait diversity
+	// Count breeding-eligible fauna
 	breedingEligible := 0
 	var modeGrow, modeBreed, modeSurvive, modeStore int
-	var withSpeed, withHerding, withFarSight, omnivores int
-	var withPredatorEyes, withPreyEyes int
+	var omnivores int
+	var drifters, generalists, apex int
+	var totalStreamlining, totalDrag float32
+	var shapeCount int
 	query2 := g.allOrgFilter.Query()
 	for query2.Next() {
 		_, _, org, cells := query2.Get()
@@ -911,48 +1024,13 @@ func (g *Game) logWorldState() {
 		case components.ModeStore:
 			modeStore++
 		}
-		// Count trait diversity
-		if org.Traits.Has(traits.Speed) {
-			withSpeed++
-		}
-		if org.Traits.Has(traits.Herding) {
-			withHerding++
-		}
-		if org.Traits.Has(traits.FarSight) {
-			withFarSight++
-		}
-		if org.Traits.Has(traits.PredatorEyes) {
-			withPredatorEyes++
-		}
-		if org.Traits.Has(traits.PreyEyes) {
-			withPreyEyes++
-		}
 		if traits.IsOmnivore(org.Traits) {
 			omnivores++
 		}
-		if org.Traits.Has(traits.Breeding) && org.AllocationMode == components.ModeBreed && org.Energy >= org.MaxEnergy*0.35 && cells.Count >= 1 && org.BreedingCooldown == 0 {
+		if org.AllocationMode == components.ModeBreed && org.Energy >= org.MaxEnergy*0.35 && cells.Count >= 1 && org.BreedingCooldown == 0 {
 			breedingEligible++
 		}
-	}
-
-	// Count light sensitivity traits and shape metrics
-	var photophilic, photophobic int
-	var drifters, generalists, apex int
-	var totalStreamlining, totalDrag float32
-	var shapeCount int
-	query3 := g.allOrgFilter.Query()
-	for query3.Next() {
-		_, _, org, cells := query3.Get()
-		if org.Dead || traits.IsFlora(org.Traits) {
-			continue
-		}
-		if org.Traits.Has(traits.Photophilic) {
-			photophilic++
-		}
-		if org.Traits.Has(traits.Photophobic) {
-			photophobic++
-		}
-		// Count organism classes
+		// Count organism classes by size
 		cellCount := int(cells.Count)
 		switch {
 		case cellCount <= 3:
@@ -977,9 +1055,7 @@ func (g *Game) logWorldState() {
 
 	logf("Breeding eligible: %d", breedingEligible)
 	logf("Modes: Grow=%d, Breed=%d, Survive=%d, Store=%d", modeGrow, modeBreed, modeSurvive, modeStore)
-	logf("Traits: Speed=%d, Herding=%d, FarSight=%d, PredEyes=%d, PreyEyes=%d, Omnivore=%d",
-		withSpeed, withHerding, withFarSight, withPredatorEyes, withPreyEyes, omnivores)
-	logf("Light: Photophilic=%d, Photophobic=%d (Sun: %.2f)", photophilic, photophobic, g.light.PosX)
+	logf("Omnivores: %d", omnivores)
 	logf("Classes: Drifters=%d, Generalists=%d, Apex=%d | Shape: Streamlining=%.2f, Drag=%.2f",
 		drifters, generalists, apex, avgStreamlining, avgDrag)
 	logf("")
@@ -1461,36 +1537,17 @@ func pickFloraTraitWeighted() traits.Trait {
 }
 
 func pickFaunaTraitWeighted() traits.Trait {
-	// Use weighted selection from traits package + diet evolution
-	// This allows organisms to evolve new capabilities through growth
+	// Simplified: only diet traits can evolve through growth
 	r := rand.Float32()
 	total := float32(0)
 
-	// Fauna-compatible traits with weights (allows diet evolution for diversity)
 	weights := []struct {
 		t traits.Trait
 		w float32
 	}{
-		// Behavior traits (common)
-		{traits.Herding, 0.10},
-		{traits.Breeding, 0.06},
-
-		// Vision traits (moderate)
-		{traits.PreyEyes, 0.05},
-		{traits.PredatorEyes, 0.04},
-		{traits.FarSight, 0.04},
-
-		// Physical traits
-		{traits.Speed, 0.05},
-
-		// Light sensitivity (creates habitat preferences)
-		{traits.Photophilic, 0.06}, // Prefers bright areas
-		{traits.Photophobic, 0.06}, // Prefers shadows
-
-		// Diet evolution (rare but important for diversity)
-		{traits.Herbivore, 0.03}, // Can become omnivore
-		{traits.Carnivore, 0.02}, // Can become predator
-		{traits.Carrion, 0.04},   // Can become scavenger
+		{traits.Herbivore, 0.05}, // Can become omnivore
+		{traits.Carnivore, 0.03}, // Can become predator
+		{traits.Carrion, 0.05},   // Can become scavenger
 	}
 
 	for _, w := range weights {
@@ -1500,7 +1557,7 @@ func pickFaunaTraitWeighted() traits.Trait {
 		}
 	}
 
-	// ~52% chance of no trait (simple growth)
+	// ~87% chance of no trait (simple growth)
 	return 0
 }
 
@@ -1608,6 +1665,9 @@ func (g *Game) Draw() {
 		g.drawOrganism(entity, pos, org, cells)
 	}
 
+	// Draw selection indicator (after organisms, before UI)
+	g.drawSelectionIndicator()
+
 	// Draw spores
 	g.drawSpores()
 
@@ -1625,8 +1685,12 @@ func (g *Game) Draw() {
 		g.drawNeuralStats()
 	}
 
-	// Draw tooltip for hovered organism
-	g.drawTooltip()
+	// Draw info panel when selected, or tooltip when hovering
+	if g.hasSelection {
+		g.drawInfoPanel()
+	} else {
+		g.drawTooltip()
+	}
 
 	rl.EndDrawing()
 }
@@ -1696,6 +1760,144 @@ func (g *Game) findOrganismAtMouse() *HoveredOrganism {
 	}
 
 	return closest
+}
+
+// findOrganismAtClick returns the entity under the mouse cursor, if any.
+func (g *Game) findOrganismAtClick() (ecs.Entity, bool) {
+	mousePos := rl.GetMousePosition()
+	mouseX, mouseY := mousePos.X, mousePos.Y
+
+	var closestEntity ecs.Entity
+	closestDist := float32(20.0) // Max click distance
+	found := false
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		pos, _, org, cells := query.Get()
+
+		// Calculate organism bounds
+		minX, minY := pos.X, pos.Y
+		maxX, maxY := pos.X, pos.Y
+
+		for i := uint8(0); i < cells.Count; i++ {
+			cell := &cells.Cells[i]
+			if !cell.Alive {
+				continue
+			}
+			cellX := pos.X + float32(cell.GridX)*org.CellSize
+			cellY := pos.Y + float32(cell.GridY)*org.CellSize
+			if cellX < minX {
+				minX = cellX
+			}
+			if cellX > maxX {
+				maxX = cellX
+			}
+			if cellY < minY {
+				minY = cellY
+			}
+			if cellY > maxY {
+				maxY = cellY
+			}
+		}
+
+		// Expand bounds by cell size
+		minX -= org.CellSize
+		minY -= org.CellSize
+		maxX += org.CellSize
+		maxY += org.CellSize
+
+		// Check if mouse is within bounds
+		if mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY {
+			// Calculate distance to center
+			centerX := (minX + maxX) / 2
+			centerY := (minY + maxY) / 2
+			dist := float32(math.Sqrt(float64((mouseX-centerX)*(mouseX-centerX) + (mouseY-centerY)*(mouseY-centerY))))
+
+			if dist < closestDist {
+				closestDist = dist
+				closestEntity = entity
+				found = true
+			}
+		}
+	}
+
+	return closestEntity, found
+}
+
+// drawSelectionIndicator draws a circle around the selected organism.
+func (g *Game) drawSelectionIndicator() {
+	if !g.hasSelection {
+		return
+	}
+
+	// Check if entity still exists
+	if !g.world.Alive(g.selectedEntity) {
+		g.hasSelection = false
+		return
+	}
+
+	// Get position and cells for the selected entity
+	posMap := ecs.NewMap[components.Position](g.world)
+	orgMap := ecs.NewMap[components.Organism](g.world)
+	cellMap := ecs.NewMap[components.CellBuffer](g.world)
+
+	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+		g.hasSelection = false
+		return
+	}
+
+	pos := posMap.Get(g.selectedEntity)
+	org := orgMap.Get(g.selectedEntity)
+	cells := cellMap.Get(g.selectedEntity)
+
+	// Calculate organism bounding circle
+	var minX, minY, maxX, maxY float32 = pos.X, pos.Y, pos.X, pos.Y
+
+	if cells != nil {
+		for i := uint8(0); i < cells.Count; i++ {
+			cell := &cells.Cells[i]
+			if !cell.Alive {
+				continue
+			}
+			// Rotate cell position by organism heading
+			localX := float32(cell.GridX) * org.CellSize
+			localY := float32(cell.GridY) * org.CellSize
+			cosH := float32(math.Cos(float64(org.Heading)))
+			sinH := float32(math.Sin(float64(org.Heading)))
+			rotatedX := localX*cosH - localY*sinH
+			rotatedY := localX*sinH + localY*cosH
+			cellX := pos.X + rotatedX
+			cellY := pos.Y + rotatedY
+
+			if cellX < minX {
+				minX = cellX
+			}
+			if cellX > maxX {
+				maxX = cellX
+			}
+			if cellY < minY {
+				minY = cellY
+			}
+			if cellY > maxY {
+				maxY = cellY
+			}
+		}
+	}
+
+	// Calculate center and radius
+	centerX := (minX + maxX) / 2
+	centerY := (minY + maxY) / 2
+	radius := float32(math.Sqrt(float64((maxX-minX)*(maxX-minX)+(maxY-minY)*(maxY-minY)))) / 2
+	radius += org.CellSize + 3 // Padding
+
+	// Pulsing glow effect
+	pulse := float32(math.Sin(float64(g.tick)*0.1))*0.3 + 0.7
+	alpha := uint8(255 * pulse)
+
+	// Draw selection circle
+	rl.DrawCircleLines(int32(centerX), int32(centerY), radius, rl.Color{R: 255, G: 255, B: 255, A: alpha})
+	rl.DrawCircleLines(int32(centerX), int32(centerY), radius+1, rl.Color{R: 255, G: 255, B: 255, A: alpha / 2})
 }
 
 func (g *Game) drawTooltip() {
@@ -2008,7 +2210,7 @@ func (g *Game) drawUI() {
 	}
 
 	// Controls
-	rl.DrawText("SPACE: Pause | < >: Speed | Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural Stats", 10, int32(screenHeight-25), 14, rl.Gray)
+	rl.DrawText("SPACE: Pause | < >: Speed | Click: Select | Shift+Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural", 10, int32(screenHeight-25), 14, rl.Gray)
 }
 
 func (g *Game) drawNeuralStats() {
@@ -2071,6 +2273,347 @@ func (g *Game) drawNeuralStats() {
 			rl.DrawText(text, panelX+padding+swatchSize+6, y, 12, rl.LightGray)
 			y += int32(lineHeight)
 		}
+	}
+}
+
+// drawInfoPanel draws the detailed info panel for the selected organism.
+func (g *Game) drawInfoPanel() {
+	if !g.hasSelection || !g.world.Alive(g.selectedEntity) {
+		g.hasSelection = false
+		return
+	}
+
+	// Get entity data using maps
+	posMap := ecs.NewMap[components.Position](g.world)
+	orgMap := ecs.NewMap[components.Organism](g.world)
+	cellMap := ecs.NewMap[components.CellBuffer](g.world)
+
+	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+		g.hasSelection = false
+		return
+	}
+
+	org := orgMap.Get(g.selectedEntity)
+	cells := cellMap.Get(g.selectedEntity)
+
+	// Panel position and size (right side of screen)
+	panelWidth := int32(320)
+	panelX := int32(screenWidth) - panelWidth - 10
+	panelY := int32(10)
+	padding := int32(10)
+	lineHeight := int32(16)
+
+	// Calculate panel height based on content
+	panelHeight := int32(500) // Base height, will adjust
+
+	// Draw panel background
+	rl.DrawRectangle(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 20, G: 25, B: 30, A: 240})
+	rl.DrawRectangleLines(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 60, G: 70, B: 80, A: 255})
+
+	y := panelY + padding
+
+	// === HEADER: Organism type ===
+	r, gr, b := traits.GetTraitColor(org.Traits)
+	headerColor := rl.Color{R: r, G: gr, B: b, A: 255}
+
+	var typeName string
+	if traits.IsFlora(org.Traits) {
+		typeName = "FLORA"
+	} else if org.Traits.Has(traits.Carnivore) && org.Traits.Has(traits.Herbivore) {
+		typeName = "OMNIVORE"
+	} else if org.Traits.Has(traits.Carnivore) {
+		typeName = "CARNIVORE"
+	} else if org.Traits.Has(traits.Herbivore) {
+		typeName = "HERBIVORE"
+	} else if org.Traits.Has(traits.Carrion) {
+		typeName = "SCAVENGER"
+	} else {
+		typeName = "ORGANISM"
+	}
+
+	if org.Dead {
+		typeName = "DEAD " + typeName
+		headerColor = rl.Gray
+	}
+
+	rl.DrawText(typeName, panelX+padding, y, 18, headerColor)
+	y += lineHeight + 6
+
+	// === BASIC STATS ===
+	rl.DrawText("Stats", panelX+padding, y, 14, rl.Yellow)
+	y += lineHeight
+
+	// Energy bar
+	rl.DrawText("Energy:", panelX+padding, y, 12, rl.LightGray)
+	barX := panelX + padding + 60
+	barWidth := int32(150)
+	barHeight := int32(12)
+	energyRatio := org.Energy / org.MaxEnergy
+	if energyRatio > 1 {
+		energyRatio = 1
+	}
+	rl.DrawRectangle(barX, y, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
+	barColor := rl.Color{R: 100, G: 200, B: 100, A: 255}
+	if energyRatio < 0.3 {
+		barColor = rl.Color{R: 200, G: 100, B: 100, A: 255}
+	} else if energyRatio < 0.6 {
+		barColor = rl.Color{R: 200, G: 180, B: 100, A: 255}
+	}
+	rl.DrawRectangle(barX, y, int32(float32(barWidth)*energyRatio), barHeight, barColor)
+	rl.DrawText(fmt.Sprintf("%.0f/%.0f", org.Energy, org.MaxEnergy), barX+barWidth+5, y, 12, rl.LightGray)
+	y += lineHeight
+
+	// Cell count
+	cellCount := uint8(0)
+	if cells != nil {
+		cellCount = cells.Count
+	}
+	rl.DrawText(fmt.Sprintf("Cells: %d", cellCount), panelX+padding, y, 12, rl.LightGray)
+	y += lineHeight
+
+	// Speed
+	rl.DrawText(fmt.Sprintf("Max Speed: %.2f", org.MaxSpeed), panelX+padding, y, 12, rl.LightGray)
+	y += lineHeight
+
+	// Allocation mode
+	modeNames := []string{"Survive", "Grow", "Breed", "Store"}
+	modeName := "Unknown"
+	if int(org.AllocationMode) < len(modeNames) {
+		modeName = modeNames[org.AllocationMode]
+	}
+	rl.DrawText(fmt.Sprintf("Mode: %s", modeName), panelX+padding, y, 12, rl.LightGray)
+	y += lineHeight + 6
+
+	// === TRAITS ===
+	traitNames := traits.TraitNames(org.Traits)
+	if len(traitNames) > 0 {
+		rl.DrawText("Traits", panelX+padding, y, 14, rl.Yellow)
+		y += lineHeight
+		traitText := strings.Join(traitNames, ", ")
+		rl.DrawText(traitText, panelX+padding, y, 12, rl.LightGray)
+		y += lineHeight + 6
+	}
+
+	// === NEURAL INFO ===
+	hasNeural := g.neuralGenomeMap.Has(g.selectedEntity)
+	if hasNeural {
+		neuralGenome := g.neuralGenomeMap.Get(g.selectedEntity)
+
+		rl.DrawText("Neural Network", panelX+padding, y, 14, rl.Yellow)
+		y += lineHeight
+
+		rl.DrawText(fmt.Sprintf("Species: %d", neuralGenome.SpeciesID), panelX+padding, y, 12, rl.LightGray)
+		rl.DrawText(fmt.Sprintf("Gen: %d", neuralGenome.Generation), panelX+padding+100, y, 12, rl.LightGray)
+		y += lineHeight
+
+		// Network complexity
+		if neuralGenome.BrainGenome != nil {
+			nodes := len(neuralGenome.BrainGenome.Nodes)
+			genes := len(neuralGenome.BrainGenome.Genes)
+			rl.DrawText(fmt.Sprintf("Nodes: %d  Connections: %d", nodes, genes), panelX+padding, y, 12, rl.LightGray)
+			y += lineHeight
+		}
+		y += 6
+
+		// === BRAIN OUTPUTS ===
+		rl.DrawText("Brain Outputs", panelX+padding, y, 14, rl.Yellow)
+		y += lineHeight
+
+		// Turn output (-1 to +1, centered bar)
+		g.drawCenteredBar(panelX+padding, y, "Turn", org.TurnOutput, -1, 1, panelWidth-padding*2)
+		y += lineHeight + 2
+
+		// Thrust output (0 to 1)
+		g.drawOutputBar(panelX+padding, y, "Thrust", org.ThrustOutput, panelWidth-padding*2)
+		y += lineHeight + 2
+
+		// Eat intent
+		g.drawOutputBar(panelX+padding, y, "Eat", org.EatIntent, panelWidth-padding*2)
+		y += lineHeight + 2
+
+		// Mate intent
+		g.drawOutputBar(panelX+padding, y, "Mate", org.MateIntent, panelWidth-padding*2)
+		y += lineHeight + 6
+
+		// === BRAIN NETWORK GRAPH ===
+		if neuralGenome.BrainGenome != nil {
+			rl.DrawText("Network Graph", panelX+padding, y, 14, rl.Yellow)
+			y += lineHeight + 2
+			g.drawBrainGraph(panelX+padding, y, panelWidth-padding*2, 120, neuralGenome.BrainGenome)
+			y += 120 + 6
+		}
+	}
+
+	// === SHAPE METRICS ===
+	rl.DrawText("Shape Metrics", panelX+padding, y, 14, rl.Yellow)
+	y += lineHeight
+	rl.DrawText(fmt.Sprintf("Aspect: %.2f  Stream: %.2f", org.ShapeMetrics.AspectRatio, org.ShapeMetrics.Streamlining), panelX+padding, y, 12, rl.LightGray)
+	y += lineHeight
+	rl.DrawText(fmt.Sprintf("Drag: %.2f", org.ShapeMetrics.DragCoefficient), panelX+padding, y, 12, rl.LightGray)
+}
+
+// drawOutputBar draws a horizontal progress bar for brain outputs (0 to 1).
+func (g *Game) drawOutputBar(x, y int32, label string, value float32, totalWidth int32) {
+	labelWidth := int32(50)
+	barWidth := totalWidth - labelWidth - 40
+	barHeight := int32(10)
+
+	rl.DrawText(label+":", x, y, 12, rl.LightGray)
+
+	barX := x + labelWidth
+	rl.DrawRectangle(barX, y+2, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
+
+	// Clamp value
+	if value < 0 {
+		value = 0
+	}
+	if value > 1 {
+		value = 1
+	}
+
+	fillWidth := int32(float32(barWidth) * value)
+	barColor := rl.Color{R: 100, G: 150, B: 200, A: 255}
+	rl.DrawRectangle(barX, y+2, fillWidth, barHeight, barColor)
+
+	// Value text
+	rl.DrawText(fmt.Sprintf("%.2f", value), barX+barWidth+5, y, 12, rl.LightGray)
+}
+
+// drawCenteredBar draws a bar centered at 0 for values from -1 to +1.
+func (g *Game) drawCenteredBar(x, y int32, label string, value, minVal, maxVal float32, totalWidth int32) {
+	labelWidth := int32(50)
+	barWidth := totalWidth - labelWidth - 40
+	barHeight := int32(10)
+
+	rl.DrawText(label+":", x, y, 12, rl.LightGray)
+
+	barX := x + labelWidth
+	rl.DrawRectangle(barX, y+2, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
+
+	// Draw center line
+	centerX := barX + barWidth/2
+	rl.DrawLine(centerX, y+2, centerX, y+2+barHeight, rl.Color{R: 80, G: 80, B: 80, A: 255})
+
+	// Normalize value to 0-1 range
+	normalized := (value - minVal) / (maxVal - minVal)
+	if normalized < 0 {
+		normalized = 0
+	}
+	if normalized > 1 {
+		normalized = 1
+	}
+
+	// Draw fill from center
+	fillX := centerX
+	fillWidth := int32(float32(barWidth/2) * float32(math.Abs(float64(value))))
+	barColor := rl.Color{R: 100, G: 150, B: 200, A: 255}
+
+	if value < 0 {
+		fillX = centerX - fillWidth
+		barColor = rl.Color{R: 200, G: 100, B: 100, A: 255}
+	} else {
+		barColor = rl.Color{R: 100, G: 200, B: 100, A: 255}
+	}
+	rl.DrawRectangle(fillX, y+2, fillWidth, barHeight, barColor)
+
+	// Value text
+	rl.DrawText(fmt.Sprintf("%+.2f", value), barX+barWidth+5, y, 12, rl.LightGray)
+}
+
+// drawBrainGraph draws a visualization of the neural network.
+func (g *Game) drawBrainGraph(x, y, width, height int32, genome *genetics.Genome) {
+	// Draw background
+	rl.DrawRectangle(x, y, width, height, rl.Color{R: 30, G: 35, B: 40, A: 255})
+
+	if genome == nil {
+		return
+	}
+
+	// Categorize nodes
+	var inputNodes, outputNodes, hiddenNodes []*network.NNode
+	for _, node := range genome.Nodes {
+		switch node.NeuronType {
+		case network.InputNeuron, network.BiasNeuron:
+			inputNodes = append(inputNodes, node)
+		case network.OutputNeuron:
+			outputNodes = append(outputNodes, node)
+		case network.HiddenNeuron:
+			hiddenNodes = append(hiddenNodes, node)
+		}
+	}
+
+	// Calculate node positions
+	nodePositions := make(map[int]rl.Vector2)
+	padding := float32(15)
+
+	// Input nodes (left column)
+	inputSpacing := float32(height-int32(padding*2)) / float32(max(len(inputNodes), 1))
+	for i, node := range inputNodes {
+		nodePositions[node.Id] = rl.Vector2{
+			X: float32(x) + padding,
+			Y: float32(y) + padding + float32(i)*inputSpacing + inputSpacing/2,
+		}
+	}
+
+	// Output nodes (right column)
+	outputSpacing := float32(height-int32(padding*2)) / float32(max(len(outputNodes), 1))
+	for i, node := range outputNodes {
+		nodePositions[node.Id] = rl.Vector2{
+			X: float32(x+width) - padding,
+			Y: float32(y) + padding + float32(i)*outputSpacing + outputSpacing/2,
+		}
+	}
+
+	// Hidden nodes (middle columns)
+	if len(hiddenNodes) > 0 {
+		cols := (len(hiddenNodes) + 7) / 8 // Max 8 nodes per column
+		colWidth := (float32(width) - padding*4) / float32(cols+1)
+		for i, node := range hiddenNodes {
+			col := i / 8
+			row := i % 8
+			nodePositions[node.Id] = rl.Vector2{
+				X: float32(x) + padding*2 + colWidth*float32(col+1),
+				Y: float32(y) + padding + float32(row)*float32(height-int32(padding*2))/8 + float32(height-int32(padding*2))/16,
+			}
+		}
+	}
+
+	// Draw connections
+	for _, gene := range genome.Genes {
+		if !gene.IsEnabled || gene.Link == nil {
+			continue
+		}
+		inPos, ok1 := nodePositions[gene.Link.InNode.Id]
+		outPos, ok2 := nodePositions[gene.Link.OutNode.Id]
+		if !ok1 || !ok2 {
+			continue
+		}
+
+		// Color based on weight
+		weight := gene.Link.ConnectionWeight
+		var lineColor rl.Color
+		alpha := uint8(min(255, int(math.Abs(weight)*100)+50))
+		if weight > 0 {
+			lineColor = rl.Color{R: 100, G: 200, B: 100, A: alpha}
+		} else {
+			lineColor = rl.Color{R: 200, G: 100, B: 100, A: alpha}
+		}
+		rl.DrawLine(int32(inPos.X), int32(inPos.Y), int32(outPos.X), int32(outPos.Y), lineColor)
+	}
+
+	// Draw nodes
+	nodeRadius := float32(4)
+	for _, node := range inputNodes {
+		pos := nodePositions[node.Id]
+		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 100, G: 150, B: 255, A: 255})
+	}
+	for _, node := range outputNodes {
+		pos := nodePositions[node.Id]
+		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 255, G: 180, B: 100, A: 255})
+	}
+	for _, node := range hiddenNodes {
+		pos := nodePositions[node.Id]
+		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 180, G: 180, B: 180, A: 255})
 	}
 }
 

@@ -97,6 +97,11 @@ func (s *FeedingSystem) Update() {
 			continue
 		}
 
+		// Check eat intent from brain (>0.5 means try to eat)
+		if org.EatIntent < 0.5 {
+			continue
+		}
+
 		// Get predator's species ID
 		predatorSpecies := 0
 		if s.neuralMap.Has(entity) {
@@ -137,62 +142,6 @@ type faunaData struct {
 	speciesID int // For kin recognition (avoid cannibalism)
 }
 
-// countHerdDefenders returns how many nearby allies can help defend this prey.
-// Only counts living herbivores with the Herding trait within herd radius.
-func countHerdDefenders(preyPos *components.Position, preyOrg *components.Organism, faunaList []faunaData) int {
-	if !preyOrg.Traits.Has(traits.Herding) {
-		return 0 // Non-herding prey get no defense bonus
-	}
-
-	count := 0
-	for _, other := range faunaList {
-		if other.org == preyOrg || other.org.Dead {
-			continue
-		}
-		if !other.org.Traits.Has(traits.Herding) {
-			continue
-		}
-		// Must be same type (herbivore with herbivore)
-		if !other.org.Traits.Has(traits.Herbivore) {
-			continue
-		}
-
-		dx := preyPos.X - other.pos.X
-		dy := preyPos.Y - other.pos.Y
-		distSq := dx*dx + dy*dy
-		if distSq <= herdRadius*herdRadius {
-			count++
-		}
-	}
-	return count
-}
-
-// countPackHunters returns how many nearby predators are also attacking this prey.
-// Only counts living carnivores with the Herding trait within herd radius of the prey.
-func countPackHunters(preyPos *components.Position, predOrg *components.Organism, faunaList []faunaData) int {
-	if !predOrg.Traits.Has(traits.Herding) {
-		return 0 // Lone wolves hunt alone
-	}
-
-	count := 0
-	for _, other := range faunaList {
-		if other.org == predOrg || other.org.Dead {
-			continue
-		}
-		if !other.org.Traits.Has(traits.Herding) || !other.org.Traits.Has(traits.Carnivore) {
-			continue
-		}
-
-		// Check if this predator is also near the prey (could join the hunt)
-		dx := preyPos.X - other.pos.X
-		dy := preyPos.Y - other.pos.Y
-		distSq := dx*dx + dy*dy
-		if distSq <= herdRadius*herdRadius {
-			count++
-		}
-	}
-	return count
-}
 
 func (s *FeedingSystem) tryEatFlora(predPos *components.Position, predOrg *components.Organism, floraList []floraData) {
 	for _, flora := range floraList {
@@ -303,33 +252,6 @@ func (s *FeedingSystem) tryEatFauna(predPos *components.Position, predOrg *compo
 			continue
 		}
 
-		// === Social hunting dynamics ===
-		// Prey in herds are harder to catch (safety in numbers)
-		// Predators in packs can overcome herd defense but share food
-
-		herdSize := 0
-		packSize := 0
-		if !wantDead {
-			herdSize = countHerdDefenders(prey.pos, prey.org, faunaList)
-			packSize = countPackHunters(prey.pos, predOrg, faunaList)
-		}
-
-		// Herd defense: each defender reduces feeding effectiveness
-		// 0 defenders = 100%, 1 = 67%, 2 = 50%, 3 = 40%, etc.
-		herdDefense := 1.0 / float32(1+herdSize)
-
-		// Pack offense: hunters can overcome herd defense
-		// Pack size counters herd size, making hunting more effective
-		// But they'll have to share the food
-		packOffense := float32(1 + packSize)
-
-		// Net effectiveness: pack hunters vs herd defenders
-		// If pack > herd, hunting is easier; if herd > pack, hunting is harder
-		effectiveness := herdDefense * packOffense
-		if effectiveness > 1.0 {
-			effectiveness = 1.0 // Cap at 100% - can't do better than solo vs isolated
-		}
-
 		// Calculate base bite
 		biteMultiplier := biteSizeMultiplier(predOrg)
 		var baseRate float32
@@ -339,33 +261,21 @@ func (s *FeedingSystem) tryEatFauna(predPos *components.Position, predOrg *compo
 			baseRate = carnivoreEatAmount
 		}
 
-		// Apply effectiveness (herd defense reduces bite)
-		eatAmount := baseRate * biteMultiplier * effectiveness
+		eatAmount := baseRate * biteMultiplier
 
 		// Can only eat what prey has
 		if eatAmount > prey.org.Energy {
 			eatAmount = prey.org.Energy
 		}
 
-		// Pack hunters share the food
-		shareRatio := float32(1.0)
-		if packSize > 0 {
-			shareRatio = 1.0 / float32(1+packSize) // Split among all hunters
-		}
-
-		predOrg.Energy += eatAmount * shareRatio
-		prey.org.Energy -= eatAmount // Prey loses full amount regardless of sharing
+		predOrg.Energy += eatAmount
+		prey.org.Energy -= eatAmount
 
 		// Carnivores deal damage to prey
 		if !wantDead && prey.cells.Count > 0 {
-			// Pack hunters deal more damage (coordinated attack)
-			damageMultiplier := float32(1 + packSize)
-			if damageMultiplier > 3 {
-				damageMultiplier = 3 // Cap pack damage bonus
-			}
 			for i := uint8(0); i < prey.cells.Count; i++ {
 				if prey.cells.Cells[i].Alive {
-					prey.cells.Cells[i].Decomposition += 0.02 * damageMultiplier
+					prey.cells.Cells[i].Decomposition += 0.02
 					break
 				}
 			}

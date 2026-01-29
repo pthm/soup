@@ -87,9 +87,6 @@ func (s *CellSystem) Update(w *ecs.World) {
 		if org.Traits.Has(traits.Floating) {
 			activeTraits = activeTraits.Add(traits.Floating)
 		}
-		if org.Traits.Has(traits.Breeding) {
-			activeTraits = activeTraits.Add(traits.Breeding)
-		}
 		if org.Traits.Has(traits.Male) {
 			activeTraits = activeTraits.Add(traits.Male)
 		}

@@ -24,8 +24,6 @@ func TestGenerateMorphology(t *testing.T) {
 
 	t.Logf("Generated morphology with %d cells, diet bias: %.2f",
 		len(result.Cells), result.DietBias)
-	t.Logf("Traits - Speed: %v, Herd: %v, Vision: %v",
-		result.SpeedTrait, result.HerdTrait, result.VisionTrait)
 }
 
 func TestGenerateMorphologyMinimum(t *testing.T) {
@@ -180,9 +178,11 @@ func TestMorphologyResultSymmetry(t *testing.T) {
 func TestGenerateMorphologyWithConfig(t *testing.T) {
 	genome := CreateCPPNGenome(1)
 	cfg := CPPNConfig{
-		GridSize:      8,
-		MaxCells:      16,
-		CellThreshold: 0.0,
+		GridSize:        8,
+		MaxCells:        16,
+		MinCells:        1,
+		CellThreshold:   0.0,
+		EnforceSymmetry: false,
 	}
 
 	result, err := GenerateMorphologyWithConfig(genome, cfg)

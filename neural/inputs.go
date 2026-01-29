@@ -103,57 +103,32 @@ func (s *SensoryInputs) ToInputs() []float64 {
 }
 
 // BehaviorOutputs holds the decoded outputs from the brain network.
+// This is the simplified 4-output direct control system.
 type BehaviorOutputs struct {
-	// Steering weights (0-1 from sigmoid, scaled for behavior system)
-	SeekFoodWeight float32
-	FleeWeight     float32
-	SeekMateWeight float32
-	HerdWeight     float32
-	WanderWeight   float32
-
-	// Allocation preferences (raw values, pick highest)
-	GrowDrive     float32
-	BreedDrive    float32
-	ConserveDrive float32
-
-	// Movement control
-	SpeedMultiplier float32 // 0-1: how fast to move (0=stationary, 1=full speed)
+	// Direct control outputs
+	Turn   float32 // -1 to +1: heading adjustment (radians/tick)
+	Thrust float32 // 0 to 1: forward speed multiplier
+	Eat    float32 // 0 to 1: feeding intent (>0.5 = try to eat)
+	Mate   float32 // 0 to 1: breeding intent (>0.5 = try to mate)
 }
 
-// DecodeOutputs converts raw network outputs to usable behavior weights.
+// DecodeOutputs converts raw network outputs to direct control values.
 // Raw outputs are in [0, 1] range from sigmoid activation.
 func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
 		// Return defaults if not enough outputs
-		return BehaviorOutputs{
-			SeekFoodWeight:  1.5,
-			FleeWeight:      3.0,
-			SeekMateWeight:  0.5,
-			HerdWeight:      1.2,
-			WanderWeight:    0.4,
-			GrowDrive:       0.5,
-			BreedDrive:      0.5,
-			ConserveDrive:   0.5,
-			SpeedMultiplier: 0.5,
-		}
+		return DefaultOutputs()
 	}
 
 	return BehaviorOutputs{
-		// Scale sigmoid outputs to useful steering weight ranges
-		SeekFoodWeight: float32(raw[0]) * 3.0, // 0-3
-		FleeWeight:     float32(raw[1]) * 5.0, // 0-5
-		SeekMateWeight: float32(raw[2]) * 2.0, // 0-2
-		HerdWeight:     float32(raw[3]) * 2.5, // 0-2.5
-		WanderWeight:   float32(raw[4]) * 1.0, // 0-1
-
-		// Allocation drives (raw 0-1 values)
-		GrowDrive:     float32(raw[5]),
-		BreedDrive:    float32(raw[6]),
-		ConserveDrive: float32(raw[7]),
-
-		// Speed control (raw 0-1 value)
-		// 0 = stationary (ambush), 0.5 = slow stalk, 1 = full speed chase
-		SpeedMultiplier: float32(raw[8]),
+		// Turn: sigmoid [0,1] -> tanh-like [-1,1]
+		Turn: (float32(raw[0]) - 0.5) * 2.0,
+		// Thrust: sigmoid [0,1] -> [0,1]
+		Thrust: float32(raw[1]),
+		// Eat: sigmoid [0,1] -> [0,1]
+		Eat: float32(raw[2]),
+		// Mate: sigmoid [0,1] -> [0,1]
+		Mate: float32(raw[3]),
 	}
 }
 
@@ -161,15 +136,10 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		SeekFoodWeight:  1.5,
-		FleeWeight:      3.0,
-		SeekMateWeight:  0.5,
-		HerdWeight:      1.2,
-		WanderWeight:    0.4,
-		GrowDrive:       0.4,
-		BreedDrive:      0.3,
-		ConserveDrive:   0.3,
-		SpeedMultiplier: 0.7, // Default to moderate speed
+		Turn:   0.0, // No turning
+		Thrust: 0.5, // Medium speed
+		Eat:    0.5, // Neutral eating intent
+		Mate:   0.3, // Low mating intent
 	}
 }
 

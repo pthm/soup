@@ -11,7 +11,7 @@ import (
 	"github.com/pthm-cable/soup/traits"
 )
 
-// BehaviorSystem handles organism steering behaviors.
+// BehaviorSystem handles organism steering behaviors using direct neural control.
 type BehaviorSystem struct {
 	filter    ecs.Filter3[components.Position, components.Velocity, components.Organism]
 	brainMap  *ecs.Map[components.Brain]
@@ -30,7 +30,7 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
 	}
 }
 
-// Update runs the behavior system.
+// Update runs the behavior system with direct neural control.
 func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
 	s.tick++
 
@@ -47,120 +47,58 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Dead organisms only get flow field influence
 		if org.Dead {
 			flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
-			// Stronger flow effect on dead things (they don't resist)
 			vel.X += flowX * 1.5
 			vel.Y += flowY * 1.5
-			// Slight downward drift (sinking)
-			vel.Y += 0.02
+			vel.Y += 0.02 // Slight downward drift (sinking)
 			continue
 		}
 
-		// Check if this organism has a neural brain
+		// Get brain outputs or defaults
 		var outputs neural.BehaviorOutputs
-		hasBrain := s.brainMap.Has(entity)
-
-		if hasBrain {
-			outputs = s.getBrainOutputs(entity, pos, vel, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid, bounds)
+		if s.brainMap.Has(entity) {
+			outputs = s.getBrainOutputs(entity, pos, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid, bounds)
 		} else {
 			outputs = neural.DefaultOutputs()
 		}
 
-		var steerX, steerY float32
+		// Store intents for other systems (feeding, breeding)
+		org.EatIntent = outputs.Eat
+		org.MateIntent = outputs.Mate
+		org.TurnOutput = outputs.Turn
+		org.ThrustOutput = outputs.Thrust
 
-		// Find and seek food (using spatial grid for efficiency)
-		foodX, foodY, foundFood := s.findFood(pos, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid)
-		if foundFood {
-			seekX, seekY := seek(pos.X, pos.Y, foodX, foodY, vel.X, vel.Y, org.MaxSpeed)
-			steerX += seekX * outputs.SeekFoodWeight
-			steerY += seekY * outputs.SeekFoodWeight
+		// Direct heading control from Turn output
+		// Turn is in range [-1, 1], scale to radians per tick
+		const maxTurnRate = 0.15 // Max radians per tick
+		org.Heading += outputs.Turn * maxTurnRate
+
+		// Normalize heading to [0, 2*Pi]
+		for org.Heading < 0 {
+			org.Heading += 2 * math.Pi
+		}
+		for org.Heading >= 2*math.Pi {
+			org.Heading -= 2 * math.Pi
 		}
 
-		// Flee from predators (if herbivore)
-		if org.Traits.Has(traits.Herbivore) && !org.Traits.Has(traits.Carnivore) {
-			predX, predY, foundPred := s.findPredator(pos, org, faunaPositions, faunaOrgs, grid)
-			if foundPred {
-				// Calculate distance to predator for urgency scaling
-				predDist := distance(pos.X, pos.Y, predX, predY)
-				urgency := float32(1.0)
-				if predDist < 30 {
-					urgency = 2.0 // Panic mode when predator is close
-				}
-				fleeX, fleeY := flee(pos.X, pos.Y, predX, predY, vel.X, vel.Y, org.MaxSpeed*1.2) // Adrenaline boost
-				steerX += fleeX * outputs.FleeWeight * urgency
-				steerY += fleeY * outputs.FleeWeight * urgency
-			}
-		}
-
-		// Carrion eaters seek dead organisms
-		if org.Traits.Has(traits.Carrion) {
-			deadX, deadY, foundDead := s.findDead(pos, org, faunaPositions, faunaOrgs, floraPositions, floraOrgs, grid)
-			if foundDead {
-				seekDeadX, seekDeadY := seek(pos.X, pos.Y, deadX, deadY, vel.X, vel.Y, org.MaxSpeed)
-				steerX += seekDeadX * outputs.SeekFoodWeight // Reuse food weight for carrion
-				steerY += seekDeadY * outputs.SeekFoodWeight
-			}
-		}
-
-		// Herding behavior
-		if org.Traits.Has(traits.Herding) {
-			herdX, herdY := s.flockWithHerd(pos, vel, org, faunaPositions, faunaOrgs, grid)
-			steerX += herdX * outputs.HerdWeight
-			steerY += herdY * outputs.HerdWeight
-		}
-
-		// Light sensitivity behavior
-		if org.Traits.Has(traits.Photophilic) || org.Traits.Has(traits.Photophobic) {
-			lightX, lightY := s.getLightPreferenceForce(pos, org)
-			steerX += lightX
-			steerY += lightY
-		}
-
-		// Wander if no other behavior
-		steerMag := float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
-		if steerMag < 0.01 {
-			org.Heading += (rand.Float32() - 0.5) * 0.3
-			steerX = float32(math.Cos(float64(org.Heading))) * outputs.WanderWeight
-			steerY = float32(math.Sin(float64(org.Heading))) * outputs.WanderWeight
-		}
+		// Direct velocity from Thrust output
+		thrust := outputs.Thrust * org.MaxSpeed
+		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * 0.1
+		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * 0.1
 
 		// Apply flow field
 		flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
-		steerX += flowX
-		steerY += flowY
+		vel.X += thrustX + flowX
+		vel.Y += thrustY + flowY
 
-		// Limit steering force
-		steerMag = float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
-		if steerMag > org.MaxForce {
-			scale := org.MaxForce / steerMag
-			steerX *= scale
-			steerY *= scale
-		}
-
-		// Apply brain-controlled speed modulation
-		// SpeedMultiplier: 0 = stationary (ambush), 0.5 = slow stalk, 1 = full speed
-		// This affects both energy cost (via ActiveThrust) and visibility to prey
-		speedMult := outputs.SpeedMultiplier
-		if speedMult < 0.05 {
-			speedMult = 0.05 // Minimum movement for drift/flow
-		}
-		steerX *= speedMult
-		steerY *= speedMult
-
-		// Track thrust magnitude for energy cost and visibility
-		thrustMag := float32(math.Sqrt(float64(steerX*steerX + steerY*steerY)))
-		org.ActiveThrust = thrustMag
-
-		// Apply steering
-		vel.X += steerX
-		vel.Y += steerY
+		// Track thrust magnitude for energy cost
+		org.ActiveThrust = float32(math.Sqrt(float64(thrustX*thrustX + thrustY*thrustY)))
 	}
 }
 
-// getBrainOutputs gathers sensory inputs and runs the brain network to get behavior outputs.
+// getBrainOutputs gathers sensory inputs and runs the brain network.
 func (s *BehaviorSystem) getBrainOutputs(
 	entity ecs.Entity,
 	pos *components.Position,
-	vel *components.Velocity,
 	org *components.Organism,
 	floraPos, faunaPos []components.Position,
 	floraOrgs, faunaOrgs []*components.Organism,
@@ -177,10 +115,10 @@ func (s *BehaviorSystem) getBrainOutputs(
 		PerceptionRadius: org.PerceptionRadius,
 		Energy:           org.Energy,
 		MaxEnergy:        org.MaxEnergy,
-		MaxCells:         32, // Fixed max cells
+		MaxCells:         16,
 	}
 
-	// Count cells (estimate from energy capacity)
+	// Estimate cell count from energy capacity
 	sensory.CellCount = int((org.MaxEnergy - 100) / 50)
 	if sensory.CellCount < 1 {
 		sensory.CellCount = 1
@@ -202,7 +140,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 		sensory.PredatorAngle = float32(math.Atan2(float64(predY-pos.Y), float64(predX-pos.X))) - org.Heading
 	}
 
-	// Mate detection (find compatible mate)
+	// Mate detection
 	mateX, mateY, foundMate := s.findMate(pos, org, faunaPos, faunaOrgs, grid)
 	if foundMate {
 		sensory.MateFound = true
@@ -210,8 +148,8 @@ func (s *BehaviorSystem) getBrainOutputs(
 		sensory.MateAngle = float32(math.Atan2(float64(mateY-pos.Y), float64(mateX-pos.X))) - org.Heading
 	}
 
-	// Herd count
-	sensory.HerdCount = s.countNearbyHerd(pos, org, faunaPos, faunaOrgs, grid)
+	// Herd count (nearby same-type organisms)
+	sensory.HerdCount = s.countNearbySameType(pos, org, faunaPos, faunaOrgs, grid)
 
 	// Light level
 	if s.shadowMap != nil {
@@ -220,15 +158,13 @@ func (s *BehaviorSystem) getBrainOutputs(
 		sensory.LightLevel = 0.5
 	}
 
-	// Flow field (use noise-based approximation)
+	// Flow field
 	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 	sensory.FlowX = flowX
 	sensory.FlowY = flowY
 
-	// Convert to neural inputs
+	// Convert to neural inputs and run brain
 	inputs := sensory.ToInputs()
-
-	// Run brain
 	rawOutputs, err := brain.Controller.Think(inputs)
 	if err != nil {
 		return neural.DefaultOutputs()
@@ -239,10 +175,6 @@ func (s *BehaviorSystem) getBrainOutputs(
 
 // findMate finds a compatible mate for breeding.
 func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	if !org.Traits.Has(traits.Breeding) {
-		return 0, 0, false
-	}
-
 	maxDist := org.PerceptionRadius
 	maxDistSq := maxDist * maxDist
 	closestDistSq := maxDistSq
@@ -253,9 +185,6 @@ func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Orga
 	for _, i := range nearby {
 		other := faunaOrgs[i]
 		if other == org || other.Dead {
-			continue
-		}
-		if !other.Traits.Has(traits.Breeding) {
 			continue
 		}
 		// Opposite gender check
@@ -277,12 +206,8 @@ func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Orga
 	return closestX, closestY, found
 }
 
-// countNearbyHerd counts the number of nearby herding organisms of the same type.
-func (s *BehaviorSystem) countNearbyHerd(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) int {
-	if !org.Traits.Has(traits.Herding) {
-		return 0
-	}
-
+// countNearbySameType counts the number of nearby organisms of the same diet type.
+func (s *BehaviorSystem) countNearbySameType(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) int {
 	herdRadius := org.PerceptionRadius * 1.5
 	count := 0
 
@@ -292,10 +217,7 @@ func (s *BehaviorSystem) countNearbyHerd(pos *components.Position, org *componen
 		if other == org || other.Dead {
 			continue
 		}
-		if !other.Traits.Has(traits.Herding) {
-			continue
-		}
-		// Same type check
+		// Same type check (carnivore with carnivore, herbivore with herbivore)
 		if org.Traits.Has(traits.Carnivore) != other.Traits.Has(traits.Carnivore) {
 			continue
 		}
@@ -306,21 +228,21 @@ func (s *BehaviorSystem) countNearbyHerd(pos *components.Position, org *componen
 }
 
 func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Organism, floraPos, faunaPos []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	vision := traits.GetVisionParams(org.Traits)
-	maxDist := org.PerceptionRadius * vision.RangeMultiplier
+	const fov = math.Pi // 180 degree vision
+	maxDist := org.PerceptionRadius
 	maxDistSq := maxDist * maxDist
 	closestDistSq := maxDistSq
 	var closestX, closestY float32
 	found := false
 
-	// Herbivores seek flora (using spatial grid)
+	// Herbivores seek flora
 	if org.Traits.Has(traits.Herbivore) {
 		nearby := grid.GetNearbyFlora(pos.X, pos.Y, maxDist)
 		for _, i := range nearby {
 			if floraOrgs[i].Dead {
 				continue
 			}
-			if !canSeeSq(pos.X, pos.Y, org.Heading, floraPos[i].X, floraPos[i].Y, vision.FOV, maxDistSq) {
+			if !canSeeSq(pos.X, pos.Y, org.Heading, floraPos[i].X, floraPos[i].Y, fov, maxDistSq) {
 				continue
 			}
 			distSq := distanceSq(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y)
@@ -333,14 +255,14 @@ func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Orga
 		}
 	}
 
-	// Carnivores seek fauna (using spatial grid)
+	// Carnivores seek fauna
 	if org.Traits.Has(traits.Carnivore) {
 		nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
 		for _, i := range nearby {
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 				continue
 			}
-			if !canSeeSq(pos.X, pos.Y, org.Heading, faunaPos[i].X, faunaPos[i].Y, vision.FOV, maxDistSq) {
+			if !canSeeSq(pos.X, pos.Y, org.Heading, faunaPos[i].X, faunaPos[i].Y, fov, maxDistSq) {
 				continue
 			}
 			distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
@@ -357,14 +279,13 @@ func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Orga
 }
 
 func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, floraPos []components.Position, floraOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	vision := traits.GetVisionParams(org.Traits)
-	maxDist := org.PerceptionRadius * vision.RangeMultiplier
+	maxDist := org.PerceptionRadius
 	maxDistSq := maxDist * maxDist
 	closestDistSq := maxDistSq
 	var closestX, closestY float32
 	found := false
 
-	// Find dead fauna (using spatial grid)
+	// Find dead fauna
 	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
 	for _, i := range nearby {
 		if faunaOrgs[i] == org || !faunaOrgs[i].Dead {
@@ -379,7 +300,7 @@ func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Orga
 		}
 	}
 
-	// Find dead flora (using spatial grid)
+	// Find dead flora
 	nearbyFlora := grid.GetNearbyFlora(pos.X, pos.Y, maxDist)
 	for _, i := range nearbyFlora {
 		if !floraOrgs[i].Dead {
@@ -398,11 +319,9 @@ func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Orga
 }
 
 func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	// Prey have omnidirectional awareness of predators (survival instinct)
-	// Detection range is larger than normal vision - heightened alertness
-	// Visibility depends on: size (larger = more visible) and movement (moving = more visible)
+	// Prey have omnidirectional awareness of predators
 	baseDetectDist := org.PerceptionRadius * 1.5
-	maxSearchDist := baseDetectDist * 5 // Search wider area to find large/moving predators
+	maxSearchDist := baseDetectDist * 5
 	closestDistSq := maxSearchDist * maxSearchDist
 	var closestX, closestY float32
 	found := false
@@ -426,22 +345,19 @@ func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.
 		}
 		sizeMultiplier := float32(math.Sqrt(float64(predatorCells)))
 
-		// Movement visibility: moving predators are MUCH easier to detect
-		// ActiveThrust represents how much they're actively moving (0 = stationary)
-		// Stationary: 0.3x visibility, Full movement: 1.5x visibility
+		// Movement visibility: moving predators are easier to detect
 		thrust := faunaOrgs[i].ActiveThrust
-		movementMultiplier := float32(0.3) + thrust*40 // Scale thrust (typically 0-0.03) to visibility
+		movementMultiplier := float32(0.3) + thrust*40
 		if movementMultiplier > 1.5 {
 			movementMultiplier = 1.5
 		}
 
-		// Combined visibility: size × movement
 		detectDist := baseDetectDist * sizeMultiplier * movementMultiplier
 		detectDistSq := detectDist * detectDist
 
 		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
 		if distSq > detectDistSq {
-			continue // Predator too far/stealthy to detect
+			continue
 		}
 		if distSq < closestDistSq {
 			closestDistSq = distSq
@@ -454,62 +370,10 @@ func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.
 	return closestX, closestY, found
 }
 
-func (s *BehaviorSystem) flockWithHerd(pos *components.Position, vel *components.Velocity, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32) {
-	herdRadius := org.PerceptionRadius * 1.5
-	var sepX, sepY, cohX, cohY float32
-	var count int
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, herdRadius)
-	for _, i := range nearby {
-		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
-			continue
-		}
-		if !faunaOrgs[i].Traits.Has(traits.Herding) {
-			continue
-		}
-		// Same type check
-		if org.Traits.Has(traits.Carnivore) != faunaOrgs[i].Traits.Has(traits.Carnivore) {
-			continue
-		}
-
-		dist := distance(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if dist > herdRadius || dist == 0 {
-			continue
-		}
-
-		// Separation
-		dx := pos.X - faunaPos[i].X
-		dy := pos.Y - faunaPos[i].Y
-		sepX += dx / dist
-		sepY += dy / dist
-
-		// Cohesion
-		cohX += faunaPos[i].X
-		cohY += faunaPos[i].Y
-
-		count++
-	}
-
-	if count == 0 {
-		return 0, 0
-	}
-
-	// Average separation
-	sepX /= float32(count)
-	sepY /= float32(count)
-
-	// Cohesion: seek center
-	cohX /= float32(count)
-	cohY /= float32(count)
-	cohX, cohY = seek(pos.X, pos.Y, cohX, cohY, vel.X, vel.Y, org.MaxSpeed)
-
-	return sepX*1.5 + cohX*0.8, sepY*1.5 + cohY*0.8
-}
-
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
 	const flowScale = 0.003
-	const timeScale = 0.0001 // Slowed down to match flow particles
-	const baseStrength = 0.4 // Reduced for gentler movement
+	const timeScale = 0.0001
+	const baseStrength = 0.4
 
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*timeScale)
 	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*timeScale)
@@ -528,7 +392,7 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 		return flowX * 0.05, flowY * 0.05
 	}
 
-	// Shape-based flow resistance: streamlined organisms resist better
+	// Shape-based flow resistance
 	shapeResistance := org.ShapeMetrics.Streamlining * 0.4
 	massResistance := float32(math.Min(float64(org.Energy/org.MaxEnergy)/3, 1))
 	totalResistance := shapeResistance + massResistance*0.6
@@ -537,74 +401,7 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 	return flowX * factor, flowY * factor
 }
 
-// getLightPreferenceForce calculates steering based on light sensitivity traits.
-func (s *BehaviorSystem) getLightPreferenceForce(pos *components.Position, org *components.Organism) (float32, float32) {
-	if s.shadowMap == nil {
-		return 0, 0
-	}
-
-	// Sample light at current position and nearby positions
-	currentLight := s.shadowMap.SampleLight(pos.X, pos.Y)
-	sampleDist := float32(20.0) // How far to sample for gradient
-
-	// Sample in 4 directions to find light gradient
-	lightLeft := s.shadowMap.SampleLight(pos.X-sampleDist, pos.Y)
-	lightRight := s.shadowMap.SampleLight(pos.X+sampleDist, pos.Y)
-	lightUp := s.shadowMap.SampleLight(pos.X, pos.Y-sampleDist)
-	lightDown := s.shadowMap.SampleLight(pos.X, pos.Y+sampleDist)
-
-	// Calculate gradient (direction of increasing light)
-	gradX := lightRight - lightLeft
-	gradY := lightDown - lightUp
-
-	// Strength based on how much organism cares about light
-	strength := float32(0.8)
-
-	if org.Traits.Has(traits.Photophilic) {
-		// Move toward brighter areas (follow gradient)
-		// Also get a bonus/penalty based on current light level
-		comfort := currentLight - 0.5 // Positive if in light, negative if in shadow
-		urgency := float32(1.0)
-		if comfort < 0 {
-			urgency = 1.5 // More urgent to find light when in shadow
-		}
-		return gradX * strength * urgency, gradY * strength * urgency
-	}
-
-	if org.Traits.Has(traits.Photophobic) {
-		// Move toward darker areas (against gradient)
-		comfort := 0.5 - currentLight // Positive if in shadow, negative if in light
-		urgency := float32(1.0)
-		if comfort < 0 {
-			urgency = 1.5 // More urgent to find shadow when in light
-		}
-		return -gradX * strength * urgency, -gradY * strength * urgency
-	}
-
-	return 0, 0
-}
-
 // Helper functions
-
-func seek(px, py, tx, ty, vx, vy, maxSpeed float32) (float32, float32) {
-	dx := tx - px
-	dy := ty - py
-	mag := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-	if mag > 0 {
-		dx = dx / mag * maxSpeed
-		dy = dy / mag * maxSpeed
-	}
-	return dx - vx, dy - vy
-}
-
-func flee(px, py, tx, ty, vx, vy, maxSpeed float32) (float32, float32) {
-	sx, sy := seek(px, py, tx, ty, vx, vy, maxSpeed)
-	return -sx, -sy
-}
-
-func canSee(px, py, heading, tx, ty, fov, maxDist float32) bool {
-	return canSeeSq(px, py, heading, tx, ty, fov, maxDist*maxDist)
-}
 
 func canSeeSq(px, py, heading, tx, ty, fov, maxDistSq float32) bool {
 	dx := tx - px

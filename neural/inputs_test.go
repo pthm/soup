@@ -22,7 +22,7 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		Energy:           75,
 		MaxEnergy:        100,
 		CellCount:        4,
-		MaxCells:         32,
+		MaxCells:         16,
 		PerceptionRadius: 100,
 	}
 
@@ -127,30 +127,30 @@ func TestSensoryInputsNormalization(t *testing.T) {
 }
 
 func TestDecodeOutputs(t *testing.T) {
-	// Simulate sigmoid outputs (0-1 range) - now 9 outputs including speed
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5, 0.6}
+	// Simulate sigmoid outputs (0-1 range) - 4 outputs: Turn, Thrust, Eat, Mate
+	raw := []float64{0.5, 0.8, 0.3, 0.6}
 
 	outputs := DecodeOutputs(raw)
 
-	// Check scaling
-	expectedSeekFood := float32(0.5 * 3.0) // 1.5
-	if math.Abs(float64(outputs.SeekFoodWeight-expectedSeekFood)) > 0.01 {
-		t.Errorf("seek food weight: expected %f, got %f", expectedSeekFood, outputs.SeekFoodWeight)
+	// Check Turn (0.5 sigmoid -> 0.0 turn)
+	expectedTurn := float32((0.5 - 0.5) * 2.0) // 0.0
+	if math.Abs(float64(outputs.Turn-expectedTurn)) > 0.01 {
+		t.Errorf("turn: expected %f, got %f", expectedTurn, outputs.Turn)
 	}
 
-	expectedFlee := float32(0.8 * 5.0) // 4.0
-	if math.Abs(float64(outputs.FleeWeight-expectedFlee)) > 0.01 {
-		t.Errorf("flee weight: expected %f, got %f", expectedFlee, outputs.FleeWeight)
+	// Check Thrust (0.8 sigmoid -> 0.8 thrust)
+	if math.Abs(float64(outputs.Thrust-0.8)) > 0.01 {
+		t.Errorf("thrust: expected 0.8, got %f", outputs.Thrust)
 	}
 
-	// Allocation drives should be raw values
-	if math.Abs(float64(outputs.GrowDrive-0.7)) > 0.01 {
-		t.Errorf("grow drive: expected 0.7, got %f", outputs.GrowDrive)
+	// Check Eat (0.3 sigmoid -> 0.3 eat)
+	if math.Abs(float64(outputs.Eat-0.3)) > 0.01 {
+		t.Errorf("eat: expected 0.3, got %f", outputs.Eat)
 	}
 
-	// Speed multiplier should be raw value
-	if math.Abs(float64(outputs.SpeedMultiplier-0.6)) > 0.01 {
-		t.Errorf("speed multiplier: expected 0.6, got %f", outputs.SpeedMultiplier)
+	// Check Mate (0.6 sigmoid -> 0.6 mate)
+	if math.Abs(float64(outputs.Mate-0.6)) > 0.01 {
+		t.Errorf("mate: expected 0.6, got %f", outputs.Mate)
 	}
 
 	t.Logf("Outputs: %+v", outputs)
@@ -163,7 +163,7 @@ func TestDecodeOutputsShortInput(t *testing.T) {
 	outputs := DecodeOutputs(raw)
 	defaults := DefaultOutputs()
 
-	if outputs.SeekFoodWeight != defaults.SeekFoodWeight {
+	if outputs.Turn != defaults.Turn {
 		t.Errorf("short input should return defaults")
 	}
 }
@@ -171,15 +171,22 @@ func TestDecodeOutputsShortInput(t *testing.T) {
 func TestDefaultOutputs(t *testing.T) {
 	outputs := DefaultOutputs()
 
-	// Should have reasonable defaults
-	if outputs.SeekFoodWeight <= 0 {
-		t.Error("default seek food weight should be positive")
+	// Turn should be 0 (no turning)
+	if outputs.Turn != 0 {
+		t.Errorf("default turn should be 0, got %f", outputs.Turn)
 	}
-	if outputs.FleeWeight <= 0 {
-		t.Error("default flee weight should be positive")
+
+	// Thrust should be positive
+	if outputs.Thrust <= 0 {
+		t.Error("default thrust should be positive")
 	}
-	if outputs.WanderWeight <= 0 {
-		t.Error("default wander weight should be positive")
+
+	// Eat and Mate should be in valid range
+	if outputs.Eat < 0 || outputs.Eat > 1 {
+		t.Errorf("default eat out of range: %f", outputs.Eat)
+	}
+	if outputs.Mate < 0 || outputs.Mate > 1 {
+		t.Errorf("default mate out of range: %f", outputs.Mate)
 	}
 
 	t.Logf("Default outputs: %+v", outputs)
@@ -200,7 +207,7 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 		Energy:           75,
 		MaxEnergy:        100,
 		CellCount:        4,
-		MaxCells:         32,
+		MaxCells:         16,
 		PerceptionRadius: 100,
 	}
 
@@ -211,7 +218,7 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 }
 
 func BenchmarkDecodeOutputs(b *testing.B) {
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.4, 0.7, 0.2, 0.5, 0.6}
+	raw := []float64{0.5, 0.8, 0.3, 0.6}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
