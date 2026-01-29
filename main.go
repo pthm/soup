@@ -11,13 +11,12 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/mlange-42/ark/ecs"
-	"github.com/yaricom/goNEAT/v4/neat/genetics"
-	"github.com/yaricom/goNEAT/v4/neat/network"
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
+	"github.com/pthm-cable/soup/ui"
 )
 
 var (
@@ -151,6 +150,13 @@ type Game struct {
 	faunaFilter     *ecs.Filter3[components.Position, components.Organism, components.Fauna]
 	faunaCellFilter *ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Fauna]
 	allOrgFilter    *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
+
+	// UI components (descriptor-driven)
+	uiHUD             *ui.HUD
+	uiInspector       *ui.Inspector
+	uiNeuralStats     *ui.NeuralStatsPanel
+	uiPerfPanel       *ui.PerfPanel
+	uiSystemRegistry  *systems.SystemRegistry
 }
 
 func NewGame() *Game {
@@ -226,6 +232,13 @@ func NewGame() *Game {
 	g.feeding.SetFloraSystem(g.floraSystem)
 	g.behavior.SetFloraSystem(g.floraSystem)
 	g.allocation.SetFloraSystem(g.floraSystem)
+
+	// Initialize UI components (descriptor-driven)
+	g.uiSystemRegistry = systems.NewSystemRegistry()
+	g.uiHUD = ui.NewHUD()
+	g.uiInspector = ui.NewInspector(screenWidth-330, 10, 320)
+	g.uiNeuralStats = ui.NewNeuralStatsPanel(10, 100, 280, 220)
+	g.uiPerfPanel = ui.NewPerfPanel(screenWidth-200, 10)
 
 	g.seedUniverse()
 
@@ -307,6 +320,9 @@ func NewGameHeadless() *Game {
 	g.feeding.SetFloraSystem(g.floraSystem)
 	g.behavior.SetFloraSystem(g.floraSystem)
 	g.allocation.SetFloraSystem(g.floraSystem)
+
+	// System registry (for consistent naming in logs)
+	g.uiSystemRegistry = systems.NewSystemRegistry()
 
 	g.seedUniverse()
 
@@ -1934,113 +1950,67 @@ func (g *Game) drawUI() {
 		}
 	}
 
-	// Draw stats
-	rl.DrawText("Primordial Soup", 10, 10, 20, rl.White)
-	rl.DrawText(fmt.Sprintf("Flora: %d | Fauna: %d | Cells: %d", floraCount, faunaCount, totalCells), 10, 35, 16, rl.LightGray)
-	rl.DrawText(fmt.Sprintf("Tick: %d | Speed: %dx | FPS: %d | Spores: %d", g.tick, g.stepsPerFrame, rl.GetFPS(), g.spores.Count()), 10, 55, 16, rl.LightGray)
+	// Draw HUD using descriptor-driven UI
+	g.uiHUD.Draw(ui.HUDData{
+		Title:        "Primordial Soup",
+		FloraCount:   floraCount,
+		FaunaCount:   faunaCount,
+		CellCount:    totalCells,
+		SporeCount:   g.spores.Count(),
+		Tick:         g.tick,
+		Speed:        g.stepsPerFrame,
+		FPS:          rl.GetFPS(),
+		Paused:       g.paused,
+		ScreenWidth:  screenWidth,
+		ScreenHeight: screenHeight,
+	})
 
-	statusText := "Running"
-	if g.paused {
-		statusText = "PAUSED"
-	}
-	rl.DrawText(statusText, 10, 75, 16, rl.Yellow)
-
-	// Performance stats (right side)
+	// Performance stats (right side) using descriptor-driven UI
 	if *perfLog {
-		x := int32(screenWidth - 200)
-		y := int32(10)
-		rl.DrawText("System Performance", x, y, 16, rl.White)
-		y += 20
-
-		total := g.perf.Total()
-		rl.DrawText(fmt.Sprintf("Total: %s", total.Round(time.Microsecond)), x, y, 14, rl.Yellow)
-		y += 16
-
-		for i, name := range g.perf.SortedNames() {
-			if i >= 12 {
-				break // Limit display
-			}
-			avg := g.perf.Avg(name)
-			pct := float64(0)
-			if total > 0 {
-				pct = float64(avg) / float64(total) * 100
-			}
-			color := rl.LightGray
-			if pct > 20 {
-				color = rl.Red
-			} else if pct > 10 {
-				color = rl.Orange
-			}
-			rl.DrawText(fmt.Sprintf("%-16s %6s %5.1f%%", name, avg.Round(time.Microsecond), pct), x, y, 12, color)
-			y += 14
+		// Build system times map
+		systemTimes := make(map[string]time.Duration)
+		for _, name := range g.perf.SortedNames() {
+			systemTimes[name] = g.perf.Avg(name)
 		}
+
+		g.uiPerfPanel.Draw(ui.PerfPanelData{
+			SystemTimes: systemTimes,
+			Total:       g.perf.Total(),
+			Registry:    g.uiSystemRegistry,
+		}, g.perf.SortedNames())
 	}
 
 	// Controls
-	rl.DrawText("SPACE: Pause | < >: Speed | Click: Select | Shift+Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural", 10, int32(screenHeight-25), 14, rl.Gray)
+	g.uiHUD.DrawControls(screenWidth, screenHeight,
+		"SPACE: Pause | < >: Speed | Click: Select | Shift+Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural")
 }
 
 func (g *Game) drawNeuralStats() {
-	// Panel position and size
-	panelX := int32(10)
-	panelY := int32(100)
-	panelWidth := int32(280)
-	panelHeight := int32(220)
-	padding := int32(8)
-	lineHeight := 16
-
-	// Draw panel background
-	rl.DrawRectangle(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 20, G: 25, B: 30, A: 230})
-	rl.DrawRectangleLines(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 60, G: 70, B: 80, A: 255})
-
-	// Get stats
+	// Get stats from species manager
 	stats := g.speciesManager.GetStats()
 	topSpecies := g.speciesManager.GetTopSpecies(5)
 
-	// Draw header
-	y := panelY + padding
-	rl.DrawText("Neural Evolution Stats", panelX+padding, y, 16, rl.White)
-	y += int32(lineHeight + 4)
-
-	// Mode indicator
-	modeText := "Species Colors: OFF"
-	modeColor := rl.Gray
-	if g.showSpeciesColors {
-		modeText = "Species Colors: ON"
-		modeColor = rl.Green
+	// Convert to UI data format
+	var speciesInfo []ui.SpeciesInfo
+	for _, sp := range topSpecies {
+		speciesInfo = append(speciesInfo, ui.SpeciesInfo{
+			ID:      sp.ID,
+			Size:    sp.Size,
+			Age:     sp.Age,
+			BestFit: sp.BestFit,
+			Color:   rl.Color{R: sp.Color.R, G: sp.Color.G, B: sp.Color.B, A: 255},
+		})
 	}
-	rl.DrawText(modeText, panelX+padding, y, 12, modeColor)
-	y += int32(lineHeight)
 
-	// Overall stats
-	rl.DrawText(fmt.Sprintf("Generation: %d", stats.Generation), panelX+padding, y, 12, rl.LightGray)
-	y += int32(lineHeight)
-	rl.DrawText(fmt.Sprintf("Species: %d | Members: %d", stats.Count, stats.TotalMembers), panelX+padding, y, 12, rl.LightGray)
-	y += int32(lineHeight)
-	rl.DrawText(fmt.Sprintf("Best Fitness: %.1f", stats.BestFitness), panelX+padding, y, 12, rl.LightGray)
-	y += int32(lineHeight + 4)
-
-	// Top species header
-	if len(topSpecies) > 0 {
-		rl.DrawText("Top Species:", panelX+padding, y, 14, rl.Yellow)
-		y += int32(lineHeight + 2)
-
-		for i, sp := range topSpecies {
-			if i >= 5 {
-				break
-			}
-			// Draw species color swatch
-			swatchSize := int32(10)
-			rl.DrawRectangle(panelX+padding, y+2, swatchSize, swatchSize,
-				rl.Color{R: sp.Color.R, G: sp.Color.G, B: sp.Color.B, A: 255})
-
-			// Draw species info
-			text := fmt.Sprintf("#%d: %d members (age: %d, fit: %.0f)",
-				sp.ID, sp.Size, sp.Age, sp.BestFit)
-			rl.DrawText(text, panelX+padding+swatchSize+6, y, 12, rl.LightGray)
-			y += int32(lineHeight)
-		}
-	}
+	// Draw using descriptor-driven UI
+	g.uiNeuralStats.Draw(ui.NeuralStatsData{
+		Generation:        stats.Generation,
+		SpeciesCount:      stats.Count,
+		TotalMembers:      stats.TotalMembers,
+		BestFitness:       stats.BestFitness,
+		TopSpecies:        speciesInfo,
+		ShowSpeciesColors: g.showSpeciesColors,
+	})
 }
 
 // drawInfoPanel draws the detailed info panel for the selected organism.
@@ -2051,11 +2021,10 @@ func (g *Game) drawInfoPanel() {
 	}
 
 	// Get entity data using maps
-	posMap := ecs.NewMap[components.Position](g.world)
 	orgMap := ecs.NewMap[components.Organism](g.world)
 	cellMap := ecs.NewMap[components.CellBuffer](g.world)
 
-	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+	if !orgMap.Has(g.selectedEntity) {
 		g.hasSelection = false
 		return
 	}
@@ -2063,328 +2032,24 @@ func (g *Game) drawInfoPanel() {
 	org := orgMap.Get(g.selectedEntity)
 	cells := cellMap.Get(g.selectedEntity)
 
-	// Panel position and size (right side of screen)
-	panelWidth := int32(320)
-	panelX := int32(screenWidth) - panelWidth - 10
-	panelY := int32(10)
-	padding := int32(10)
-	lineHeight := int32(16)
-
-	// Calculate panel height based on content
-	panelHeight := int32(500) // Base height, will adjust
-
-	// Draw panel background
-	rl.DrawRectangle(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 20, G: 25, B: 30, A: 240})
-	rl.DrawRectangleLines(panelX, panelY, panelWidth, panelHeight, rl.Color{R: 60, G: 70, B: 80, A: 255})
-
-	y := panelY + padding
-
-	// Compute capabilities for display
+	// Compute capabilities
 	caps := cells.ComputeCapabilities()
-	digestiveSpectrum := caps.DigestiveSpectrum()
 
-	// === HEADER: Organism type (from cell capabilities) ===
-	r, gr, b := neural.GetCapabilityColor(digestiveSpectrum)
-	headerColor := rl.Color{R: r, G: gr, B: b, A: 255}
-
-	typeName := neural.GetDietName(digestiveSpectrum)
-
-	if org.Dead {
-		typeName = "DEAD " + typeName
-		headerColor = rl.Gray
-	}
-
-	rl.DrawText(typeName, panelX+padding, y, 18, headerColor)
-	y += lineHeight + 6
-
-	// === BASIC STATS ===
-	rl.DrawText("Stats", panelX+padding, y, 14, rl.Yellow)
-	y += lineHeight
-
-	// Energy bar
-	rl.DrawText("Energy:", panelX+padding, y, 12, rl.LightGray)
-	barX := panelX + padding + 60
-	barWidth := int32(150)
-	barHeight := int32(12)
-	energyRatio := org.Energy / org.MaxEnergy
-	if energyRatio > 1 {
-		energyRatio = 1
-	}
-	rl.DrawRectangle(barX, y, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
-	barColor := rl.Color{R: 100, G: 200, B: 100, A: 255}
-	if energyRatio < 0.3 {
-		barColor = rl.Color{R: 200, G: 100, B: 100, A: 255}
-	} else if energyRatio < 0.6 {
-		barColor = rl.Color{R: 200, G: 180, B: 100, A: 255}
-	}
-	rl.DrawRectangle(barX, y, int32(float32(barWidth)*energyRatio), barHeight, barColor)
-	rl.DrawText(fmt.Sprintf("%.0f/%.0f", org.Energy, org.MaxEnergy), barX+barWidth+5, y, 12, rl.LightGray)
-	y += lineHeight
-
-	// Cell count
-	cellCount := uint8(0)
-	if cells != nil {
-		cellCount = cells.Count
-	}
-	rl.DrawText(fmt.Sprintf("Cells: %d", cellCount), panelX+padding, y, 12, rl.LightGray)
-	y += lineHeight
-
-	// Speed
-	rl.DrawText(fmt.Sprintf("Max Speed: %.2f", org.MaxSpeed), panelX+padding, y, 12, rl.LightGray)
-	y += lineHeight
-
-	// Allocation mode
-	modeNames := []string{"Survive", "Grow", "Breed", "Store"}
-	modeName := "Unknown"
-	if int(org.AllocationMode) < len(modeNames) {
-		modeName = modeNames[org.AllocationMode]
-	}
-	rl.DrawText(fmt.Sprintf("Mode: %s", modeName), panelX+padding, y, 12, rl.LightGray)
-	y += lineHeight + 6
-
-	// === CAPABILITIES ===
-	rl.DrawText("Capabilities", panelX+padding, y, 14, rl.Yellow)
-	y += lineHeight
-	rl.DrawText(fmt.Sprintf("Diet: %.2f", digestiveSpectrum), panelX+padding, y, 12, rl.LightGray)
-	y += lineHeight
-	if caps.StructuralArmor > 0 {
-		rl.DrawText(fmt.Sprintf("Armor: %.2f", caps.StructuralArmor), panelX+padding, y, 12, rl.LightGray)
-		y += lineHeight
-	}
-	if caps.StorageCapacity > 0 {
-		rl.DrawText(fmt.Sprintf("Storage: %.2f", caps.StorageCapacity), panelX+padding, y, 12, rl.LightGray)
-		y += lineHeight
-	}
-	if caps.PhotoWeight > 0 {
-		rl.DrawText(fmt.Sprintf("Photosynthesis: %.2f", caps.PhotoWeight), panelX+padding, y, 12, rl.LightGray)
-		y += lineHeight
-	}
-
-	// === NEURAL INFO ===
+	// Check for neural genome
+	var neuralGenome *components.NeuralGenome
 	hasNeural := g.neuralGenomeMap.Has(g.selectedEntity)
 	if hasNeural {
-		neuralGenome := g.neuralGenomeMap.Get(g.selectedEntity)
-
-		rl.DrawText("Neural Network", panelX+padding, y, 14, rl.Yellow)
-		y += lineHeight
-
-		rl.DrawText(fmt.Sprintf("Species: %d", neuralGenome.SpeciesID), panelX+padding, y, 12, rl.LightGray)
-		rl.DrawText(fmt.Sprintf("Gen: %d", neuralGenome.Generation), panelX+padding+100, y, 12, rl.LightGray)
-		y += lineHeight
-
-		// Network complexity
-		if neuralGenome.BrainGenome != nil {
-			nodes := len(neuralGenome.BrainGenome.Nodes)
-			genes := len(neuralGenome.BrainGenome.Genes)
-			rl.DrawText(fmt.Sprintf("Nodes: %d  Connections: %d", nodes, genes), panelX+padding, y, 12, rl.LightGray)
-			y += lineHeight
-		}
-		y += 6
-
-		// === BRAIN OUTPUTS ===
-		rl.DrawText("Brain Outputs", panelX+padding, y, 14, rl.Yellow)
-		y += lineHeight
-
-		// Turn output (-1 to +1, centered bar)
-		g.drawCenteredBar(panelX+padding, y, "Turn", org.TurnOutput, -1, 1, panelWidth-padding*2)
-		y += lineHeight + 2
-
-		// Thrust output (0 to 1)
-		g.drawOutputBar(panelX+padding, y, "Thrust", org.ThrustOutput, panelWidth-padding*2)
-		y += lineHeight + 2
-
-		// Eat intent
-		g.drawOutputBar(panelX+padding, y, "Eat", org.EatIntent, panelWidth-padding*2)
-		y += lineHeight + 2
-
-		// Grow intent (Phase 4)
-		g.drawOutputBar(panelX+padding, y, "Grow", org.GrowIntent, panelWidth-padding*2)
-		y += lineHeight + 2
-
-		// Breed intent (Phase 4)
-		g.drawOutputBar(panelX+padding, y, "Breed", org.BreedIntent, panelWidth-padding*2)
-		y += lineHeight + 6
-
-		// === BRAIN NETWORK GRAPH ===
-		if neuralGenome.BrainGenome != nil {
-			rl.DrawText("Network Graph", panelX+padding, y, 14, rl.Yellow)
-			y += lineHeight + 2
-			g.drawBrainGraph(panelX+padding, y, panelWidth-padding*2, 120, neuralGenome.BrainGenome)
-			y += 120 + 6
-		}
+		neuralGenome = g.neuralGenomeMap.Get(g.selectedEntity)
 	}
 
-	// === SHAPE METRICS ===
-	rl.DrawText("Shape Metrics", panelX+padding, y, 14, rl.Yellow)
-	y += lineHeight
-	rl.DrawText(fmt.Sprintf("Aspect: %.2f  Stream: %.2f", org.ShapeMetrics.AspectRatio, org.ShapeMetrics.Streamlining), panelX+padding, y, 12, rl.LightGray)
-	y += lineHeight
-	rl.DrawText(fmt.Sprintf("Drag: %.2f", org.ShapeMetrics.DragCoefficient), panelX+padding, y, 12, rl.LightGray)
-}
-
-// drawOutputBar draws a horizontal progress bar for brain outputs (0 to 1).
-func (g *Game) drawOutputBar(x, y int32, label string, value float32, totalWidth int32) {
-	labelWidth := int32(50)
-	barWidth := totalWidth - labelWidth - 40
-	barHeight := int32(10)
-
-	rl.DrawText(label+":", x, y, 12, rl.LightGray)
-
-	barX := x + labelWidth
-	rl.DrawRectangle(barX, y+2, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
-
-	// Clamp value
-	if value < 0 {
-		value = 0
-	}
-	if value > 1 {
-		value = 1
-	}
-
-	fillWidth := int32(float32(barWidth) * value)
-	barColor := rl.Color{R: 100, G: 150, B: 200, A: 255}
-	rl.DrawRectangle(barX, y+2, fillWidth, barHeight, barColor)
-
-	// Value text
-	rl.DrawText(fmt.Sprintf("%.2f", value), barX+barWidth+5, y, 12, rl.LightGray)
-}
-
-// drawCenteredBar draws a bar centered at 0 for values from -1 to +1.
-func (g *Game) drawCenteredBar(x, y int32, label string, value, minVal, maxVal float32, totalWidth int32) {
-	labelWidth := int32(50)
-	barWidth := totalWidth - labelWidth - 40
-	barHeight := int32(10)
-
-	rl.DrawText(label+":", x, y, 12, rl.LightGray)
-
-	barX := x + labelWidth
-	rl.DrawRectangle(barX, y+2, barWidth, barHeight, rl.Color{R: 40, G: 40, B: 40, A: 255})
-
-	// Draw center line
-	centerX := barX + barWidth/2
-	rl.DrawLine(centerX, y+2, centerX, y+2+barHeight, rl.Color{R: 80, G: 80, B: 80, A: 255})
-
-	// Normalize value to 0-1 range
-	normalized := (value - minVal) / (maxVal - minVal)
-	if normalized < 0 {
-		normalized = 0
-	}
-	if normalized > 1 {
-		normalized = 1
-	}
-
-	// Draw fill from center
-	fillX := centerX
-	fillWidth := int32(float32(barWidth/2) * float32(math.Abs(float64(value))))
-	barColor := rl.Color{R: 100, G: 150, B: 200, A: 255}
-
-	if value < 0 {
-		fillX = centerX - fillWidth
-		barColor = rl.Color{R: 200, G: 100, B: 100, A: 255}
-	} else {
-		barColor = rl.Color{R: 100, G: 200, B: 100, A: 255}
-	}
-	rl.DrawRectangle(fillX, y+2, fillWidth, barHeight, barColor)
-
-	// Value text
-	rl.DrawText(fmt.Sprintf("%+.2f", value), barX+barWidth+5, y, 12, rl.LightGray)
-}
-
-// drawBrainGraph draws a visualization of the neural network.
-func (g *Game) drawBrainGraph(x, y, width, height int32, genome *genetics.Genome) {
-	// Draw background
-	rl.DrawRectangle(x, y, width, height, rl.Color{R: 30, G: 35, B: 40, A: 255})
-
-	if genome == nil {
-		return
-	}
-
-	// Categorize nodes
-	var inputNodes, outputNodes, hiddenNodes []*network.NNode
-	for _, node := range genome.Nodes {
-		switch node.NeuronType {
-		case network.InputNeuron, network.BiasNeuron:
-			inputNodes = append(inputNodes, node)
-		case network.OutputNeuron:
-			outputNodes = append(outputNodes, node)
-		case network.HiddenNeuron:
-			hiddenNodes = append(hiddenNodes, node)
-		}
-	}
-
-	// Calculate node positions
-	nodePositions := make(map[int]rl.Vector2)
-	padding := float32(15)
-
-	// Input nodes (left column)
-	inputSpacing := float32(height-int32(padding*2)) / float32(max(len(inputNodes), 1))
-	for i, node := range inputNodes {
-		nodePositions[node.Id] = rl.Vector2{
-			X: float32(x) + padding,
-			Y: float32(y) + padding + float32(i)*inputSpacing + inputSpacing/2,
-		}
-	}
-
-	// Output nodes (right column)
-	outputSpacing := float32(height-int32(padding*2)) / float32(max(len(outputNodes), 1))
-	for i, node := range outputNodes {
-		nodePositions[node.Id] = rl.Vector2{
-			X: float32(x+width) - padding,
-			Y: float32(y) + padding + float32(i)*outputSpacing + outputSpacing/2,
-		}
-	}
-
-	// Hidden nodes (middle columns)
-	if len(hiddenNodes) > 0 {
-		cols := (len(hiddenNodes) + 7) / 8 // Max 8 nodes per column
-		colWidth := (float32(width) - padding*4) / float32(cols+1)
-		for i, node := range hiddenNodes {
-			col := i / 8
-			row := i % 8
-			nodePositions[node.Id] = rl.Vector2{
-				X: float32(x) + padding*2 + colWidth*float32(col+1),
-				Y: float32(y) + padding + float32(row)*float32(height-int32(padding*2))/8 + float32(height-int32(padding*2))/16,
-			}
-		}
-	}
-
-	// Draw connections
-	for _, gene := range genome.Genes {
-		if !gene.IsEnabled || gene.Link == nil {
-			continue
-		}
-		inPos, ok1 := nodePositions[gene.Link.InNode.Id]
-		outPos, ok2 := nodePositions[gene.Link.OutNode.Id]
-		if !ok1 || !ok2 {
-			continue
-		}
-
-		// Color based on weight
-		weight := gene.Link.ConnectionWeight
-		var lineColor rl.Color
-		alpha := uint8(min(255, int(math.Abs(weight)*100)+50))
-		if weight > 0 {
-			lineColor = rl.Color{R: 100, G: 200, B: 100, A: alpha}
-		} else {
-			lineColor = rl.Color{R: 200, G: 100, B: 100, A: alpha}
-		}
-		rl.DrawLine(int32(inPos.X), int32(inPos.Y), int32(outPos.X), int32(outPos.Y), lineColor)
-	}
-
-	// Draw nodes
-	nodeRadius := float32(4)
-	for _, node := range inputNodes {
-		pos := nodePositions[node.Id]
-		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 100, G: 150, B: 255, A: 255})
-	}
-	for _, node := range outputNodes {
-		pos := nodePositions[node.Id]
-		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 255, G: 180, B: 100, A: 255})
-	}
-	for _, node := range hiddenNodes {
-		pos := nodePositions[node.Id]
-		rl.DrawCircle(int32(pos.X), int32(pos.Y), nodeRadius, rl.Color{R: 180, G: 180, B: 180, A: 255})
-	}
+	// Draw using descriptor-driven UI
+	g.uiInspector.Draw(ui.InspectorData{
+		Organism:     org,
+		Cells:        cells,
+		Capabilities: &caps,
+		NeuralGenome: neuralGenome,
+		HasBrain:     hasNeural,
+	})
 }
 
 func main() {
