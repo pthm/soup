@@ -722,7 +722,7 @@ func distanceSq(x1, y1, x2, y2 float32) float32 {
 
 // Sensor weighting functions for body-brain coupling
 
-// getTotalSensorGain returns the sum of sensor gains from all alive sensor cells.
+// getTotalSensorGain returns the sum of sensor strengths from all alive cells with sensor capability.
 func getTotalSensorGain(cells *components.CellBuffer) float32 {
 	if cells == nil {
 		return 1.0 // Default for organisms without cell data
@@ -730,9 +730,7 @@ func getTotalSensorGain(cells *components.CellBuffer) float32 {
 	var total float32
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
-		if cell.Type == neural.CellTypeSensor && cell.Alive {
-			total += cell.SensorGain
-		}
+		total += cell.GetSensorStrength()
 	}
 	if total < 0.1 {
 		return 0.1 // Minimum sensor capability
@@ -740,14 +738,15 @@ func getTotalSensorGain(cells *components.CellBuffer) float32 {
 	return total
 }
 
-// getSensorCount returns the number of alive sensor cells.
+// getSensorCount returns the number of alive cells with sensor capability.
 func getSensorCount(cells *components.CellBuffer) int {
 	if cells == nil {
 		return 1
 	}
 	count := 0
 	for i := uint8(0); i < cells.Count; i++ {
-		if cells.Cells[i].Type == neural.CellTypeSensor && cells.Cells[i].Alive {
+		cell := &cells.Cells[i]
+		if cell.Alive && cell.HasFunction(neural.CellTypeSensor) {
 			count++
 		}
 	}
@@ -780,7 +779,8 @@ func sensorWeightedIntensity(
 
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
-		if cell.Type != neural.CellTypeSensor || !cell.Alive {
+		sensorStrength := cell.GetSensorStrength()
+		if sensorStrength == 0 {
 			continue
 		}
 
@@ -794,7 +794,7 @@ func sensorWeightedIntensity(
 		// Angle diff of 0 = full contribution, Pi = zero contribution
 		directionalWeight := float32(math.Max(0, math.Cos(angleDiff)))
 
-		weight := cell.SensorGain * directionalWeight
+		weight := sensorStrength * directionalWeight
 		totalWeight += weight
 		weightedIntensity += weight * rawIntensity
 	}
@@ -820,7 +820,7 @@ func normalizeAngle(angle float32) float32 {
 
 // Actuator helper functions for body-brain coupling
 
-// getTotalActuatorStrength returns the sum of actuator strengths from all alive actuator cells.
+// getTotalActuatorStrength returns the sum of actuator strengths from all alive cells with actuator capability.
 func getTotalActuatorStrength(cells *components.CellBuffer) float32 {
 	if cells == nil {
 		return 1.0 // Default for organisms without cell data
@@ -828,9 +828,7 @@ func getTotalActuatorStrength(cells *components.CellBuffer) float32 {
 	var total float32
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
-		if cell.Type == neural.CellTypeActuator && cell.Alive {
-			total += cell.ActuatorStrength
-		}
+		total += cell.GetActuatorStrength()
 	}
 	if total < 0.1 {
 		return 0.1 // Minimum actuator capability
@@ -838,14 +836,15 @@ func getTotalActuatorStrength(cells *components.CellBuffer) float32 {
 	return total
 }
 
-// getActuatorCount returns the number of alive actuator cells.
+// getActuatorCount returns the number of alive cells with actuator capability.
 func getActuatorCount(cells *components.CellBuffer) int {
 	if cells == nil {
 		return 1
 	}
 	count := 0
 	for i := uint8(0); i < cells.Count; i++ {
-		if cells.Cells[i].Type == neural.CellTypeActuator && cells.Cells[i].Alive {
+		cell := &cells.Cells[i]
+		if cell.Alive && cell.HasFunction(neural.CellTypeActuator) {
 			count++
 		}
 	}
@@ -870,11 +869,11 @@ func calculateActuatorForces(
 
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
-		if cell.Type != neural.CellTypeActuator || !cell.Alive {
+		strength := cell.GetActuatorStrength()
+		if strength == 0 {
 			continue
 		}
 
-		strength := cell.ActuatorStrength
 		totalStrength += strength
 
 		// Actuator position relative to center

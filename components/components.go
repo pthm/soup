@@ -64,17 +64,74 @@ type Organism struct {
 
 // Cell represents a single cell within an organism.
 type Cell struct {
-	GridX            int8
-	GridY            int8
-	Age              int32
-	MaxAge           int32
-	Trait            traits.Trait
-	Mutation         traits.Mutation
-	Alive            bool
-	Decomposition    float32
-	Type             neural.CellType // Functional type: sensor, actuator, or passive
-	SensorGain       float32         // Sensitivity multiplier for sensor cells
-	ActuatorStrength float32         // Force multiplier for actuator cells
+	GridX int8
+	GridY int8
+	Age   int32
+	MaxAge int32
+	Trait  traits.Trait
+	Mutation      traits.Mutation
+	Alive         bool
+	Decomposition float32
+
+	// Function selection (from CPPN)
+	PrimaryType       neural.CellType // Main function
+	SecondaryType     neural.CellType // Optional secondary function (CellTypeNone if none)
+	PrimaryStrength   float32         // Effective primary strength
+	SecondaryStrength float32         // Effective secondary strength
+
+	// Digestive spectrum (for digestive cells)
+	DigestiveSpectrum float32 // 0=herbivore, 1=carnivore
+
+	// Modifiers
+	StructuralArmor float32 // 0-1, damage reduction (adds drag)
+	StorageCapacity float32 // 0-1, max energy bonus (adds metabolism)
+}
+
+// GetSensorStrength returns the effective sensor capability of this cell.
+func (c *Cell) GetSensorStrength() float32 {
+	if !c.Alive {
+		return 0
+	}
+	if c.PrimaryType == neural.CellTypeSensor {
+		return c.PrimaryStrength
+	}
+	if c.SecondaryType == neural.CellTypeSensor {
+		return c.SecondaryStrength
+	}
+	return 0
+}
+
+// GetActuatorStrength returns the effective actuator capability of this cell.
+func (c *Cell) GetActuatorStrength() float32 {
+	if !c.Alive {
+		return 0
+	}
+	if c.PrimaryType == neural.CellTypeActuator {
+		return c.PrimaryStrength
+	}
+	if c.SecondaryType == neural.CellTypeActuator {
+		return c.SecondaryStrength
+	}
+	return 0
+}
+
+// HasFunction returns true if this cell has the given function (primary or secondary).
+func (c *Cell) HasFunction(ct neural.CellType) bool {
+	return c.PrimaryType == ct || c.SecondaryType == ct
+}
+
+// GetFunctionStrength returns the effective strength of a function for this cell.
+func (c *Cell) GetFunctionStrength(ct neural.CellType) float32 {
+	if !c.Alive {
+		return 0
+	}
+	if c.PrimaryType == ct {
+		return c.PrimaryStrength
+	}
+	if c.SecondaryType == ct {
+		return c.SecondaryStrength
+	}
+	return 0
 }
 
 // CellBuffer holds the cells of an organism.

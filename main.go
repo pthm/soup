@@ -420,15 +420,27 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		var err error
 		morph, err = neural.GenerateMorphologyWithConfig(neuralGenome.BodyGenome, g.neuralConfig.CPPN)
 		if err != nil {
-			// Fallback to single cell
+			// Fallback to minimal viable morphology
 			morph = neural.MorphologyResult{
-				Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+				Cells: []neural.CellSpec{{
+					GridX: 0, GridY: 0,
+					PrimaryType: neural.CellTypeSensor, SecondaryType: neural.CellTypeActuator,
+					PrimaryStrength: 0.5, SecondaryStrength: 0.3,
+					EffectivePrimary: 0.5 * neural.MixedPrimaryPenalty,
+					EffectiveSecondary: 0.3 * neural.MixedSecondaryScale,
+				}},
 			}
 		}
 	} else {
-		// No CPPN genome, single cell fallback
+		// No CPPN genome, minimal viable fallback
 		morph = neural.MorphologyResult{
-			Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+			Cells: []neural.CellSpec{{
+				GridX: 0, GridY: 0,
+				PrimaryType: neural.CellTypeSensor, SecondaryType: neural.CellTypeActuator,
+				PrimaryStrength: 0.5, SecondaryStrength: 0.3,
+				EffectivePrimary: 0.5 * neural.MixedPrimaryPenalty,
+				EffectiveSecondary: 0.3 * neural.MixedSecondaryScale,
+			}},
 		}
 	}
 
@@ -472,27 +484,31 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 	// Create cell buffer from morphology
 	cells := &components.CellBuffer{}
 	for _, cellSpec := range morph.Cells {
-		// Determine cell trait from diet bias
+		// Determine cell trait from digestive spectrum
 		var cellTrait traits.Trait
-		if cellSpec.DietBias < -0.3 {
+		if cellSpec.DigestiveSpectrum < 0.35 {
 			cellTrait = traits.Herbivore
-		} else if cellSpec.DietBias > 0.3 {
+		} else if cellSpec.DigestiveSpectrum > 0.65 {
 			cellTrait = traits.Carnivore
 		} else {
 			cellTrait = t & (traits.Herbivore | traits.Carnivore | traits.Carrion)
 		}
 
 		cells.AddCell(components.Cell{
-			GridX:            cellSpec.GridX,
-			GridY:            cellSpec.GridY,
-			Age:              0,
-			MaxAge:           3000 + rand.Int31n(2000),
-			Trait:            cellTrait,
-			Mutation:         traits.NoMutation,
-			Alive:            true,
-			Type:             cellSpec.Type,
-			SensorGain:       cellSpec.SensorGain,
-			ActuatorStrength: cellSpec.ActuatorStrength,
+			GridX:             cellSpec.GridX,
+			GridY:             cellSpec.GridY,
+			Age:               0,
+			MaxAge:            3000 + rand.Int31n(2000),
+			Trait:             cellTrait,
+			Mutation:          traits.NoMutation,
+			Alive:             true,
+			PrimaryType:       cellSpec.PrimaryType,
+			SecondaryType:     cellSpec.SecondaryType,
+			PrimaryStrength:   cellSpec.EffectivePrimary,
+			SecondaryStrength: cellSpec.EffectiveSecondary,
+			DigestiveSpectrum: cellSpec.DigestiveSpectrum,
+			StructuralArmor:   cellSpec.StructuralArmor,
+			StorageCapacity:   cellSpec.StorageCapacity,
 		})
 	}
 
@@ -556,7 +572,13 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 		if err != nil {
 			// Use minimal morphology as last resort
 			morph = neural.MorphologyResult{
-				Cells: []neural.CellSpec{{GridX: 0, GridY: 0, Type: neural.CellTypeSensor}},
+				Cells: []neural.CellSpec{{
+					GridX: 0, GridY: 0,
+					PrimaryType: neural.CellTypeSensor, SecondaryType: neural.CellTypeActuator,
+					PrimaryStrength: 0.5, SecondaryStrength: 0.3,
+					EffectivePrimary: 0.5 * neural.MixedPrimaryPenalty,
+					EffectiveSecondary: 0.3 * neural.MixedSecondaryScale,
+				}},
 			}
 		}
 	}
@@ -606,15 +628,27 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 		var err error
 		morph, err = neural.GenerateMorphology(neuralGenome.BodyGenome, maxCells, g.neuralConfig.CPPN.CellThreshold)
 		if err != nil {
-			// Fallback to single cell
+			// Fallback to minimal viable morphology
 			morph = neural.MorphologyResult{
-				Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+				Cells: []neural.CellSpec{{
+					GridX: 0, GridY: 0,
+					PrimaryType: neural.CellTypeSensor, SecondaryType: neural.CellTypeActuator,
+					PrimaryStrength: 0.5, SecondaryStrength: 0.3,
+					EffectivePrimary: 0.5 * neural.MixedPrimaryPenalty,
+					EffectiveSecondary: 0.3 * neural.MixedSecondaryScale,
+				}},
 			}
 		}
 	} else {
-		// No CPPN genome, single cell fallback
+		// No CPPN genome, minimal viable fallback
 		morph = neural.MorphologyResult{
-			Cells: []neural.CellSpec{{GridX: 0, GridY: 0}},
+			Cells: []neural.CellSpec{{
+				GridX: 0, GridY: 0,
+				PrimaryType: neural.CellTypeSensor, SecondaryType: neural.CellTypeActuator,
+				PrimaryStrength: 0.5, SecondaryStrength: 0.3,
+				EffectivePrimary: 0.5 * neural.MixedPrimaryPenalty,
+				EffectiveSecondary: 0.3 * neural.MixedSecondaryScale,
+			}},
 		}
 	}
 
@@ -656,13 +690,30 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 	// Create cells from morphology
 	cells := &components.CellBuffer{Count: 0}
 	for _, cellSpec := range morph.Cells {
+		// Determine cell trait from digestive spectrum
+		var cellTrait traits.Trait
+		if cellSpec.DigestiveSpectrum < 0.35 {
+			cellTrait = traits.Herbivore
+		} else if cellSpec.DigestiveSpectrum > 0.65 {
+			cellTrait = traits.Carnivore
+		} else {
+			cellTrait = t & (traits.Herbivore | traits.Carnivore | traits.Carrion)
+		}
+
 		cell := components.Cell{
-			GridX:  cellSpec.GridX,
-			GridY:  cellSpec.GridY,
-			Age:    0,
-			MaxAge: 3000 + rand.Int31n(1000),
-			Trait:  t,
-			Alive:  true,
+			GridX:             cellSpec.GridX,
+			GridY:             cellSpec.GridY,
+			Age:               0,
+			MaxAge:            3000 + rand.Int31n(1000),
+			Trait:             cellTrait,
+			Alive:             true,
+			PrimaryType:       cellSpec.PrimaryType,
+			SecondaryType:     cellSpec.SecondaryType,
+			PrimaryStrength:   cellSpec.EffectivePrimary,
+			SecondaryStrength: cellSpec.EffectiveSecondary,
+			DigestiveSpectrum: cellSpec.DigestiveSpectrum,
+			StructuralArmor:   cellSpec.StructuralArmor,
+			StorageCapacity:   cellSpec.StorageCapacity,
 		}
 		cells.AddCell(cell)
 	}

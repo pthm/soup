@@ -15,58 +15,92 @@ const BrainInputs = 17
 const BrainOutputs = 4
 
 // CPPNInputs is the number of inputs to the CPPN.
-// Inputs: x, y, d, a, sin(d*Pi), cos(d*Pi), sin(a*2), bias
-const CPPNInputs = 8
+// Inputs: x, y, distance, angle, bias
+const CPPNInputs = 5
 
 // InitialMaxCells constrains generation-0 organisms to small sizes.
 const InitialMaxCells = 4
 
 // CPPNOutputs is the number of outputs from the CPPN.
-// Outputs: presence, cell_type, sensor_gain, actuator_strength, diet_bias, priority, brain_weight, brain_leo
-const CPPNOutputs = 8
+// Outputs: presence, sensor, actuator, mouth, digestive_spectrum,
+// photosynthetic, bioluminescent, structural_armor, storage_capacity,
+// reproductive, brain_weight, brain_leo
+const CPPNOutputs = 12
 
 // CPPN output indices for clarity
 const (
-	CPPNOutPresence     = 0 // Cell presence threshold
-	CPPNOutCellType     = 1 // Sensor/Actuator/Passive
-	CPPNOutSensorGain   = 2 // Sensor sensitivity
-	CPPNOutActuatorStr  = 3 // Actuator strength
-	CPPNOutDietBias     = 4 // Herbivore/Carnivore bias
-	CPPNOutPriority     = 5 // Cell selection priority
-	CPPNOutBrainWeight  = 6 // HyperNEAT: connection weight
-	CPPNOutBrainLEO     = 7 // HyperNEAT: link expression output
+	CPPNOutPresence        = 0  // Cell presence threshold
+	CPPNOutSensor          = 1  // Sensor function strength
+	CPPNOutActuator        = 2  // Actuator function strength
+	CPPNOutMouth           = 3  // Mouth function strength
+	CPPNOutDigestive       = 4  // Digestive spectrum (0=herbivore, 1=carnivore)
+	CPPNOutPhotosynthetic  = 5  // Photosynthetic function strength
+	CPPNOutBioluminescent  = 6  // Bioluminescent function strength
+	CPPNOutStructuralArmor = 7  // Structural armor modifier
+	CPPNOutStorageCapacity = 8  // Storage capacity modifier
+	CPPNOutReproductive    = 9  // Reproductive function strength
+	CPPNOutBrainWeight     = 10 // HyperNEAT: connection weight
+	CPPNOutBrainLEO        = 11 // HyperNEAT: link expression output
+)
+
+// Number of functional cell type outputs (for argmax selection)
+const CPPNFunctionalOutputs = 7 // sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, reproductive
+
+// Cell function selection constants
+const (
+	SecondaryThreshold    = 0.25 // Minimum value for secondary function
+	MixedPrimaryPenalty   = 0.85 // Primary strength multiplier when secondary exists
+	MixedSecondaryScale   = 0.35 // Secondary strength multiplier
+	StructuralDragCost    = 0.1  // Drag increase per unit structural armor
+	StorageMetabolicCost  = 0.05 // Metabolic increase per unit storage capacity
 )
 
 // CellType represents the functional type of a cell.
 type CellType uint8
 
 const (
-	CellTypePassive  CellType = iota // Structural cell, no special function
-	CellTypeSensor                   // Sensing cell, contributes to perception
-	CellTypeActuator                 // Motor cell, contributes to thrust
+	CellTypeNone           CellType = iota // No function (sentinel for no secondary)
+	CellTypeSensor                         // Sensing cell, contributes to perception
+	CellTypeActuator                       // Motor cell, contributes to thrust
+	CellTypeMouth                          // Mouth cell, for feeding
+	CellTypeDigestive                      // Digestive cell, determines diet efficiency
+	CellTypePhotosynthetic                 // Photosynthetic cell, produces energy from light
+	CellTypeBioluminescent                 // Bioluminescent cell, emits light
+	CellTypeReproductive                   // Reproductive cell, for breeding
 )
-
-// CellTypeFromOutput converts a CPPN output value to a cell type.
-// output in [-1, 1] range from tanh activation.
-func CellTypeFromOutput(output float64) CellType {
-	if output < -0.3 {
-		return CellTypeSensor
-	} else if output > 0.3 {
-		return CellTypeActuator
-	}
-	return CellTypePassive
-}
 
 // CellTypeName returns a human-readable name for the cell type.
 func (ct CellType) String() string {
 	switch ct {
+	case CellTypeNone:
+		return "None"
 	case CellTypeSensor:
 		return "Sensor"
 	case CellTypeActuator:
 		return "Actuator"
+	case CellTypeMouth:
+		return "Mouth"
+	case CellTypeDigestive:
+		return "Digestive"
+	case CellTypePhotosynthetic:
+		return "Photosynthetic"
+	case CellTypeBioluminescent:
+		return "Bioluminescent"
+	case CellTypeReproductive:
+		return "Reproductive"
 	default:
-		return "Passive"
+		return "Unknown"
 	}
+}
+
+// IsSensor returns true if this cell type provides sensing capability.
+func (ct CellType) IsSensor() bool {
+	return ct == CellTypeSensor
+}
+
+// IsActuator returns true if this cell type provides movement capability.
+func (ct CellType) IsActuator() bool {
+	return ct == CellTypeActuator
 }
 
 // Config holds all neural network configuration.

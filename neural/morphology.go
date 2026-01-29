@@ -13,12 +13,27 @@ const MorphGridSize = 8
 
 // CellSpec describes a single cell's position and properties.
 type CellSpec struct {
-	GridX            int8     // X position relative to organism center
-	GridY            int8     // Y position relative to organism center
-	Type             CellType // Functional type: sensor, actuator, or passive
-	SensorGain       float32  // Sensitivity multiplier for sensor cells (0-1)
-	ActuatorStrength float32  // Force multiplier for actuator cells (0-1)
-	DietBias         float32  // <0 herbivore, >0 carnivore
+	GridX int8 // X position relative to organism center
+	GridY int8 // Y position relative to organism center
+
+	// Function selection (from CPPN argmax)
+	PrimaryType   CellType // Main function (from argmax of functional outputs)
+	SecondaryType CellType // Optional secondary function (CellTypeNone if none)
+
+	// Raw CPPN output strengths (before mixed-function penalty)
+	PrimaryStrength   float32 // Raw CPPN output for primary type
+	SecondaryStrength float32 // Raw CPPN output for secondary type (if above threshold)
+
+	// Derived effective strengths (after mixed-function penalty)
+	EffectivePrimary   float32 // Primary strength after penalty
+	EffectiveSecondary float32 // Secondary strength after penalty
+
+	// Spectrum value (only meaningful for digestive cells)
+	DigestiveSpectrum float32 // 0=herbivore, 1=carnivore
+
+	// Additive modifiers (incur costs)
+	StructuralArmor  float32 // 0-1, damage reduction (adds drag)
+	StorageCapacity  float32 // 0-1, max energy bonus (adds metabolism)
 }
 
 // MorphologyResult holds the output of CPPN morphology generation.
@@ -29,20 +44,64 @@ type MorphologyResult struct {
 
 // candidate holds intermediate data during morphology generation.
 type candidate struct {
-	gridX            int8
-	gridY            int8
-	presence         float64
-	cellType         CellType
-	sensorGain       float64
-	actuatorStrength float64
-	diet             float64
-	priority         float64
+	gridX   int8
+	gridY   int8
+	outputs []float64 // Raw CPPN outputs for this position
+}
+
+// SelectCellFunctions selects primary and secondary cell types from CPPN outputs.
+// Uses argmax to pick primary type, second-highest for secondary if above threshold.
+// Returns: primary type, secondary type (CellTypeNone if none), effective strengths.
+func SelectCellFunctions(functionalOutputs []float64) (primary, secondary CellType, effPrimary, effSecondary float32) {
+	if len(functionalOutputs) < CPPNFunctionalOutputs {
+		return CellTypeSensor, CellTypeNone, 0.5, 0
+	}
+
+	// Normalize functional outputs to [0,1]
+	normalized := make([]float64, CPPNFunctionalOutputs)
+	for i := 0; i < CPPNFunctionalOutputs; i++ {
+		normalized[i] = (functionalOutputs[i] + 1.0) / 2.0
+	}
+
+	// Find primary (argmax)
+	maxIdx, maxVal := 0, normalized[0]
+	for i, v := range normalized {
+		if v > maxVal {
+			maxIdx, maxVal = i, v
+		}
+	}
+
+	// Map index to CellType (offset by 1 because CellTypeNone is 0)
+	primary = CellType(maxIdx + 1)
+	pStr := float32(maxVal)
+
+	// Find secondary (second max above threshold)
+	secondIdx, secondVal := -1, 0.0
+	for i, v := range normalized {
+		if i != maxIdx && v > secondVal {
+			secondIdx, secondVal = i, v
+		}
+	}
+
+	if secondVal >= SecondaryThreshold {
+		secondary = CellType(secondIdx + 1)
+		sStr := float32(secondVal)
+		// Apply mixed-function penalty
+		effPrimary = pStr * MixedPrimaryPenalty
+		effSecondary = sStr * MixedSecondaryScale
+	} else {
+		secondary = CellTypeNone
+		effPrimary = pStr
+		effSecondary = 0
+	}
+
+	return primary, secondary, effPrimary, effSecondary
 }
 
 // GenerateMorphology queries the CPPN genome to produce an organism's body layout.
 // The CPPN is queried at each position in an 8x8 grid.
 // Positions with presence > threshold become cells.
-// Returns up to maxCells cells sorted by priority.
+// Returns up to maxCells cells sorted by presence (priority).
 func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64) (MorphologyResult, error) {
 	if genome == nil {
 		return MorphologyResult{}, fmt.Errorf("cannot generate morphology from nil genome")
@@ -69,16 +128,13 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 			d := math.Sqrt(x*x + y*y)
 			a := math.Atan2(y, x)
 
-			// Enhanced CPPN inputs: x, y, d, a, sin(d*Pi), cos(d*Pi), sin(a*2), bias
+			// Simplified CPPN inputs: x, y, distance, angle, bias
 			inputs := []float64{
 				x,
 				y,
 				d,
-				a,
-				math.Sin(d * math.Pi), // Radial wave
-				math.Cos(d * math.Pi), // Radial wave offset
-				math.Sin(a * 2),       // Angular wave (bilateral pattern)
-				1.0,                   // Bias
+				a / math.Pi, // Normalize angle to [-1, 1]
+				1.0,         // Bias
 			}
 
 			if err := phenotype.LoadSensors(inputs); err != nil {
@@ -88,49 +144,32 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 			// Activate network
 			activated, err := phenotype.Activate()
 			if err != nil || !activated {
-				// Flush and continue on failure
 				phenotype.Flush()
 				continue
 			}
 
 			outputs := phenotype.ReadOutputs()
-
-			// Flush for next iteration
 			phenotype.Flush()
 
-			// Need at least 4 outputs
 			if len(outputs) < CPPNOutputs {
 				continue
 			}
 
-			// CPPN outputs (6 total):
-			// 0: presence (-1 to 1, threshold determines if cell exists)
-			// 1: cell_type (-1 to 1, mapped to sensor/passive/actuator)
-			// 2: sensor_gain (-1 to 1, normalized to 0-1)
-			// 3: actuator_strength (-1 to 1, normalized to 0-1)
-			// 4: diet_bias (-1 to 1)
-			// 5: priority (-1 to 1, for cell selection when over max)
-			presence := outputs[0]
-
+			// Check presence threshold
+			presence := outputs[CPPNOutPresence]
 			if presence > threshold {
 				candidates = append(candidates, candidate{
-					// Convert grid coords to centered coords
-					gridX:            int8(gx - MorphGridSize/2),
-					gridY:            int8(gy - MorphGridSize/2),
-					presence:         presence,
-					cellType:         CellTypeFromOutput(outputs[1]),
-					sensorGain:       (outputs[2] + 1) / 2, // Normalize to 0-1
-					actuatorStrength: (outputs[3] + 1) / 2, // Normalize to 0-1
-					diet:             outputs[4],
-					priority:         outputs[5],
+					gridX:   int8(gx - MorphGridSize/2),
+					gridY:   int8(gy - MorphGridSize/2),
+					outputs: append([]float64{}, outputs...), // Copy outputs
 				})
 			}
 		}
 	}
 
-	// Sort by priority descending
+	// Sort by presence (first output) descending - acts as priority
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].priority > candidates[j].priority
+		return candidates[i].outputs[CPPNOutPresence] > candidates[j].outputs[CPPNOutPresence]
 	})
 
 	// Limit to maxCells
@@ -138,107 +177,138 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 		candidates = candidates[:maxCells]
 	}
 
-	// Viability filter: ensure at least 1 sensor and 1 actuator
-	// This is critical for body-brain coupling to work
+	// Build CellSpecs from candidates
+	cells := make([]CellSpec, len(candidates))
+	for i, c := range candidates {
+		// Extract functional outputs (indices 1-7)
+		functionalOutputs := c.outputs[CPPNOutSensor : CPPNOutSensor+CPPNFunctionalOutputs]
+		primary, secondary, effPrimary, effSecondary := SelectCellFunctions(functionalOutputs)
+
+		// Raw strengths before penalty
+		var rawPrimary, rawSecondary float32
+		if int(primary) > 0 && int(primary) <= CPPNFunctionalOutputs {
+			rawPrimary = float32((c.outputs[int(primary)] + 1.0) / 2.0)
+		}
+		if secondary != CellTypeNone && int(secondary) > 0 && int(secondary) <= CPPNFunctionalOutputs {
+			rawSecondary = float32((c.outputs[int(secondary)] + 1.0) / 2.0)
+		}
+
+		// Digestive spectrum (normalize to 0-1 range)
+		digestiveSpectrum := float32((c.outputs[CPPNOutDigestive] + 1.0) / 2.0)
+
+		// Additive modifiers (normalize to 0-1)
+		structuralArmor := float32((c.outputs[CPPNOutStructuralArmor] + 1.0) / 2.0)
+		storageCapacity := float32((c.outputs[CPPNOutStorageCapacity] + 1.0) / 2.0)
+
+		cells[i] = CellSpec{
+			GridX:              c.gridX,
+			GridY:              c.gridY,
+			PrimaryType:        primary,
+			SecondaryType:      secondary,
+			PrimaryStrength:    rawPrimary,
+			SecondaryStrength:  rawSecondary,
+			EffectivePrimary:   effPrimary,
+			EffectiveSecondary: effSecondary,
+			DigestiveSpectrum:  digestiveSpectrum,
+			StructuralArmor:    structuralArmor,
+			StorageCapacity:    storageCapacity,
+		}
+	}
+
+	// Ensure viability: at least 1 sensor and 1 actuator
+	cells = ensureViability(cells)
+
+	// Calculate average diet bias from digestive spectrum
+	var totalDigestive float64
+	for _, c := range cells {
+		totalDigestive += float64(c.DigestiveSpectrum)
+	}
+	avgDigestive := float32(0.0)
+	if len(cells) > 0 {
+		avgDigestive = float32(totalDigestive / float64(len(cells)))
+	}
+	// Convert 0-1 range to -1 to 1 for diet bias
+	dietBias := avgDigestive*2 - 1
+
+	return MorphologyResult{
+		Cells:    cells,
+		DietBias: dietBias,
+	}, nil
+}
+
+// ensureViability ensures the morphology has at least one sensor and one actuator.
+// Modifies cells in-place or returns new cells if needed.
+func ensureViability(cells []CellSpec) []CellSpec {
+	if len(cells) == 0 {
+		// Create minimal viable morphology
+		return []CellSpec{
+			{
+				GridX:            0,
+				GridY:            0,
+				PrimaryType:      CellTypeSensor,
+				SecondaryType:    CellTypeActuator,
+				PrimaryStrength:  0.5,
+				SecondaryStrength: 0.3,
+				EffectivePrimary:  0.5 * MixedPrimaryPenalty,
+				EffectiveSecondary: 0.3 * MixedSecondaryScale,
+			},
+		}
+	}
+
+	// Check for sensor capability
 	hasSensor := false
 	hasActuator := false
-	for _, c := range candidates {
-		if c.cellType == CellTypeSensor {
+	for _, c := range cells {
+		if c.PrimaryType == CellTypeSensor || c.SecondaryType == CellTypeSensor {
 			hasSensor = true
-		} else if c.cellType == CellTypeActuator {
+		}
+		if c.PrimaryType == CellTypeActuator || c.SecondaryType == CellTypeActuator {
 			hasActuator = true
 		}
 	}
 
-	// If missing sensor, convert highest-priority passive cell to sensor
-	if !hasSensor && len(candidates) > 0 {
-		for i := range candidates {
-			if candidates[i].cellType == CellTypePassive {
-				candidates[i].cellType = CellTypeSensor
-				candidates[i].sensorGain = 0.5
-				hasSensor = true
+	// Fix missing capabilities by adding as secondary function
+	if !hasSensor {
+		// Find best candidate to add sensor secondary
+		bestIdx := 0
+		for i, c := range cells {
+			if c.SecondaryType == CellTypeNone {
+				bestIdx = i
 				break
 			}
 		}
-		// If still no sensor, convert an actuator
-		if !hasSensor {
-			candidates[0].cellType = CellTypeSensor
-			candidates[0].sensorGain = 0.5
-			hasSensor = true
-		}
+		cells[bestIdx].SecondaryType = CellTypeSensor
+		cells[bestIdx].SecondaryStrength = 0.3
+		cells[bestIdx].EffectiveSecondary = 0.3 * MixedSecondaryScale
+		// Apply mixed penalty to primary
+		cells[bestIdx].EffectivePrimary = cells[bestIdx].PrimaryStrength * MixedPrimaryPenalty
 	}
 
-	// If missing actuator, convert highest-priority passive cell to actuator
-	if !hasActuator && len(candidates) > 0 {
-		for i := range candidates {
-			if candidates[i].cellType == CellTypePassive {
-				candidates[i].cellType = CellTypeActuator
-				candidates[i].actuatorStrength = 0.5
-				hasActuator = true
+	if !hasActuator {
+		// Find best candidate to add actuator secondary
+		bestIdx := 0
+		for i, c := range cells {
+			// Prefer cell that doesn't already have a sensor secondary
+			if c.SecondaryType == CellTypeNone {
+				bestIdx = i
 				break
 			}
-		}
-		// If still no actuator, convert a sensor (but keep at least one sensor)
-		if !hasActuator {
-			for i := range candidates {
-				if candidates[i].cellType == CellTypeSensor && i > 0 {
-					candidates[i].cellType = CellTypeActuator
-					candidates[i].actuatorStrength = 0.5
-					hasActuator = true
-					break
-				}
+			if c.SecondaryType != CellTypeSensor {
+				bestIdx = i
 			}
 		}
-	}
-
-	// Ensure at least 1 cell (sensor + actuator combined) at center
-	if len(candidates) == 0 {
-		candidates = append(candidates, candidate{
-			gridX:            0,
-			gridY:            0,
-			presence:         1.0,
-			cellType:         CellTypeSensor,
-			sensorGain:       0.5,
-			actuatorStrength: 0.5,
-			diet:             0,
-			priority:         0,
-		})
-		// Add an actuator cell adjacent
-		candidates = append(candidates, candidate{
-			gridX:            1,
-			gridY:            0,
-			presence:         1.0,
-			cellType:         CellTypeActuator,
-			sensorGain:       0,
-			actuatorStrength: 0.5,
-			diet:             0,
-			priority:         0,
-		})
-	}
-
-	// Build result
-	result := MorphologyResult{
-		Cells: make([]CellSpec, len(candidates)),
-	}
-
-	var totalDiet float64
-	for i, c := range candidates {
-		result.Cells[i] = CellSpec{
-			GridX:            c.gridX,
-			GridY:            c.gridY,
-			Type:             c.cellType,
-			SensorGain:       float32(c.sensorGain),
-			ActuatorStrength: float32(c.actuatorStrength),
-			DietBias:         float32(c.diet),
+		// If best candidate already has secondary, upgrade it
+		if cells[bestIdx].SecondaryType != CellTypeNone && cells[bestIdx].SecondaryType != CellTypeSensor {
+			cells[bestIdx].SecondaryType = CellTypeActuator
+		} else if cells[bestIdx].SecondaryType == CellTypeNone {
+			cells[bestIdx].SecondaryType = CellTypeActuator
+			cells[bestIdx].SecondaryStrength = 0.3
+			cells[bestIdx].EffectiveSecondary = 0.3 * MixedSecondaryScale
+			cells[bestIdx].EffectivePrimary = cells[bestIdx].PrimaryStrength * MixedPrimaryPenalty
 		}
-		totalDiet += c.diet
 	}
 
-	// Calculate averages
-	n := float64(len(candidates))
-	result.DietBias = float32(totalDiet / n)
-
-	return result, nil
+	return cells
 }
 
 // GenerateMorphologyWithConfig uses configuration for grid size and threshold.
@@ -266,48 +336,82 @@ func (m *MorphologyResult) CellCount() int {
 	return len(m.Cells)
 }
 
-// SensorCount returns the number of sensor cells.
+// SensorCount returns the number of cells with sensor capability (primary or secondary).
 func (m *MorphologyResult) SensorCount() int {
 	count := 0
 	for _, c := range m.Cells {
-		if c.Type == CellTypeSensor {
+		if c.PrimaryType == CellTypeSensor || c.SecondaryType == CellTypeSensor {
 			count++
 		}
 	}
 	return count
 }
 
-// ActuatorCount returns the number of actuator cells.
+// ActuatorCount returns the number of cells with actuator capability (primary or secondary).
 func (m *MorphologyResult) ActuatorCount() int {
 	count := 0
 	for _, c := range m.Cells {
-		if c.Type == CellTypeActuator {
+		if c.PrimaryType == CellTypeActuator || c.SecondaryType == CellTypeActuator {
 			count++
 		}
 	}
 	return count
 }
 
-// TotalSensorGain returns the sum of sensor gains across all sensor cells.
+// TotalSensorGain returns the sum of effective sensor strengths across all cells.
 func (m *MorphologyResult) TotalSensorGain() float32 {
 	var total float32
 	for _, c := range m.Cells {
-		if c.Type == CellTypeSensor {
-			total += c.SensorGain
-		}
+		total += c.GetSensorStrength()
 	}
 	return total
 }
 
-// TotalActuatorStrength returns the sum of actuator strengths.
+// TotalActuatorStrength returns the sum of effective actuator strengths.
 func (m *MorphologyResult) TotalActuatorStrength() float32 {
 	var total float32
 	for _, c := range m.Cells {
-		if c.Type == CellTypeActuator {
-			total += c.ActuatorStrength
-		}
+		total += c.GetActuatorStrength()
 	}
 	return total
+}
+
+// GetSensorStrength returns the effective sensor capability of a cell.
+func (c *CellSpec) GetSensorStrength() float32 {
+	if c.PrimaryType == CellTypeSensor {
+		return c.EffectivePrimary
+	}
+	if c.SecondaryType == CellTypeSensor {
+		return c.EffectiveSecondary
+	}
+	return 0
+}
+
+// GetActuatorStrength returns the effective actuator capability of a cell.
+func (c *CellSpec) GetActuatorStrength() float32 {
+	if c.PrimaryType == CellTypeActuator {
+		return c.EffectivePrimary
+	}
+	if c.SecondaryType == CellTypeActuator {
+		return c.EffectiveSecondary
+	}
+	return 0
+}
+
+// HasFunction returns true if the cell has the given function (primary or secondary).
+func (c *CellSpec) HasFunction(ct CellType) bool {
+	return c.PrimaryType == ct || c.SecondaryType == ct
+}
+
+// GetFunctionStrength returns the effective strength of a function for this cell.
+func (c *CellSpec) GetFunctionStrength(ct CellType) float32 {
+	if c.PrimaryType == ct {
+		return c.EffectivePrimary
+	}
+	if c.SecondaryType == ct {
+		return c.EffectiveSecondary
+	}
+	return 0
 }
 
 // Bounds returns the bounding box of the morphology in grid units.

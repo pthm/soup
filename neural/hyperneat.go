@@ -30,17 +30,15 @@ type Substrate struct {
 func BuildSubstrateFromMorphology(morph *MorphologyResult) *Substrate {
 	s := &Substrate{}
 
-	// Map sensor cells to input nodes based on their grid positions
-	sensorIdx := 0
+	// Map cells with sensor capability to input nodes based on their grid positions
 	for i, cell := range morph.Cells {
-		if cell.Type == CellTypeSensor {
+		if cell.HasFunction(CellTypeSensor) {
 			s.SensorNodes = append(s.SensorNodes, SubstrateNode{
 				X:     float64(cell.GridX) / 4.0, // Normalize to roughly [-1, 1]
 				Y:     float64(cell.GridY) / 4.0,
 				Type:  "sensor",
 				Index: i,
 			})
-			sensorIdx++
 		}
 	}
 

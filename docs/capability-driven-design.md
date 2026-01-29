@@ -20,7 +20,7 @@ A redesign of the neural evolution system to separate strategic decision-making 
 
 ## Cell Types
 
-The CPPN queries each grid position and outputs continuous values. Cells can be multi-functional (60% sensor, 30% actuator, 10% structural).
+The CPPN queries each grid position and outputs continuous values. Each cell has one primary functional type, and can optionally include one secondary functional type at reduced effectiveness. Structural and storage remain modifiers, but carry a small cost.
 
 | Cell Type | Property | Effect |
 |-----------|----------|--------|
@@ -34,19 +34,31 @@ The CPPN queries each grid position and outputs continuous values. Cells can be 
 | **Storage** | capacity | Energy holding (fat), increases max energy |
 | **Reproductive** | spectrum | Reproduction mode (0=asexual, 1=sexual, 0.5=both) |
 
-### Cell Composition and Normalization
+### Cell Composition and Selection
 
-For each cell, CPPN outputs are treated as raw weights. Functional outputs (sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, reproductive) are normalized to sum to 1.0 after zeroing anything below `min_component`. Structural and storage are treated as additive modifiers (not part of the functional budget).
+Functional outputs (sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, reproductive) are treated as raw weights. Each cell chooses a single **primary** function via argmax, and optionally a **secondary** function if the second-highest weight clears a threshold. Structural and storage are treated as modifiers (not part of the functional budget), but add a small cost.
 
 Example:
 ```
 raw = [sensor, actuator, mouth, digestive, photo, bio, repro]
-raw = [v if v >= min_component else 0]
-functional = raw / (sum(raw) + epsilon)
+primary = argmax(raw)
+secondary = second_max(raw) if second_max(raw) >= secondary_threshold else None
+
+primary_strength = raw[primary]
+secondary_strength = raw[secondary] * secondary_scale  (if present)
+```
+
+Optional mixing penalty (if secondary exists):
+```
+primary_strength *= mix_primary_scale
+secondary_strength *= mix_secondary_scale
 ```
 
 Parameter defaults:
-- `min_component = 0.05`
+- `secondary_threshold = 0.25`
+- `secondary_scale = 0.4`
+- `mix_primary_scale = 0.85`
+- `mix_secondary_scale = 0.35`
 - `epsilon = 1e-6`
 
 ### CPPN Outputs (per cell query)
@@ -111,6 +123,7 @@ penetration = clamp01(edibility - their_structural_armor)
 
 Notes:
 - `composition` is continuous; organisms with no photo/actuator use `composition = 0.5` (neutral).
+- `photo_weight` / `actuator_weight` come from the sum of primary + (optional) secondary strengths across all cells.
 - `penetration` is the final capability match strength (0-1).
 - For threat perception, swap perspectives: use their_digestive_spectrum vs my_composition.
 
@@ -387,6 +400,25 @@ Fauna use the same feeding rule; flora are simply entities with high `photo_weig
 - Base energy capacity from organism size
 - Storage cells increase max capacity (fat reserves)
 - Energy ratio (current/max) is brain input
+
+### Structural/Storage Costs
+To keep armor and storage from being universal "free" upgrades, add explicit tradeoffs:
+```
+# Per-tick metabolic cost (applies per cell)
+metabolic_cost += base_cell_cost * (
+  1.0
+  + armor_cost_scale * structural_armor
+  + storage_cost_scale * storage_capacity
+)
+
+# Movement drag penalty (applies to organism-level drag)
+drag_multiplier = 1.0 + drag_armor_scale * avg_structural_armor
+```
+
+Parameter defaults:
+- `armor_cost_scale = 0.5`
+- `storage_cost_scale = 0.35`
+- `drag_armor_scale = 0.4`
 
 ---
 
