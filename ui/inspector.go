@@ -49,13 +49,18 @@ func (ins *Inspector) Draw(data InspectorData) int32 {
 	y := ins.y + padding
 
 	// Calculate panel height (will be adjusted as we draw)
-	panelHeight := int32(500)
+	panelHeight := int32(600)
 
 	// Draw panel background
 	r.DrawPanel(ins.x, ins.y, ins.width, panelHeight)
 
 	// Content width
 	contentWidth := ins.width - padding*2
+
+	// === ORGANISM PREVIEW ===
+	previewHeight := int32(100)
+	y = ins.drawOrganismPreview(ins.x+padding, y, contentWidth, previewHeight, data)
+	y = r.DrawSpacer(y, 8)
 
 	// === HEADER ===
 	y = ins.drawHeader(ins.x+padding, y, data, contentWidth)
@@ -76,6 +81,102 @@ func (ins *Inspector) Draw(data InspectorData) int32 {
 	y = ins.drawShapeSection(ins.x+padding, y, data, contentWidth)
 
 	return y
+}
+
+// drawOrganismPreview renders a preview of the organism's cell layout.
+func (ins *Inspector) drawOrganismPreview(x, y, width, height int32, data InspectorData) int32 {
+	// Draw background
+	rl.DrawRectangle(x, y, width, height, rl.Color{R: 25, G: 30, B: 35, A: 255})
+	rl.DrawRectangleLinesEx(rl.Rectangle{X: float32(x), Y: float32(y), Width: float32(width), Height: float32(height)}, 1, rl.Color{R: 50, G: 60, B: 70, A: 255})
+
+	if data.Cells == nil || data.Cells.Count == 0 {
+		return y + height
+	}
+
+	// Find bounding box of all alive cells
+	var minX, maxX, minY, maxY int8 = 127, -128, 127, -128
+	aliveCount := 0
+	for i := uint8(0); i < data.Cells.Count; i++ {
+		cell := &data.Cells.Cells[i]
+		if !cell.Alive {
+			continue
+		}
+		aliveCount++
+		if cell.GridX < minX {
+			minX = cell.GridX
+		}
+		if cell.GridX > maxX {
+			maxX = cell.GridX
+		}
+		if cell.GridY < minY {
+			minY = cell.GridY
+		}
+		if cell.GridY > maxY {
+			maxY = cell.GridY
+		}
+	}
+
+	if aliveCount == 0 {
+		return y + height
+	}
+
+	// Calculate cell size to fit in preview area with padding
+	padding := float32(15)
+	availWidth := float32(width) - padding*2
+	availHeight := float32(height) - padding*2
+
+	gridWidth := float32(maxX-minX) + 1
+	gridHeight := float32(maxY-minY) + 1
+
+	// Scale to fit while maintaining aspect ratio
+	cellSize := availWidth / gridWidth
+	if availHeight/gridHeight < cellSize {
+		cellSize = availHeight / gridHeight
+	}
+	// Cap cell size for very small organisms
+	if cellSize > 20 {
+		cellSize = 20
+	}
+
+	// Calculate center offset
+	actualWidth := gridWidth * cellSize
+	actualHeight := gridHeight * cellSize
+	offsetX := float32(x) + padding + (availWidth-actualWidth)/2
+	offsetY := float32(y) + padding + (availHeight-actualHeight)/2
+
+	// Draw cells
+	for i := uint8(0); i < data.Cells.Count; i++ {
+		cell := &data.Cells.Cells[i]
+		if !cell.Alive {
+			continue
+		}
+
+		// Calculate position in preview
+		cellX := offsetX + float32(cell.GridX-minX)*cellSize
+		cellY := offsetY + float32(cell.GridY-minY)*cellSize
+
+		// Get color based on cell's primary type
+		r, g, b := cell.PrimaryType.Color()
+		cellColor := rl.Color{R: r, G: g, B: b, A: 255}
+
+		// Apply decomposition fade
+		if cell.Decomposition > 0 {
+			alpha := uint8(255 * (1 - cell.Decomposition))
+			cellColor.A = alpha
+		}
+
+		// Draw cell as a filled rectangle with slight gap
+		gap := cellSize * 0.1
+		rl.DrawRectangle(
+			int32(cellX+gap),
+			int32(cellY+gap),
+			int32(cellSize-gap*2),
+			int32(cellSize-gap*2),
+			cellColor,
+		)
+	}
+
+	return y + height
 }
 
 // drawHeader renders the organism type header.
