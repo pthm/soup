@@ -14,9 +14,9 @@ const (
 )
 
 const (
-	// Target ~20px square cells for 1280x800 screen
-	terrainGridWidth  = 64 // 1280 / 20 = 64
-	terrainGridHeight = 40 // 800 / 20 = 40
+	// Target ~10px square cells for 1280x800 screen (higher resolution)
+	terrainGridWidth  = 128 // 1280 / 10 = 128
+	terrainGridHeight = 80  // 800 / 10 = 80
 )
 
 // TerrainSystem manages procedural terrain with collision detection.
