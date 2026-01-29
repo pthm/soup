@@ -112,9 +112,9 @@ type Game struct {
 	terrainRenderer *renderer.TerrainRenderer
 
 	// New systems
-	shadowMap        *systems.ShadowMap
-	photosynthesis   *systems.PhotosynthesisSystem
-	feeding          *systems.FeedingSystem
+	shadowMap   *systems.ShadowMap
+	floraSystem *systems.FloraSystem
+	feeding     *systems.FeedingSystem
 	spores           *systems.SporeSystem
 	breeding         *systems.BreedingSystem
 	splitting        *systems.SplittingSystem
@@ -137,16 +137,14 @@ type Game struct {
 	selectedEntity ecs.Entity
 	hasSelection   bool
 
-	// Mappers for creating entities with components
-	floraMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora]
+	// Mappers for creating entities with components (fauna only - flora uses FloraSystem)
 	faunaMapper *ecs.Map5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna]
 
 	// Neural component mappers (for adding neural components to fauna entities)
 	neuralGenomeMap *ecs.Map[components.NeuralGenome]
 	brainMap        *ecs.Map[components.Brain]
 
-	// Filters for querying
-	floraFilter     *ecs.Filter3[components.Position, components.Organism, components.Flora]
+	// Filters for querying (fauna only - flora uses FloraSystem)
 	faunaFilter     *ecs.Filter3[components.Position, components.Organism, components.Fauna]
 	faunaCellFilter *ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Fauna]
 	allOrgFilter    *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
@@ -191,7 +189,6 @@ func NewGame() *Game {
 
 		// New systems
 		shadowMap:        shadowMap,
-		photosynthesis:   systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:          systems.NewFeedingSystem(world),
 		spores:           systems.NewSporeSystemWithTerrain(bounds, terrain),
 		breeding:         systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
@@ -211,9 +208,7 @@ func NewGame() *Game {
 		showSpeciesColors: false,
 		showNeuralStats:   false,
 
-		floraMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
-		floraFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
 		faunaFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
 		faunaCellFilter: ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Fauna](world),
 		allOrgFilter:    ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
@@ -222,6 +217,14 @@ func NewGame() *Game {
 		neuralGenomeMap: ecs.NewMap[components.NeuralGenome](world),
 		brainMap:        ecs.NewMap[components.Brain](world),
 	}
+
+	// Create FloraSystem after other systems are initialized (needs shadowMap, terrain, flowField)
+	g.floraSystem = systems.NewFloraSystem(bounds, terrain, shadowMap, g.flowField)
+
+	// Wire up FloraSystem to systems that need it
+	g.feeding.SetFloraSystem(g.floraSystem)
+	g.behavior.SetFloraSystem(g.floraSystem)
+	g.allocation.SetFloraSystem(g.floraSystem)
 
 	g.seedUniverse()
 
@@ -269,16 +272,15 @@ func NewGameHeadless() *Game {
 		terrain: terrain,
 
 		// Systems
-		shadowMap:      shadowMap,
-		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
-		feeding:        systems.NewFeedingSystem(world),
-		spores:         systems.NewSporeSystemWithTerrain(bounds, terrain),
-		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
-		splitting:      systems.NewSplittingSystem(),
-		particles:      systems.NewParticleSystem(),
-		allocation:     systems.NewAllocationSystem(world),
-		spatialGrid:    systems.NewSpatialGrid(screenWidth, screenHeight),
-		disease:        systems.NewDiseaseSystem(),
+		shadowMap:   shadowMap,
+		feeding:     systems.NewFeedingSystem(world),
+		spores:      systems.NewSporeSystemWithTerrain(bounds, terrain),
+		breeding:    systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
+		splitting:   systems.NewSplittingSystem(),
+		particles:   systems.NewParticleSystem(),
+		allocation:  systems.NewAllocationSystem(world),
+		spatialGrid: systems.NewSpatialGrid(screenWidth, screenHeight),
+		disease:     systems.NewDiseaseSystem(),
 
 		// Neural evolution
 		neuralConfig:   neuralConfig,
@@ -289,9 +291,7 @@ func NewGameHeadless() *Game {
 		showSpeciesColors: false,
 		showNeuralStats:   false,
 
-		floraMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
 		faunaMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
-		floraFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
 		faunaFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
 		faunaCellFilter: ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Fauna](world),
 		allOrgFilter:    ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](world),
@@ -301,28 +301,42 @@ func NewGameHeadless() *Game {
 		brainMap:        ecs.NewMap[components.Brain](world),
 	}
 
+	// Create FloraSystem after other systems are initialized
+	g.floraSystem = systems.NewFloraSystem(bounds, terrain, shadowMap, g.flowField)
+
+	// Wire up FloraSystem to systems that need it
+	g.feeding.SetFloraSystem(g.floraSystem)
+	g.behavior.SetFloraSystem(g.floraSystem)
+	g.allocation.SetFloraSystem(g.floraSystem)
+
 	g.seedUniverse()
 
 	return g
 }
 
 func (g *Game) seedUniverse() {
-	// Spawn initial spores that will drift and root naturally on terrain
-	// Rooted spores (will sink and attach to terrain/seafloor)
-	for i := 0; i < 80; i++ {
-		g.spores.SpawnSpore(
-			rand.Float32()*g.bounds.Width,
-			rand.Float32()*g.bounds.Height*0.5, // Upper half
-			traits.Flora|traits.Rooted,
-		)
+	// Seed initial flora directly using FloraSystem
+	// Rooted flora on terrain and seafloor
+	for i := 0; i < 60; i++ {
+		x := rand.Float32() * g.bounds.Width
+		// Place on seafloor or terrain
+		y := g.bounds.Height - 4 - rand.Float32()*20
+		g.floraSystem.AddRooted(x, y, 80+rand.Float32()*40)
 	}
 
-	// Floating spores (will drift and settle in water column)
-	for i := 0; i < 50; i++ {
+	// Floating flora in water column
+	for i := 0; i < 40; i++ {
+		x := rand.Float32() * g.bounds.Width
+		y := rand.Float32()*g.bounds.Height*0.7 + 50
+		g.floraSystem.AddFloating(x, y, 60+rand.Float32()*40)
+	}
+
+	// Also spawn some spores to demonstrate the spore system
+	for i := 0; i < 20; i++ {
 		g.spores.SpawnSpore(
 			rand.Float32()*g.bounds.Width,
-			rand.Float32()*g.bounds.Height*0.6+50,
-			traits.Flora|traits.Floating,
+			rand.Float32()*g.bounds.Height*0.5,
+			traits.Flora|traits.Rooted,
 		)
 	}
 
@@ -358,50 +372,13 @@ func (g *Game) seedUniverse() {
 	}
 }
 
-// createFlora creates a non-neural flora organism.
-// Flora don't have neural brains - they photosynthesize and reproduce via spores.
-func (g *Game) createFlora(x, y float32, t traits.Trait, energy float32) ecs.Entity {
-	// Ensure it's flora
-	if !traits.IsFlora(t) {
-		t = traits.Flora | traits.Rooted
+// createFloraLightweight creates a lightweight flora using FloraSystem.
+// Returns true if flora was created successfully.
+func (g *Game) createFloraLightweight(x, y float32, isRooted bool, energy float32) bool {
+	if isRooted {
+		return g.floraSystem.AddRooted(x, y, energy)
 	}
-
-	pos := &components.Position{X: x, Y: y}
-	vel := &components.Velocity{X: 0, Y: 0}
-	org := &components.Organism{
-		Traits:           t,
-		Energy:           energy,
-		MaxEnergy:        150,
-		CellSize:         5,
-		MaxSpeed:         1.5,
-		MaxForce:         0.03,
-		PerceptionRadius: 100,
-		Dead:             false,
-		Heading:          rand.Float32() * 6.28318,
-		GrowthTimer:      0,
-		GrowthInterval:   120,
-		SporeTimer:       0,
-		SporeInterval:    400,
-		BreedingCooldown: 0,
-	}
-
-	// Create initial cell buffer
-	cells := &components.CellBuffer{}
-	cells.AddCell(components.Cell{
-		GridX:    0,
-		GridY:    0,
-		Age:      0,
-		MaxAge:   3000 + rand.Int31n(2000),
-		Trait:    traits.Flora,
-		Mutation: traits.NoMutation,
-		Alive:    true,
-	})
-
-	// Calculate shape metrics and collision OBB
-	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
-	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
-
-	return g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
+	return g.floraSystem.AddFloating(x, y, energy)
 }
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
@@ -715,13 +692,9 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
 	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
-	// Create entity
-	var entity ecs.Entity
-	if traits.IsFlora(t) {
-		entity = g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
-	} else {
-		entity = g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
-	}
+	// Create entity - neural organisms are always fauna
+	// (Flora are now managed by FloraSystem and don't have neural brains)
+	entity := g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
 
 	// Add neural components
 	g.neuralGenomeMap.Add(entity, neuralGenome)
@@ -771,10 +744,10 @@ func (g *Game) Update() {
 		}
 	}
 	if rl.IsKeyPressed(rl.KeyF) {
-		g.createFlora(
+		g.createFloraLightweight(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			g.bounds.Height-4,
-			traits.Flora|traits.Rooted,
+			true, // isRooted
 			80,
 		)
 	}
@@ -851,7 +824,11 @@ func (g *Game) Update() {
 		measure("behavior", func() { g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
 		measure("physics", func() { g.physics.Update(g.world) })
 		measure("feeding", func() { g.feeding.Update() })
-		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("floraSystem", func() {
+			g.floraSystem.Update(g.tick, func(x, y float32, isRooted bool) {
+				g.spores.SpawnSpore(x, y, traits.Flora)
+			})
+		})
 		measure("disease", func() {
 			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
 			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
@@ -859,11 +836,17 @@ func (g *Game) Update() {
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
 
-		// Breeding (fauna reproduction with CPPN morphology generation)
-		measure("breeding", func() { g.breeding.Update(g.world, g.createFlora, g.createNeuralOrganism) })
+		// Breeding (fauna reproduction - flora don't use breeding system anymore)
+		measure("breeding", func() { g.breeding.Update(g.world, nil, g.createNeuralOrganism) })
 
-		// Spores (flora reproduction)
-		measure("spores", func() { g.spores.Update(g.tick, g.createFlora) })
+		// Spores (germinates into new flora via FloraSystem)
+		measure("spores", func() {
+			g.spores.Update(g.tick, func(x, y float32, t traits.Trait, energy float32) ecs.Entity {
+				isRooted := t.Has(traits.Rooted)
+				g.createFloraLightweight(x, y, isRooted, energy)
+				return ecs.Entity{} // Return zero entity, not used
+			})
+		})
 
 		// Growth, spore spawning, and splitting
 		measure("growth", func() { g.updateGrowth() })
@@ -943,7 +926,11 @@ func (g *Game) UpdateHeadless() {
 		measure("behavior", func() { g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
 		measure("physics", func() { g.physics.Update(g.world) })
 		measure("feeding", func() { g.feeding.Update() })
-		measure("photosynthesis", func() { g.photosynthesis.Update() })
+		measure("floraSystem", func() {
+			g.floraSystem.Update(g.tick, func(x, y float32, isRooted bool) {
+				g.spores.SpawnSpore(x, y, traits.Flora)
+			})
+		})
 		measure("disease", func() {
 			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
 			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
@@ -951,11 +938,17 @@ func (g *Game) UpdateHeadless() {
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
 
-		// Breeding
-		measure("breeding", func() { g.breeding.Update(g.world, g.createFlora, g.createNeuralOrganism) })
+		// Breeding (fauna only)
+		measure("breeding", func() { g.breeding.Update(g.world, nil, g.createNeuralOrganism) })
 
-		// Spores
-		measure("spores", func() { g.spores.Update(g.tick, g.createFlora) })
+		// Spores (germinates into new flora via FloraSystem)
+		measure("spores", func() {
+			g.spores.Update(g.tick, func(x, y float32, t traits.Trait, energy float32) ecs.Entity {
+				isRooted := t.Has(traits.Rooted)
+				g.createFloraLightweight(x, y, isRooted, energy)
+				return ecs.Entity{}
+			})
+		})
 
 		// Growth
 		measure("growth", func() { g.updateGrowth() })
@@ -1000,12 +993,11 @@ func (g *Game) logPerfStats() {
 }
 
 func (g *Game) logWorldState() {
-	var floraCount, faunaCount, deadCount int
-	var floraEnergy, faunaEnergy float32
+	var faunaCount, deadCount int
+	var faunaEnergy float32
 	var herbivoreCount, carnivoreCount, carrionCount int
 	var minFaunaEnergy, maxFaunaEnergy float32 = 9999, 0
-	var minFloraEnergy, maxFloraEnergy float32 = 9999, 0
-	var totalFloraCells, totalFaunaCells int
+	var totalFaunaCells int
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
@@ -1016,17 +1008,8 @@ func (g *Game) logWorldState() {
 			continue
 		}
 
-		if traits.IsFlora(org.Traits) {
-			floraCount++
-			floraEnergy += org.Energy
-			totalFloraCells += int(cells.Count)
-			if org.Energy < minFloraEnergy {
-				minFloraEnergy = org.Energy
-			}
-			if org.Energy > maxFloraEnergy {
-				maxFloraEnergy = org.Energy
-			}
-		} else {
+		// Only count fauna from ECS (flora are in FloraSystem)
+		if traits.IsFauna(org.Traits) {
 			faunaCount++
 			faunaEnergy += org.Energy
 			totalFaunaCells += int(cells.Count)
@@ -1049,31 +1032,28 @@ func (g *Game) logWorldState() {
 		}
 	}
 
+	// Get flora stats from FloraSystem
+	floraCount := g.floraSystem.TotalCount()
+	floraEnergy := g.floraSystem.TotalEnergy()
 	avgFloraEnergy := float32(0)
-	avgFaunaEnergy := float32(0)
 	if floraCount > 0 {
 		avgFloraEnergy = floraEnergy / float32(floraCount)
-		// Handle NaN from potential edge cases
-		if avgFloraEnergy != avgFloraEnergy { // NaN check
-			avgFloraEnergy = 0
-		}
 	}
+
+	avgFaunaEnergy := float32(0)
 	if faunaCount > 0 {
 		avgFaunaEnergy = faunaEnergy / float32(faunaCount)
-		if avgFaunaEnergy != avgFaunaEnergy {
+		if avgFaunaEnergy != avgFaunaEnergy { // NaN check
 			avgFaunaEnergy = 0
 		}
 	}
 	if minFaunaEnergy == 9999 {
 		minFaunaEnergy = 0
 	}
-	if minFloraEnergy == 9999 {
-		minFloraEnergy = 0
-	}
 
 	logf("=== Tick %d ===", g.tick)
-	logf("Flora: %d (cells: %d, energy: %.1f avg, %.1f-%.1f range)",
-		floraCount, totalFloraCells, avgFloraEnergy, minFloraEnergy, maxFloraEnergy)
+	logf("Flora: %d (rooted: %d, floating: %d, energy: %.1f avg)",
+		floraCount, g.floraSystem.RootedCount(), g.floraSystem.FloatingCount(), avgFloraEnergy)
 	logf("Fauna: %d (cells: %d, energy: %.1f avg, %.1f-%.1f range)",
 		faunaCount, totalFaunaCells, avgFaunaEnergy, minFaunaEnergy, maxFaunaEnergy)
 	logf("  Herbivores: %d, Carnivores: %d, Carrion: %d",
@@ -1274,12 +1254,13 @@ func (g *Game) logNeuralStats() {
 func (g *Game) collectPositions() ([]components.Position, []components.Position) {
 	var floraPos, faunaPos []components.Position
 
-	floraQuery := g.floraFilter.Query()
-	for floraQuery.Next() {
-		pos, _, _ := floraQuery.Get()
-		floraPos = append(floraPos, *pos)
+	// Collect flora positions from FloraSystem
+	allFlora := g.floraSystem.GetAllFlora()
+	for _, ref := range allFlora {
+		floraPos = append(floraPos, components.Position{X: ref.X, Y: ref.Y})
 	}
 
+	// Collect fauna positions from ECS
 	faunaQuery := g.faunaFilter.Query()
 	for faunaQuery.Next() {
 		pos, _, _ := faunaQuery.Get()
@@ -1295,19 +1276,17 @@ func (g *Game) collectOccluders() []systems.Occluder {
 
 	// Add floating flora occluders only (fauna don't cast shadows)
 	// Rooted flora don't cast shadows - they're attached to terrain which already casts shadows
-	query := g.floraFilter.Query()
-	for query.Next() {
-		pos, org, _ := query.Get()
-
-		if org.Dead || org.Traits.Has(traits.Rooted) {
+	for i := range g.floraSystem.Floating {
+		f := &g.floraSystem.Floating[i]
+		if f.Dead {
 			continue
 		}
 
-		// Simple bounding box based on cell count estimate
-		size := org.CellSize * 3
+		// Simple bounding box based on flora size
+		size := f.Size * 3
 		occluders = append(occluders, systems.Occluder{
-			X:       pos.X - size/2,
-			Y:       pos.Y - size/2,
+			X:       f.X - size/2,
+			Y:       f.Y - size/2,
 			Width:   size,
 			Height:  size,
 			Density: 0.08, // Very sparse foliage - minimal shadow
@@ -1318,13 +1297,10 @@ func (g *Game) collectOccluders() []systems.Occluder {
 }
 
 func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organism) {
-	var floraOrgs, faunaOrgs []*components.Organism
-
-	floraQuery := g.floraFilter.Query()
-	for floraQuery.Next() {
-		_, org, _ := floraQuery.Get()
-		floraOrgs = append(floraOrgs, org)
-	}
+	// Note: This function is legacy - flora are no longer ECS organisms.
+	// We return empty flora slice since FloraSystem handles flora now.
+	// Behavior/allocation systems that need flora data should use FloraSystem directly.
+	var faunaOrgs []*components.Organism
 
 	faunaQuery := g.faunaFilter.Query()
 	for faunaQuery.Next() {
@@ -1332,7 +1308,8 @@ func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organis
 		faunaOrgs = append(faunaOrgs, org)
 	}
 
-	return floraOrgs, faunaOrgs
+	// Return nil for floraOrgs since flora are now managed by FloraSystem
+	return nil, faunaOrgs
 }
 
 func (g *Game) collectFaunaForDisease() ([]components.Position, []*components.Organism, []*components.CellBuffer, []*components.NeuralGenome) {
@@ -1423,8 +1400,11 @@ func (g *Game) updateGrowth() {
 	}
 
 	// Process deferred splits (after query iteration completes)
+	// Note: Splitting is for fauna only (neural organisms)
 	for _, req := range pendingSplits {
-		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, g.createFlora, g.particles)
+		// Pass nil for createOrganism since fauna splitting needs special handling
+		// TODO: Implement proper fauna splitting with neural inheritance
+		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, nil, g.particles)
 	}
 
 	// Process deferred spore spawns
@@ -1719,7 +1699,10 @@ func (g *Game) Draw() {
 	// Draw sun with shadows
 	g.sunRenderer.Draw(g.light, occluders)
 
-	// Draw all organisms
+	// Draw lightweight flora from FloraSystem
+	g.drawLightweightFlora()
+
+	// Draw all fauna organisms (ECS)
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
@@ -2210,21 +2193,74 @@ func (g *Game) drawSpores() {
 	}
 }
 
+// drawLightweightFlora renders all flora from the FloraSystem.
+func (g *Game) drawLightweightFlora() {
+	// Base flora color (green)
+	baseR, baseG, baseB := uint8(50), uint8(180), uint8(80)
+
+	// Draw rooted flora
+	for i := range g.floraSystem.Rooted {
+		f := &g.floraSystem.Rooted[i]
+		if f.Dead {
+			continue
+		}
+
+		// Sample shadow map for local lighting
+		light := g.shadowMap.SampleLight(f.X, f.Y)
+		light *= (0.3 + g.light.Intensity*0.7)
+
+		// Energy-based alpha (dimmer when low energy)
+		energyRatio := f.Energy / f.MaxEnergy
+		if energyRatio < 0.3 {
+			light *= 0.5 + energyRatio
+		}
+
+		color := rl.Color{
+			R: uint8(float32(baseR) * light),
+			G: uint8(float32(baseG) * light),
+			B: uint8(float32(baseB) * light),
+			A: 255,
+		}
+		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)
+	}
+
+	// Draw floating flora (slightly different shade)
+	for i := range g.floraSystem.Floating {
+		f := &g.floraSystem.Floating[i]
+		if f.Dead {
+			continue
+		}
+
+		light := g.shadowMap.SampleLight(f.X, f.Y)
+		light *= (0.3 + g.light.Intensity*0.7)
+
+		energyRatio := f.Energy / f.MaxEnergy
+		if energyRatio < 0.3 {
+			light *= 0.5 + energyRatio
+		}
+
+		// Floating flora is slightly more cyan
+		color := rl.Color{
+			R: uint8(float32(40) * light),
+			G: uint8(float32(170) * light),
+			B: uint8(float32(100) * light),
+			A: 240,
+		}
+		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)
+	}
+}
+
 func (g *Game) drawUI() {
 	// Count organisms
-	floraCount := 0
+	floraCount := g.floraSystem.TotalCount()
 	faunaCount := 0
 	totalCells := 0
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		_, _, org, cells := query.Get()
-		if !org.Dead {
-			if traits.IsFlora(org.Traits) {
-				floraCount++
-			} else if traits.IsFauna(org.Traits) {
-				faunaCount++
-			}
+		if !org.Dead && traits.IsFauna(org.Traits) {
+			faunaCount++
 			totalCells += int(cells.Count)
 		}
 	}

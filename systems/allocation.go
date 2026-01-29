@@ -9,7 +9,8 @@ import (
 
 // AllocationSystem evaluates each organism's state and sets energy allocation mode.
 type AllocationSystem struct {
-	filter ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Velocity]
+	filter      ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Velocity]
+	floraSystem *FloraSystem
 }
 
 // NewAllocationSystem creates a new allocation system.
@@ -17,6 +18,11 @@ func NewAllocationSystem(w *ecs.World) *AllocationSystem {
 	return &AllocationSystem{
 		filter: *ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Velocity](w),
 	}
+}
+
+// SetFloraSystem sets the flora system reference for food queries.
+func (s *AllocationSystem) SetFloraSystem(fs *FloraSystem) {
+	s.floraSystem = fs
 }
 
 // Update evaluates allocation mode for all organisms.
@@ -156,20 +162,29 @@ func (s *AllocationSystem) hasFoodNearby(
 
 	// Herbivores look for flora
 	if org.Traits.Has(traits.Herbivore) {
-		for i := range floraPos {
-			if floraOrgs[i].Dead {
-				continue
-			}
-			dx := pos.X - floraPos[i].X
-			dy := pos.Y - floraPos[i].Y
-			if dx*dx+dy*dy < searchRadius*searchRadius {
+		// Use FloraSystem if available
+		if s.floraSystem != nil {
+			nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, searchRadius)
+			if len(nearbyFlora) > 0 {
 				return true
+			}
+		} else if floraOrgs != nil {
+			// Fallback to old method
+			for i := range floraPos {
+				if floraOrgs[i].Dead {
+					continue
+				}
+				dx := pos.X - floraPos[i].X
+				dy := pos.Y - floraPos[i].Y
+				if dx*dx+dy*dy < searchRadius*searchRadius {
+					return true
+				}
 			}
 		}
 	}
 
 	// Carnivores look for fauna
-	if org.Traits.Has(traits.Carnivore) {
+	if org.Traits.Has(traits.Carnivore) && faunaOrgs != nil {
 		for i := range faunaPos {
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 				continue
@@ -186,24 +201,15 @@ func (s *AllocationSystem) hasFoodNearby(
 		}
 	}
 
-	// Carrion eaters look for dead
+	// Carrion eaters look for dead fauna
+	// Note: Dead flora are removed immediately in FloraSystem, so we only check fauna
 	if org.Traits.Has(traits.Carrion) {
 		for i := range faunaPos {
-			if !faunaOrgs[i].Dead {
+			if faunaOrgs == nil || !faunaOrgs[i].Dead {
 				continue
 			}
 			dx := pos.X - faunaPos[i].X
 			dy := pos.Y - faunaPos[i].Y
-			if dx*dx+dy*dy < searchRadius*searchRadius {
-				return true
-			}
-		}
-		for i := range floraPos {
-			if !floraOrgs[i].Dead {
-				continue
-			}
-			dx := pos.X - floraPos[i].X
-			dy := pos.Y - floraPos[i].Y
 			if dx*dx+dy*dy < searchRadius*searchRadius {
 				return true
 			}
@@ -221,6 +227,10 @@ func (s *AllocationSystem) hasThreatNearby(
 ) bool {
 	// Only herbivores perceive threats
 	if !org.Traits.Has(traits.Herbivore) || org.Traits.Has(traits.Carnivore) {
+		return false
+	}
+
+	if faunaOrgs == nil {
 		return false
 	}
 

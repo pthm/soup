@@ -45,17 +45,21 @@ func biteSizeMultiplier(org *components.Organism, mouthSize float32) float32 {
 // FeedingSystem handles fauna consuming food sources using capability matching.
 type FeedingSystem struct {
 	faunaFilter ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
-	floraFilter ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Flora]
 	neuralMap   *ecs.Map[components.NeuralGenome]
+	floraSystem *FloraSystem // Lightweight flora system (set via SetFloraSystem)
 }
 
 // NewFeedingSystem creates a new feeding system.
 func NewFeedingSystem(w *ecs.World) *FeedingSystem {
 	return &FeedingSystem{
 		faunaFilter: *ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](w),
-		floraFilter: *ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Flora](w),
 		neuralMap:   ecs.NewMap[components.NeuralGenome](w),
 	}
+}
+
+// SetFloraSystem sets the flora system reference for feeding queries.
+func (s *FeedingSystem) SetFloraSystem(fs *FloraSystem) {
+	s.floraSystem = fs
 }
 
 // entityData holds data needed for capability matching.
@@ -66,6 +70,7 @@ type entityData struct {
 	caps        components.Capabilities
 	speciesID   int
 	isFlora     bool
+	floraRef    FloraRef // Reference to lightweight flora (only valid if isFlora=true)
 }
 
 // Update processes feeding for all fauna using capability matching.
@@ -73,23 +78,25 @@ func (s *FeedingSystem) Update() {
 	// Collect all potential food sources with their capabilities
 	var targets []entityData
 
-	// Collect flora
-	floraQuery := s.floraFilter.Query()
-	for floraQuery.Next() {
-		pos, org, cells, _ := floraQuery.Get()
-		// Flora have fixed composition (photo=1, actuator=0)
-		caps := components.Capabilities{
-			PhotoWeight:     1.0,
-			ActuatorWeight:  0.0,
-			StructuralArmor: defaultFloraArmor,
+	// Collect flora from FloraSystem
+	if s.floraSystem != nil {
+		allFlora := s.floraSystem.GetAllFlora()
+		for _, ref := range allFlora {
+			// Flora have fixed composition (photo=1, actuator=0)
+			caps := components.Capabilities{
+				PhotoWeight:     1.0,
+				ActuatorWeight:  0.0,
+				StructuralArmor: DefaultFloraArmor(),
+			}
+			targets = append(targets, entityData{
+				pos:         &components.Position{X: ref.X, Y: ref.Y},
+				org:         &components.Organism{Energy: ref.Energy, MaxEnergy: 150, Dead: false},
+				cells:       nil, // Flora don't have cells in lightweight system
+				caps:        caps,
+				isFlora:     true,
+				floraRef:    ref,
+			})
 		}
-		targets = append(targets, entityData{
-			pos:     pos,
-			org:     org,
-			cells:   cells,
-			caps:    caps,
-			isFlora: true,
-		})
 	}
 
 	// Collect fauna with their computed capabilities
@@ -226,7 +233,7 @@ func (s *FeedingSystem) tryFeed(
 // executeFeed performs the actual energy transfer.
 func (s *FeedingSystem) executeFeed(
 	predOrg *components.Organism,
-	predCells *components.CellBuffer,
+	_ *components.CellBuffer, // predCells - not used in current implementation
 	predCaps components.Capabilities,
 	target *entityData,
 	penetration float32,
@@ -246,12 +253,20 @@ func (s *FeedingSystem) executeFeed(
 		effectiveBite = target.org.Energy
 	}
 
-	// Transfer energy
+	// Handle lightweight flora differently
+	if target.isFlora && s.floraSystem != nil {
+		// Apply damage through FloraSystem
+		extracted := s.floraSystem.ApplyDamage(target.floraRef.Index, target.floraRef.IsRooted, effectiveBite)
+		predOrg.Energy += extracted
+		return
+	}
+
+	// Transfer energy (for fauna targets)
 	predOrg.Energy += effectiveBite
 	target.org.Energy -= effectiveBite
 
-	// Damage target cells
-	if target.cells.Count > 0 {
+	// Damage target cells (fauna only - flora don't have cells)
+	if target.cells != nil && target.cells.Count > 0 {
 		// Find first alive cell to damage
 		for i := uint8(0); i < target.cells.Count; i++ {
 			if target.cells.Cells[i].Alive {

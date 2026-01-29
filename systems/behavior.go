@@ -13,15 +13,16 @@ import (
 
 // BehaviorSystem handles organism steering behaviors using direct neural control.
 type BehaviorSystem struct {
-	filter     ecs.Filter3[components.Position, components.Velocity, components.Organism]
-	brainMap   *ecs.Map[components.Brain]
-	cellsMap   *ecs.Map[components.CellBuffer]
-	noise      *PerlinNoise
-	tick       int32
-	shadowMap  *ShadowMap
-	terrain    *TerrainSystem
-	pathfinder *Pathfinder // Phase 5: navigation layer between brain and actuators
-	pathCaches map[ecs.Entity]*PathCache // A* path caches per organism
+	filter      ecs.Filter3[components.Position, components.Velocity, components.Organism]
+	brainMap    *ecs.Map[components.Brain]
+	cellsMap    *ecs.Map[components.CellBuffer]
+	noise       *PerlinNoise
+	tick        int32
+	shadowMap   *ShadowMap
+	terrain     *TerrainSystem
+	pathfinder  *Pathfinder                // Phase 5: navigation layer between brain and actuators
+	pathCaches  map[ecs.Entity]*PathCache  // A* path caches per organism
+	floraSystem *FloraSystem               // Lightweight flora system for vision
 }
 
 // NewBehaviorSystem creates a new behavior system.
@@ -36,6 +37,11 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 		pathfinder: NewPathfinder(terrain),
 		pathCaches: make(map[ecs.Entity]*PathCache),
 	}
+}
+
+// SetFloraSystem sets the flora system reference for vision queries.
+func (s *BehaviorSystem) SetFloraSystem(fs *FloraSystem) {
+	s.floraSystem = fs
 }
 
 // Update runs the behavior system with actuator-driven neural control.
@@ -369,25 +375,24 @@ func (s *BehaviorSystem) buildEntityList(
 ) []neural.EntityInfo {
 	var entities []neural.EntityInfo
 
-	// Add nearby flora
-	nearbyFlora := grid.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
-	for _, i := range nearbyFlora {
-		if floraOrgs[i].Dead {
-			continue
+	// Add nearby flora from FloraSystem
+	if s.floraSystem != nil {
+		nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
+		for _, ref := range nearbyFlora {
+			// Check line of sight
+			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, ref.X, ref.Y) {
+				continue
+			}
+			entities = append(entities, neural.EntityInfo{
+				X:               ref.X,
+				Y:               ref.Y,
+				Composition:     1.0, // Flora is pure photosynthetic
+				DigestiveSpec:   0.0, // Flora doesn't eat
+				StructuralArmor: DefaultFloraArmor(), // Standard flora armor
+				GeneticDistance: -1,  // No genetic comparison with flora
+				IsFlora:         true,
+			})
 		}
-		// Check line of sight
-		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y) {
-			continue
-		}
-		entities = append(entities, neural.EntityInfo{
-			X:               floraPos[i].X,
-			Y:               floraPos[i].Y,
-			Composition:     1.0, // Flora is pure photosynthetic
-			DigestiveSpec:   0.0, // Flora doesn't eat
-			StructuralArmor: 0.1, // Standard flora armor
-			GeneticDistance: -1,  // No genetic comparison with flora
-			IsFlora:         true,
-		})
 	}
 
 	// Add nearby fauna

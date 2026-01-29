@@ -99,14 +99,15 @@ func (s *SplittingSystem) TrySplit(
 	newEnergy := org.Energy / 2
 	org.Energy = org.Energy / 2
 
-	// Create new organism with inherited traits
-	newEntity := createOrganism(newX, newY, org.Traits, newEnergy)
-
-	// Transfer second half of cells to new organism
-	// This is a simplified version - we just initialize the new organism
-	// with cells starting from the split point
-	// The actual cell transfer would require accessing the new entity's CellBuffer
-	_ = newEntity // New organism is created with a single cell, will grow over time
+	// Create new organism with inherited traits (if callback provided)
+	if createOrganism != nil {
+		newEntity := createOrganism(newX, newY, org.Traits, newEnergy)
+		// Transfer second half of cells to new organism
+		// This is a simplified version - we just initialize the new organism
+		// with cells starting from the split point
+		// The actual cell transfer would require accessing the new entity's CellBuffer
+		_ = newEntity // New organism is created with a single cell, will grow over time
+	}
 
 	// Remove second half of cells from original
 	cells.Count = splitPoint
