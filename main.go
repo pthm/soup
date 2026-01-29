@@ -157,6 +157,8 @@ type Game struct {
 	uiNeuralStats     *ui.NeuralStatsPanel
 	uiPerfPanel       *ui.PerfPanel
 	uiSystemRegistry  *systems.SystemRegistry
+	uiOverlays        *ui.OverlayRegistry
+	uiControlsPanel   *ui.ControlsPanel
 }
 
 func NewGame() *Game {
@@ -239,6 +241,8 @@ func NewGame() *Game {
 	g.uiInspector = ui.NewInspector(screenWidth-330, 10, 320)
 	g.uiNeuralStats = ui.NewNeuralStatsPanel(10, 100, 280, 220)
 	g.uiPerfPanel = ui.NewPerfPanel(screenWidth-200, 10)
+	g.uiOverlays = ui.NewOverlayRegistry()
+	g.uiControlsPanel = ui.NewControlsPanel(10, 100, 200)
 
 	g.seedUniverse()
 
@@ -709,15 +713,18 @@ func (g *Game) Update() {
 		)
 	}
 
-	// Toggle species coloring
-	if rl.IsKeyPressed(rl.KeyS) {
-		g.showSpeciesColors = !g.showSpeciesColors
-	}
-
 	// Toggle neural stats panel
 	if rl.IsKeyPressed(rl.KeyN) {
 		g.showNeuralStats = !g.showNeuralStats
 	}
+
+	// Toggle overlay controls panel
+	if rl.IsKeyPressed(rl.KeyO) {
+		g.uiControlsPanel.Toggle()
+	}
+
+	// Handle overlay toggles via registry
+	g.handleOverlayKeys()
 
 	if g.paused {
 		return
@@ -816,6 +823,231 @@ func (g *Game) Update() {
 			g.logNeuralStats()
 		}
 	}
+}
+
+// handleOverlayKeys checks for overlay toggle key presses.
+func (g *Game) handleOverlayKeys() {
+	// Check each registered overlay's key
+	for _, desc := range g.uiOverlays.All() {
+		if desc.Key != 0 && rl.IsKeyPressed(desc.Key) {
+			newState := g.uiOverlays.Toggle(desc.ID)
+
+			// Sync legacy fields for backwards compatibility
+			if desc.ID == ui.OverlaySpeciesColors {
+				g.showSpeciesColors = newState
+			}
+		}
+	}
+}
+
+// drawActiveOverlays renders all currently enabled overlays.
+func (g *Game) drawActiveOverlays() {
+	for _, id := range g.uiOverlays.EnabledOverlays() {
+		switch id {
+		case ui.OverlayPerceptionCones:
+			g.drawPerceptionCones()
+		case ui.OverlayLightMap:
+			g.drawLightMapOverlay()
+		case ui.OverlayPathfinding:
+			g.drawPathfindingOverlay()
+		case ui.OverlayCollisionBoxes:
+			g.drawCollisionBoxes()
+		case ui.OverlayFlowField:
+			// Flow field is already drawn by default, but could add vector overlay
+			g.drawFlowVectors()
+		// Species and capability colors are handled in drawOrganism
+		}
+	}
+}
+
+// drawPerceptionCones draws vision cones for the selected organism.
+func (g *Game) drawPerceptionCones() {
+	if !g.hasSelection || !g.world.Alive(g.selectedEntity) {
+		return
+	}
+
+	posMap := ecs.NewMap[components.Position](g.world)
+	orgMap := ecs.NewMap[components.Organism](g.world)
+
+	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+		return
+	}
+
+	pos := posMap.Get(g.selectedEntity)
+	org := orgMap.Get(g.selectedEntity)
+
+	// Draw 4 perception cones (front, right, back, left)
+	coneAngle := float32(math.Pi / 2) // 90 degree cones
+	coneRadius := org.PerceptionRadius
+
+	// Cone colors: Food (green), Threat (red), Friend (blue)
+	// Draw as transparent arcs
+	for i := 0; i < 4; i++ {
+		baseAngle := org.Heading + float32(i)*float32(math.Pi/2)
+
+		// Draw cone outline
+		startAngle := baseAngle - coneAngle/2
+		endAngle := baseAngle + coneAngle/2
+
+		// Draw arc segments
+		segments := 8
+		for j := 0; j < segments; j++ {
+			a1 := startAngle + float32(j)*coneAngle/float32(segments)
+			a2 := startAngle + float32(j+1)*coneAngle/float32(segments)
+
+			x1 := pos.X + coneRadius*float32(math.Cos(float64(a1)))
+			y1 := pos.Y + coneRadius*float32(math.Sin(float64(a1)))
+			x2 := pos.X + coneRadius*float32(math.Cos(float64(a2)))
+			y2 := pos.Y + coneRadius*float32(math.Sin(float64(a2)))
+
+			// Color by direction
+			var color rl.Color
+			switch i {
+			case 0: // Front - food seeking
+				color = rl.Color{R: 100, G: 200, B: 100, A: 60}
+			case 1: // Right
+				color = rl.Color{R: 100, G: 150, B: 200, A: 40}
+			case 2: // Back - threat detection
+				color = rl.Color{R: 200, G: 100, B: 100, A: 60}
+			case 3: // Left
+				color = rl.Color{R: 100, G: 150, B: 200, A: 40}
+			}
+
+			// Draw filled triangle for each segment
+			rl.DrawTriangle(
+				rl.Vector2{X: pos.X, Y: pos.Y},
+				rl.Vector2{X: x1, Y: y1},
+				rl.Vector2{X: x2, Y: y2},
+				color,
+			)
+		}
+
+		// Draw cone edge lines
+		edgeColor := rl.Color{R: 200, G: 200, B: 200, A: 100}
+		x1 := pos.X + coneRadius*float32(math.Cos(float64(startAngle)))
+		y1 := pos.Y + coneRadius*float32(math.Sin(float64(startAngle)))
+		x2 := pos.X + coneRadius*float32(math.Cos(float64(endAngle)))
+		y2 := pos.Y + coneRadius*float32(math.Sin(float64(endAngle)))
+		rl.DrawLine(int32(pos.X), int32(pos.Y), int32(x1), int32(y1), edgeColor)
+		rl.DrawLine(int32(pos.X), int32(pos.Y), int32(x2), int32(y2), edgeColor)
+	}
+}
+
+// drawLightMapOverlay visualizes the shadow map / light distribution.
+func (g *Game) drawLightMapOverlay() {
+	// Sample light at grid points and draw colored squares
+	gridSize := int32(40) // Sample every 40 pixels
+	squareSize := int32(36)
+
+	for x := int32(0); x < screenWidth; x += gridSize {
+		for y := int32(0); y < screenHeight; y += gridSize {
+			light := g.shadowMap.SampleLight(float32(x), float32(y))
+
+			// Color: darker = less light, brighter = more light
+			brightness := uint8(light * 200)
+			color := rl.Color{R: brightness, G: brightness, B: uint8(float32(brightness) * 1.2), A: 40}
+			rl.DrawRectangle(x+2, y+2, squareSize, squareSize, color)
+		}
+	}
+}
+
+// drawPathfindingOverlay shows desire vs actual movement vectors.
+func (g *Game) drawPathfindingOverlay() {
+	if !g.hasSelection || !g.world.Alive(g.selectedEntity) {
+		return
+	}
+
+	posMap := ecs.NewMap[components.Position](g.world)
+	orgMap := ecs.NewMap[components.Organism](g.world)
+	velMap := ecs.NewMap[components.Velocity](g.world)
+
+	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+		return
+	}
+
+	pos := posMap.Get(g.selectedEntity)
+	org := orgMap.Get(g.selectedEntity)
+	vel := velMap.Get(g.selectedEntity)
+
+	// Draw desire vector (where brain wants to go)
+	desireLen := float32(50) * org.DesireDistance
+	desireAngle := org.Heading + org.DesireAngle
+	desireX := pos.X + desireLen*float32(math.Cos(float64(desireAngle)))
+	desireY := pos.Y + desireLen*float32(math.Sin(float64(desireAngle)))
+	rl.DrawLine(int32(pos.X), int32(pos.Y), int32(desireX), int32(desireY), rl.Color{R: 255, G: 255, B: 255, A: 200})
+
+	// Draw actual velocity vector
+	velLen := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+	if velLen > 0.1 {
+		scale := float32(30) / velLen
+		actualX := pos.X + vel.X*scale
+		actualY := pos.Y + vel.Y*scale
+		rl.DrawLine(int32(pos.X), int32(pos.Y), int32(actualX), int32(actualY), rl.Color{R: 100, G: 255, B: 100, A: 200})
+	}
+
+	// Draw heading indicator
+	headingLen := float32(25)
+	headingX := pos.X + headingLen*float32(math.Cos(float64(org.Heading)))
+	headingY := pos.Y + headingLen*float32(math.Sin(float64(org.Heading)))
+	rl.DrawLine(int32(pos.X), int32(pos.Y), int32(headingX), int32(headingY), rl.Color{R: 255, G: 200, B: 100, A: 150})
+}
+
+// drawCollisionBoxes shows organism bounding boxes.
+func (g *Game) drawCollisionBoxes() {
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		pos, _, org, _ := query.Get()
+		if org.Dead {
+			continue
+		}
+
+		// Draw OBB as rotated rectangle
+		obb := &org.OBB
+		cos := float32(math.Cos(float64(org.Heading)))
+		sin := float32(math.Sin(float64(org.Heading)))
+
+		// Calculate corner offsets
+		hw, hh := obb.HalfWidth, obb.HalfHeight
+		corners := [][2]float32{
+			{-hw, -hh},
+			{hw, -hh},
+			{hw, hh},
+			{-hw, hh},
+		}
+
+		// Transform and draw
+		var transformed [4]rl.Vector2
+		for i, c := range corners {
+			// Rotate
+			rx := c[0]*cos - c[1]*sin
+			ry := c[0]*sin + c[1]*cos
+			// Translate
+			transformed[i] = rl.Vector2{
+				X: pos.X + obb.OffsetX + rx,
+				Y: pos.Y + obb.OffsetY + ry,
+			}
+		}
+
+		// Draw lines
+		color := rl.Color{R: 200, G: 200, B: 100, A: 100}
+		for i := 0; i < 4; i++ {
+			j := (i + 1) % 4
+			rl.DrawLine(
+				int32(transformed[i].X), int32(transformed[i].Y),
+				int32(transformed[j].X), int32(transformed[j].Y),
+				color,
+			)
+		}
+	}
+}
+
+// drawFlowVectors shows flow field particles more prominently.
+// The flow field is already visualized via particles, this overlay makes them more visible.
+func (g *Game) drawFlowVectors() {
+	// Highlight flow particles when overlay is enabled
+	// The actual flow field visualization is done by the flow renderer
+	// This just adds a subtle indicator that the overlay is active
+	rl.DrawText("Flow Field Active", 10, screenHeight-50, 12, rl.Color{R: 100, G: 180, B: 255, A: 150})
 }
 
 // UpdateHeadless runs simulation without any input handling or graphics
@@ -1463,6 +1695,22 @@ func (g *Game) Draw() {
 		g.drawNeuralStats()
 	}
 
+	// Draw overlay controls panel (positioned below neural stats if shown)
+	controlsY := int32(100)
+	if g.showNeuralStats {
+		controlsY = 330 // Below neural stats panel
+	}
+	g.uiControlsPanel.Draw(g.uiOverlays)
+
+	// Adjust controls panel position dynamically
+	if g.uiControlsPanel.IsVisible() {
+		// Position already set in NewControlsPanel, but could adjust here if needed
+		_ = controlsY // Use this if we want dynamic positioning
+	}
+
+	// Draw overlays based on registry state
+	g.drawActiveOverlays()
+
 	// Draw info panel when selected, or tooltip when hovering
 	if g.hasSelection {
 		g.drawInfoPanel()
@@ -1982,7 +2230,7 @@ func (g *Game) drawUI() {
 
 	// Controls
 	g.uiHUD.DrawControls(screenWidth, screenHeight,
-		"SPACE: Pause | < >: Speed | Click: Select | Shift+Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural")
+		"SPACE: Pause | < >: Speed | Click: Select | Shift+Click: Add | F: Flora | C: Carnivore | S: Species | N: Neural | O: Overlays")
 }
 
 func (g *Game) drawNeuralStats() {
