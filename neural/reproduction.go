@@ -517,6 +517,30 @@ func CreateInitialGenomePair(idGen *GenomeIDGenerator, brainConnectionProb float
 	return bodyGenome, brainGenome
 }
 
+// CreateOffspringCPPN creates a child CPPN genome from two parents.
+// For HyperNEAT, the brain is derived from the CPPN, so we only need to
+// crossover and mutate the CPPN genome.
+func CreateOffspringCPPN(
+	bodyGenome1, bodyGenome2 *genetics.Genome,
+	fitness1, fitness2 float64,
+	idGen *GenomeIDGenerator,
+	opts *neat.Options,
+) (*genetics.Genome, error) {
+	// Crossover body genomes (CPPN)
+	bodyChild, err := CrossoverGenomes(bodyGenome1, bodyGenome2, fitness1, fitness2, idGen.NextID())
+	if err != nil {
+		return nil, fmt.Errorf("CPPN crossover failed: %w", err)
+	}
+
+	// Mutate CPPN
+	_, err = MutateCPPNGenome(bodyChild, opts, idGen)
+	if err != nil {
+		return nil, fmt.Errorf("CPPN mutation failed: %w", err)
+	}
+
+	return bodyChild, nil
+}
+
 // CreateCPPNGenome creates a minimal CPPN genome for morphology generation.
 func CreateCPPNGenome(id int) *genetics.Genome {
 	nodes := make([]*network.NNode, 0, CPPNInputs+CPPNOutputs)

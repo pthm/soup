@@ -19,16 +19,18 @@ type BreedingSystem struct {
 	brainMap     *ecs.Map[components.Brain]
 	neatOpts     *neat.Options
 	genomeIDGen  *neural.GenomeIDGenerator
+	cppnConfig   neural.CPPNConfig
 }
 
 // NewBreedingSystem creates a new breeding system.
-func NewBreedingSystem(w *ecs.World, opts *neat.Options, idGen *neural.GenomeIDGenerator) *BreedingSystem {
+func NewBreedingSystem(w *ecs.World, opts *neat.Options, idGen *neural.GenomeIDGenerator, cppnCfg neural.CPPNConfig) *BreedingSystem {
 	return &BreedingSystem{
 		filter:      *ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](w),
 		neuralMap:   ecs.NewMap[components.NeuralGenome](w),
 		brainMap:    ecs.NewMap[components.Brain](w),
 		neatOpts:    opts,
 		genomeIDGen: idGen,
+		cppnConfig:  cppnCfg,
 	}
 }
 
@@ -212,10 +214,10 @@ func (s *BreedingSystem) breedNeural(
 	fitnessA := neural.CalculateBreedingFitness(orgA.Energy, orgA.MaxEnergy, int(cellsA.Count))
 	fitnessB := neural.CalculateBreedingFitness(orgB.Energy, orgB.MaxEnergy, int(cellsB.Count))
 
-	// Crossover and mutate genomes
-	bodyChild, brainChild, err := neural.CreateOffspringGenomes(
+	// HyperNEAT: Crossover and mutate only the CPPN genome
+	// The brain will be derived from the CPPN + morphology
+	bodyChild, err := neural.CreateOffspringCPPN(
 		neuralA.BodyGenome, neuralB.BodyGenome,
-		neuralA.BrainGenome, neuralB.BrainGenome,
 		fitnessA, fitnessB,
 		s.genomeIDGen,
 		s.neatOpts,
@@ -223,38 +225,44 @@ func (s *BreedingSystem) breedNeural(
 	if err != nil {
 		// Fall back to cloning parent A's genome
 		bodyChild, _ = neural.CloneGenome(neuralA.BodyGenome, s.genomeIDGen.NextID())
-		brainChild, _ = neural.CloneGenome(neuralA.BrainGenome, s.genomeIDGen.NextID())
-
-		// Still apply mutation
 		if bodyChild != nil {
 			neural.MutateCPPNGenome(bodyChild, s.neatOpts, s.genomeIDGen)
 		}
-		if brainChild != nil {
-			neural.MutateGenome(brainChild, s.neatOpts, s.genomeIDGen)
-		}
 	}
 
-	if bodyChild == nil || brainChild == nil {
+	if bodyChild == nil {
 		return
 	}
 
-	// Create brain controller from child genome
-	brainController, err := neural.NewBrainController(brainChild)
+	// Generate morphology from child CPPN
+	morph, err := neural.GenerateMorphology(bodyChild, s.cppnConfig.MaxCells, s.cppnConfig.CellThreshold)
 	if err != nil {
 		return
 	}
 
-	// Determine species (based on brain genome compatibility)
+	// HyperNEAT: Build brain from CPPN + morphology
+	// CPPN determines connection weights based on sensor/actuator positions
+	brainController, err := neural.SimplifiedHyperNEATBrain(bodyChild, &morph)
+	if err != nil {
+		// Fallback to traditional brain creation
+		brainGenome := neural.CreateBrainGenome(s.genomeIDGen.NextID(), 0.3)
+		brainController, err = neural.NewBrainController(brainGenome)
+		if err != nil {
+			return
+		}
+	}
+
+	// Determine species (based on CPPN genome compatibility)
 	childSpeciesID := neuralA.SpeciesID // Default to parent's species
-	// TODO: Could use species manager to determine new species
 
 	// Inherit traits from parents (still use trait system alongside neural)
 	offspringTraits := s.inheritTraits(orgA.Traits, orgB.Traits)
 
 	// Create neural genome component
+	// BrainGenome stores the derived brain for compatibility/inspection
 	childNeural := &components.NeuralGenome{
 		BodyGenome:  bodyChild,
-		BrainGenome: brainChild,
+		BrainGenome: brainController.Genome, // Store derived brain genome
 		SpeciesID:   childSpeciesID,
 		Generation:  max(neuralA.Generation, neuralB.Generation) + 1,
 	}

@@ -64,14 +64,17 @@ type Organism struct {
 
 // Cell represents a single cell within an organism.
 type Cell struct {
-	GridX         int8
-	GridY         int8
-	Age           int32
-	MaxAge        int32
-	Trait         traits.Trait
-	Mutation      traits.Mutation
-	Alive         bool
-	Decomposition float32
+	GridX            int8
+	GridY            int8
+	Age              int32
+	MaxAge           int32
+	Trait            traits.Trait
+	Mutation         traits.Mutation
+	Alive            bool
+	Decomposition    float32
+	Type             neural.CellType // Functional type: sensor, actuator, or passive
+	SensorGain       float32         // Sensitivity multiplier for sensor cells
+	ActuatorStrength float32         // Force multiplier for actuator cells
 }
 
 // CellBuffer holds the cells of an organism.

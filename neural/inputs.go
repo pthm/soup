@@ -30,11 +30,19 @@ type SensoryInputs struct {
 	FlowY      float32
 
 	// Internal state
-	Energy      float32
-	MaxEnergy   float32
-	CellCount   int
-	MaxCells    int
+	Energy           float32
+	MaxEnergy        float32
+	CellCount        int
+	MaxCells         int
 	PerceptionRadius float32
+
+	// Body awareness (sensor capability)
+	SensorCount     int     // Number of active sensor cells
+	TotalSensorGain float32 // Sum of sensor gains (affects perception quality)
+
+	// Body awareness (actuator capability)
+	ActuatorCount     int     // Number of active actuator cells
+	TotalActuatorStr  float32 // Sum of actuator strengths (affects movement)
 }
 
 // ToInputs converts sensory data to normalized neural network inputs.
@@ -89,12 +97,9 @@ func (s *SensoryInputs) ToInputs() []float64 {
 		inputs[11] = 0.5
 	}
 
-	// [12] Cell count (normalized by max cells)
-	if s.MaxCells > 0 {
-		inputs[12] = float64(clampf(float32(s.CellCount)/float32(s.MaxCells), 0, 1))
-	} else {
-		inputs[12] = 0.5
-	}
+	// [12] Sensor capability (normalized: 0 = no sensors, 1 = 4+ sensor gain)
+	// This gives the brain awareness of its perceptual capacity
+	inputs[12] = float64(clampf(s.TotalSensorGain/4.0, 0, 1))
 
 	// [13] Bias (always 1.0)
 	inputs[13] = 1.0

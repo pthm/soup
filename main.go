@@ -183,7 +183,7 @@ func NewGame() *Game {
 		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:        systems.NewFeedingSystem(world),
 		spores:         systems.NewSporeSystem(bounds),
-		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen),
+		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
@@ -255,7 +255,7 @@ func NewGameHeadless() *Game {
 		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
 		feeding:        systems.NewFeedingSystem(world),
 		spores:         systems.NewSporeSystem(bounds),
-		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen),
+		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
 		splitting:      systems.NewSplittingSystem(),
 		particles:      systems.NewParticleSystem(),
 		allocation:     systems.NewAllocationSystem(world),
@@ -471,13 +471,16 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		}
 
 		cells.AddCell(components.Cell{
-			GridX:    cellSpec.GridX,
-			GridY:    cellSpec.GridY,
-			Age:      0,
-			MaxAge:   3000 + rand.Int31n(2000),
-			Trait:    cellTrait,
-			Mutation: traits.NoMutation,
-			Alive:    true,
+			GridX:            cellSpec.GridX,
+			GridY:            cellSpec.GridY,
+			Age:              0,
+			MaxAge:           3000 + rand.Int31n(2000),
+			Trait:            cellTrait,
+			Mutation:         traits.NoMutation,
+			Alive:            true,
+			Type:             cellSpec.Type,
+			SensorGain:       cellSpec.SensorGain,
+			ActuatorStrength: cellSpec.ActuatorStrength,
 		})
 	}
 
@@ -527,22 +530,34 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 // createInitialNeuralOrganism creates a new neural organism with fresh genomes.
 // This is used during seeding to create the initial neural population.
 // Initial organisms are constrained to 1-4 cells for easier evolution.
+// Uses HyperNEAT: CPPN generates both morphology and brain weights.
 func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait, energy float32) ecs.Entity {
-	// Create fresh genome pair
-	bodyGenome, brainGenome := neural.CreateInitialGenomePair(g.genomeIDGen, g.neuralConfig.Brain.InitialConnectionProb)
+	// Create CPPN genome (generates both body morphology and brain weights)
+	bodyGenome := neural.CreateCPPNGenome(g.genomeIDGen.NextID())
 
-	// Create brain controller
-	brainController, err := neural.NewBrainController(brainGenome)
+	// Generate morphology from CPPN first (needed for brain building)
+	morph, err := neural.GenerateMorphology(bodyGenome, neural.InitialMaxCells, g.neuralConfig.CPPN.CellThreshold)
 	if err != nil {
-		// Fallback to traditional organism if brain creation fails
+		// Fallback to traditional organism if morphology generation fails
 		return g.createOrganism(x, y, baseTrait, energy)
 	}
 
-	// Build neural components
+	// Build brain from CPPN using HyperNEAT (CPPN determines connection weights)
+	brainController, err := neural.SimplifiedHyperNEATBrain(bodyGenome, &morph)
+	if err != nil {
+		// Fallback to traditional brain if HyperNEAT fails
+		brainGenome := neural.CreateBrainGenome(g.genomeIDGen.NextID(), g.neuralConfig.Brain.InitialConnectionProb)
+		brainController, err = neural.NewBrainController(brainGenome)
+		if err != nil {
+			return g.createOrganism(x, y, baseTrait, energy)
+		}
+	}
+
+	// Build neural components (BrainGenome is now derived from CPPN, stored for compatibility)
 	neuralGenome := &components.NeuralGenome{
 		BodyGenome:  bodyGenome,
-		BrainGenome: brainGenome,
-		SpeciesID:   0, // Will be assigned by species manager
+		BrainGenome: brainController.Genome, // Store the derived brain genome
+		SpeciesID:   0,                      // Will be assigned by species manager
 		Generation:  0,
 	}
 

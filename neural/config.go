@@ -21,8 +21,53 @@ const CPPNInputs = 8
 // InitialMaxCells constrains generation-0 organisms to small sizes.
 const InitialMaxCells = 4
 
-// CPPNOutputs is the number of outputs from the CPPN (presence, diet, traits, priority).
-const CPPNOutputs = 4
+// CPPNOutputs is the number of outputs from the CPPN.
+// Outputs: presence, cell_type, sensor_gain, actuator_strength, diet_bias, priority, brain_weight, brain_leo
+const CPPNOutputs = 8
+
+// CPPN output indices for clarity
+const (
+	CPPNOutPresence     = 0 // Cell presence threshold
+	CPPNOutCellType     = 1 // Sensor/Actuator/Passive
+	CPPNOutSensorGain   = 2 // Sensor sensitivity
+	CPPNOutActuatorStr  = 3 // Actuator strength
+	CPPNOutDietBias     = 4 // Herbivore/Carnivore bias
+	CPPNOutPriority     = 5 // Cell selection priority
+	CPPNOutBrainWeight  = 6 // HyperNEAT: connection weight
+	CPPNOutBrainLEO     = 7 // HyperNEAT: link expression output
+)
+
+// CellType represents the functional type of a cell.
+type CellType uint8
+
+const (
+	CellTypePassive  CellType = iota // Structural cell, no special function
+	CellTypeSensor                   // Sensing cell, contributes to perception
+	CellTypeActuator                 // Motor cell, contributes to thrust
+)
+
+// CellTypeFromOutput converts a CPPN output value to a cell type.
+// output in [-1, 1] range from tanh activation.
+func CellTypeFromOutput(output float64) CellType {
+	if output < -0.3 {
+		return CellTypeSensor
+	} else if output > 0.3 {
+		return CellTypeActuator
+	}
+	return CellTypePassive
+}
+
+// CellTypeName returns a human-readable name for the cell type.
+func (ct CellType) String() string {
+	switch ct {
+	case CellTypeSensor:
+		return "Sensor"
+	case CellTypeActuator:
+		return "Actuator"
+	default:
+		return "Passive"
+	}
+}
 
 // Config holds all neural network configuration.
 type Config struct {

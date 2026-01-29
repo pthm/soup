@@ -13,9 +13,12 @@ const MorphGridSize = 8
 
 // CellSpec describes a single cell's position and properties.
 type CellSpec struct {
-	GridX    int8    // X position relative to organism center
-	GridY    int8    // Y position relative to organism center
-	DietBias float32 // <0 herbivore, >0 carnivore
+	GridX            int8     // X position relative to organism center
+	GridY            int8     // Y position relative to organism center
+	Type             CellType // Functional type: sensor, actuator, or passive
+	SensorGain       float32  // Sensitivity multiplier for sensor cells (0-1)
+	ActuatorStrength float32  // Force multiplier for actuator cells (0-1)
+	DietBias         float32  // <0 herbivore, >0 carnivore
 }
 
 // MorphologyResult holds the output of CPPN morphology generation.
@@ -26,11 +29,14 @@ type MorphologyResult struct {
 
 // candidate holds intermediate data during morphology generation.
 type candidate struct {
-	gridX    int8
-	gridY    int8
-	presence float64
-	diet     float64
-	traits   float64
+	gridX            int8
+	gridY            int8
+	presence         float64
+	cellType         CellType
+	sensorGain       float64
+	actuatorStrength float64
+	diet             float64
+	priority         float64
 }
 
 // GenerateMorphology queries the CPPN genome to produce an organism's body layout.
@@ -97,25 +103,34 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 				continue
 			}
 
-			// Output 0: cell presence (tanh output in [-1, 1])
+			// CPPN outputs (6 total):
+			// 0: presence (-1 to 1, threshold determines if cell exists)
+			// 1: cell_type (-1 to 1, mapped to sensor/passive/actuator)
+			// 2: sensor_gain (-1 to 1, normalized to 0-1)
+			// 3: actuator_strength (-1 to 1, normalized to 0-1)
+			// 4: diet_bias (-1 to 1)
+			// 5: priority (-1 to 1, for cell selection when over max)
 			presence := outputs[0]
 
 			if presence > threshold {
 				candidates = append(candidates, candidate{
 					// Convert grid coords to centered coords
-					gridX:    int8(gx - MorphGridSize/2),
-					gridY:    int8(gy - MorphGridSize/2),
-					presence: presence,
-					diet:     outputs[1], // diet bias
-					traits:   outputs[2], // trait encoding
+					gridX:            int8(gx - MorphGridSize/2),
+					gridY:            int8(gy - MorphGridSize/2),
+					presence:         presence,
+					cellType:         CellTypeFromOutput(outputs[1]),
+					sensorGain:       (outputs[2] + 1) / 2, // Normalize to 0-1
+					actuatorStrength: (outputs[3] + 1) / 2, // Normalize to 0-1
+					diet:             outputs[4],
+					priority:         outputs[5],
 				})
 			}
 		}
 	}
 
-	// Sort by presence (priority) descending
+	// Sort by priority descending
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].presence > candidates[j].presence
+		return candidates[i].priority > candidates[j].priority
 	})
 
 	// Limit to maxCells
@@ -123,14 +138,81 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 		candidates = candidates[:maxCells]
 	}
 
-	// Ensure at least 1 cell at center
+	// Viability filter: ensure at least 1 sensor and 1 actuator
+	// This is critical for body-brain coupling to work
+	hasSensor := false
+	hasActuator := false
+	for _, c := range candidates {
+		if c.cellType == CellTypeSensor {
+			hasSensor = true
+		} else if c.cellType == CellTypeActuator {
+			hasActuator = true
+		}
+	}
+
+	// If missing sensor, convert highest-priority passive cell to sensor
+	if !hasSensor && len(candidates) > 0 {
+		for i := range candidates {
+			if candidates[i].cellType == CellTypePassive {
+				candidates[i].cellType = CellTypeSensor
+				candidates[i].sensorGain = 0.5
+				hasSensor = true
+				break
+			}
+		}
+		// If still no sensor, convert an actuator
+		if !hasSensor {
+			candidates[0].cellType = CellTypeSensor
+			candidates[0].sensorGain = 0.5
+			hasSensor = true
+		}
+	}
+
+	// If missing actuator, convert highest-priority passive cell to actuator
+	if !hasActuator && len(candidates) > 0 {
+		for i := range candidates {
+			if candidates[i].cellType == CellTypePassive {
+				candidates[i].cellType = CellTypeActuator
+				candidates[i].actuatorStrength = 0.5
+				hasActuator = true
+				break
+			}
+		}
+		// If still no actuator, convert a sensor (but keep at least one sensor)
+		if !hasActuator {
+			for i := range candidates {
+				if candidates[i].cellType == CellTypeSensor && i > 0 {
+					candidates[i].cellType = CellTypeActuator
+					candidates[i].actuatorStrength = 0.5
+					hasActuator = true
+					break
+				}
+			}
+		}
+	}
+
+	// Ensure at least 1 cell (sensor + actuator combined) at center
 	if len(candidates) == 0 {
 		candidates = append(candidates, candidate{
-			gridX:    0,
-			gridY:    0,
-			presence: 1.0,
-			diet:     0,
-			traits:   0,
+			gridX:            0,
+			gridY:            0,
+			presence:         1.0,
+			cellType:         CellTypeSensor,
+			sensorGain:       0.5,
+			actuatorStrength: 0.5,
+			diet:             0,
+			priority:         0,
+		})
+		// Add an actuator cell adjacent
+		candidates = append(candidates, candidate{
+			gridX:            1,
+			gridY:            0,
+			presence:         1.0,
+			cellType:         CellTypeActuator,
+			sensorGain:       0,
+			actuatorStrength: 0.5,
+			diet:             0,
+			priority:         0,
 		})
 	}
 
@@ -142,9 +224,12 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 	var totalDiet float64
 	for i, c := range candidates {
 		result.Cells[i] = CellSpec{
-			GridX:    c.gridX,
-			GridY:    c.gridY,
-			DietBias: float32(c.diet),
+			GridX:            c.gridX,
+			GridY:            c.gridY,
+			Type:             c.cellType,
+			SensorGain:       float32(c.sensorGain),
+			ActuatorStrength: float32(c.actuatorStrength),
+			DietBias:         float32(c.diet),
 		}
 		totalDiet += c.diet
 	}
@@ -179,6 +264,50 @@ func (m *MorphologyResult) IsOmnivore() bool {
 // CellCount returns the number of cells in the morphology.
 func (m *MorphologyResult) CellCount() int {
 	return len(m.Cells)
+}
+
+// SensorCount returns the number of sensor cells.
+func (m *MorphologyResult) SensorCount() int {
+	count := 0
+	for _, c := range m.Cells {
+		if c.Type == CellTypeSensor {
+			count++
+		}
+	}
+	return count
+}
+
+// ActuatorCount returns the number of actuator cells.
+func (m *MorphologyResult) ActuatorCount() int {
+	count := 0
+	for _, c := range m.Cells {
+		if c.Type == CellTypeActuator {
+			count++
+		}
+	}
+	return count
+}
+
+// TotalSensorGain returns the sum of sensor gains across all sensor cells.
+func (m *MorphologyResult) TotalSensorGain() float32 {
+	var total float32
+	for _, c := range m.Cells {
+		if c.Type == CellTypeSensor {
+			total += c.SensorGain
+		}
+	}
+	return total
+}
+
+// TotalActuatorStrength returns the sum of actuator strengths.
+func (m *MorphologyResult) TotalActuatorStrength() float32 {
+	var total float32
+	for _, c := range m.Cells {
+		if c.Type == CellTypeActuator {
+			total += c.ActuatorStrength
+		}
+	}
+	return total
 }
 
 // Bounds returns the bounding box of the morphology in grid units.
