@@ -4,10 +4,10 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // AllocationSystem evaluates each organism's state and sets energy allocation mode.
+// All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type AllocationSystem struct {
 	filter      ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Velocity]
 	floraSystem *FloraSystem
@@ -25,7 +25,17 @@ func (s *AllocationSystem) SetFloraSystem(fs *FloraSystem) {
 	s.floraSystem = fs
 }
 
-// Update evaluates allocation mode for all organisms.
+// getDigestiveSpectrum computes the digestive spectrum from cells.
+// Returns 0.0 for herbivore, 0.5 for omnivore, 1.0 for carnivore.
+func (s *AllocationSystem) getDigestiveSpectrum(cells *components.CellBuffer) float32 {
+	if cells == nil {
+		return 0.5 // neutral
+	}
+	caps := cells.ComputeCapabilities()
+	return caps.DigestiveSpectrum()
+}
+
+// Update evaluates allocation mode for all organisms (all are fauna).
 func (s *AllocationSystem) Update(
 	floraPositions, faunaPositions []components.Position,
 	floraOrgs, faunaOrgs []*components.Organism,
@@ -41,69 +51,58 @@ func (s *AllocationSystem) Update(
 		// Calculate energy ratio
 		energyRatio := org.Energy / org.MaxEnergy
 
-		// Determine context
-		isFlora := traits.IsFlora(org.Traits)
+		// All ECS organisms are fauna (flora are managed by FloraSystem)
 		cellCount := int(cells.Count)
 
+		// Compute digestive spectrum for capability-based decisions
+		digestiveSpectrum := s.getDigestiveSpectrum(cells)
+
 		// Find nearby food and threats
-		var foodNearby, threatNearby bool
-		if !isFlora {
-			foodNearby = s.hasFoodNearby(pos, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs)
-			threatNearby = s.hasThreatNearby(pos, org, faunaPositions, faunaOrgs)
-		}
+		foodNearby := s.hasFoodNearby(pos, org, digestiveSpectrum, floraPositions, faunaPositions, floraOrgs, faunaOrgs)
+		threatNearby := s.hasThreatNearby(pos, org, digestiveSpectrum, faunaPositions, faunaOrgs)
 
 		// Determine target cell count based on conditions
-		org.TargetCells = s.calculateTargetCells(org, cellCount, energyRatio, foodNearby, isFlora)
+		org.TargetCells = s.calculateTargetCells(cells, cellCount, energyRatio, foodNearby)
 
 		// Determine allocation mode
-		org.AllocationMode = s.determineMode(org, cells, energyRatio, foodNearby, threatNearby, isFlora)
+		org.AllocationMode = s.determineMode(org, cells, energyRatio, threatNearby)
 	}
 }
 
-func (s *AllocationSystem) calculateTargetCells(org *components.Organism, currentCells int, energyRatio float32, foodNearby, isFlora bool) uint8 {
-	// Base target depends on organism type
-	var baseTarget int
+func (s *AllocationSystem) calculateTargetCells(cells *components.CellBuffer, cellCount int, energyRatio float32, foodNearby bool) uint8 {
+	// Fauna: size vs speed tradeoff
+	// Larger = more energy capacity but slower
+	// Smaller = faster but less reserves
 
-	if isFlora {
-		// Flora: grow larger when healthy, cap based on energy
-		if energyRatio > 0.7 {
-			baseTarget = 8
-		} else if energyRatio > 0.5 {
-			baseTarget = 6
-		} else if energyRatio > 0.3 {
+	// Use capability-based digestive spectrum
+	digestiveSpectrum := s.getDigestiveSpectrum(cells)
+
+	var baseTarget int
+	if digestiveSpectrum > 0.6 {
+		// Carnivores (high digestive spectrum): medium size for balance of speed and power
+		if energyRatio > 0.6 && foodNearby {
+			baseTarget = 5
+		} else if energyRatio > 0.4 {
 			baseTarget = 4
 		} else {
-			baseTarget = 2 // Minimum viable size
+			baseTarget = 3 // Stay lean when hungry
+		}
+	} else if digestiveSpectrum < 0.4 {
+		// Herbivores (low digestive spectrum): can be larger since food is plentiful
+		if energyRatio > 0.6 {
+			baseTarget = 6
+		} else if energyRatio > 0.4 {
+			baseTarget = 4
+		} else {
+			baseTarget = 3
 		}
 	} else {
-		// Fauna: size vs speed tradeoff
-		// Larger = more energy capacity but slower
-		// Smaller = faster but less reserves
-
-		if org.Traits.Has(traits.Carnivore) {
-			// Predators: medium size for balance of speed and power
-			if energyRatio > 0.6 && foodNearby {
-				baseTarget = 5
-			} else if energyRatio > 0.4 {
-				baseTarget = 4
-			} else {
-				baseTarget = 3 // Stay lean when hungry
-			}
-		} else if org.Traits.Has(traits.Herbivore) {
-			// Herbivores: can be larger since food is plentiful
-			if energyRatio > 0.6 {
-				baseTarget = 6
-			} else if energyRatio > 0.4 {
-				baseTarget = 4
-			} else {
-				baseTarget = 3
-			}
-		} else {
-			// Carrion eaters: stay medium
-			baseTarget = 4
-		}
-
+		// Omnivores (neutral digestive spectrum 0.4-0.6): stay medium
+		baseTarget = 4
 	}
+
+	// Suppress unused warning
+	_ = cellCount
 
 	return uint8(min(baseTarget, 10))
 }
@@ -112,7 +111,7 @@ func (s *AllocationSystem) determineMode(
 	org *components.Organism,
 	cells *components.CellBuffer,
 	energyRatio float32,
-	foodNearby, threatNearby, isFlora bool,
+	threatNearby bool,
 ) components.AllocationMode {
 	cellCount := int(cells.Count)
 	targetCells := int(org.TargetCells)
@@ -125,12 +124,12 @@ func (s *AllocationSystem) determineMode(
 		return components.ModeSurvive
 	}
 
-	// For fauna with breeding capability (all fauna can breed, just need cooldown)
-	canBreed := !isFlora && org.BreedingCooldown == 0
+	// All ECS organisms are fauna and can breed
+	canBreed := org.BreedingCooldown == 0
 
 	// BREED mode: healthy enough and wants to breed
 	// Lower threshold (35%) to allow more breeding opportunities
-	if !isFlora && canBreed && cellCount >= 1 && energyRatio > 0.35 {
+	if canBreed && cellCount >= 1 && energyRatio > 0.35 {
 		return components.ModeBreed
 	}
 
@@ -142,7 +141,7 @@ func (s *AllocationSystem) determineMode(
 	// STORE mode: at target size, building reserves
 	if cellCount >= targetCells {
 		// If breeding available and energy high, switch to breed
-		if !isFlora && canBreed && energyRatio > 0.6 {
+		if canBreed && energyRatio > 0.6 {
 			return components.ModeBreed
 		}
 		return components.ModeStore
@@ -155,13 +154,14 @@ func (s *AllocationSystem) determineMode(
 func (s *AllocationSystem) hasFoodNearby(
 	pos *components.Position,
 	org *components.Organism,
+	digestiveSpectrum float32,
 	floraPos, faunaPos []components.Position,
 	floraOrgs, faunaOrgs []*components.Organism,
 ) bool {
 	searchRadius := org.PerceptionRadius * 1.5
 
-	// Herbivores look for flora
-	if org.Traits.Has(traits.Herbivore) {
+	// Low digestive spectrum (< 0.5) can eat flora
+	if digestiveSpectrum < 0.5 {
 		// Use FloraSystem if available
 		if s.floraSystem != nil {
 			nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, searchRadius)
@@ -183,16 +183,14 @@ func (s *AllocationSystem) hasFoodNearby(
 		}
 	}
 
-	// Carnivores look for fauna
-	if org.Traits.Has(traits.Carnivore) && faunaOrgs != nil {
+	// High digestive spectrum (> 0.5) can eat fauna
+	if digestiveSpectrum > 0.5 && faunaOrgs != nil {
 		for i := range faunaPos {
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 				continue
 			}
-			// Don't count other carnivores as food
-			if faunaOrgs[i].Traits.Has(traits.Carnivore) {
-				continue
-			}
+			// Don't count high-digestive organisms as food (they're predators)
+			// Use neutral check since we can't access their cells here
 			dx := pos.X - faunaPos[i].X
 			dy := pos.Y - faunaPos[i].Y
 			if dx*dx+dy*dy < searchRadius*searchRadius {
@@ -201,11 +199,10 @@ func (s *AllocationSystem) hasFoodNearby(
 		}
 	}
 
-	// Carrion eaters look for dead fauna
-	// Note: Dead flora are removed immediately in FloraSystem, so we only check fauna
-	if org.Traits.Has(traits.Carrion) {
+	// Carrion eating: organisms with digestive spectrum > 0.3 can eat dead fauna
+	if digestiveSpectrum > 0.3 && faunaOrgs != nil {
 		for i := range faunaPos {
-			if faunaOrgs == nil || !faunaOrgs[i].Dead {
+			if !faunaOrgs[i].Dead {
 				continue
 			}
 			dx := pos.X - faunaPos[i].X
@@ -222,11 +219,12 @@ func (s *AllocationSystem) hasFoodNearby(
 func (s *AllocationSystem) hasThreatNearby(
 	pos *components.Position,
 	org *components.Organism,
+	digestiveSpectrum float32,
 	faunaPos []components.Position,
 	faunaOrgs []*components.Organism,
 ) bool {
-	// Only herbivores perceive threats
-	if !org.Traits.Has(traits.Herbivore) || org.Traits.Has(traits.Carnivore) {
+	// High digestive spectrum organisms (carnivores) don't perceive threats in allocation
+	if digestiveSpectrum > 0.5 {
 		return false
 	}
 
@@ -240,9 +238,8 @@ func (s *AllocationSystem) hasThreatNearby(
 		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 			continue
 		}
-		if !faunaOrgs[i].Traits.Has(traits.Carnivore) {
-			continue
-		}
+		// Without access to other organism's cells, we can't determine their diet
+		// For now, consider larger organisms as potential threats
 		dx := pos.X - faunaPos[i].X
 		dy := pos.Y - faunaPos[i].Y
 		if dx*dx+dy*dy < threatRadius*threatRadius {

@@ -6,18 +6,20 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // EnergySystem handles organism energy updates.
+// All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type EnergySystem struct {
-	filter ecs.Filter2[components.Organism, components.CellBuffer]
+	filter    ecs.Filter3[components.Position, components.Organism, components.CellBuffer]
+	shadowMap *ShadowMap
 }
 
 // NewEnergySystem creates a new energy system.
-func NewEnergySystem(w *ecs.World) *EnergySystem {
+func NewEnergySystem(w *ecs.World, shadowMap *ShadowMap) *EnergySystem {
 	return &EnergySystem{
-		filter: *ecs.NewFilter2[components.Organism, components.CellBuffer](w),
+		filter:    *ecs.NewFilter3[components.Position, components.Organism, components.CellBuffer](w),
+		shadowMap: shadowMap,
 	}
 }
 
@@ -25,27 +27,10 @@ func NewEnergySystem(w *ecs.World) *EnergySystem {
 func (s *EnergySystem) Update(w *ecs.World) {
 	query := s.filter.Query()
 	for query.Next() {
-		org, cells := query.Get()
+		pos, org, cells := query.Get()
 
-		// Base energy drain (reduced for better balance)
-		energyDrain := float32(0.005) + 0.001*float32(cells.Count)
-
-		// Check for mutations
-		hasDisease := false
-		hasRage := false
-		for i := uint8(0); i < cells.Count; i++ {
-			if cells.Cells[i].Mutation == traits.Disease {
-				hasDisease = true
-			}
-			if cells.Cells[i].Mutation == traits.Rage {
-				hasRage = true
-			}
-		}
-
-		// Disease drains extra energy
-		if hasDisease {
-			energyDrain += 0.02
-		}
+		// Compute capabilities once for this organism
+		caps := cells.ComputeCapabilities()
 
 		// Class-based speed and energy drain based on cell count
 		// Key insight: Base drain is LOW (resting is efficient for all sizes)
@@ -69,32 +54,30 @@ func (s *EnergySystem) Update(w *ecs.World) {
 			baseSpeed = float32(max(0.6, 1.4-float64(penalty))) * (0.7 + org.ShapeMetrics.Streamlining*0.5)
 		}
 
-		energyDrain = baseDrain
-
-		// Rage mutation gives speed boost but drains energy
-		if hasRage {
-			energyDrain += 0.03
-			baseSpeed *= 1.4
-		}
-
-		// Floating flora special case
-		if traits.IsFlora(org.Traits) && org.Traits.Has(traits.Floating) {
-			baseSpeed = 0.3
-		}
-
+		energyDrain := baseDrain
 		org.MaxSpeed = baseSpeed
 
-		// Flora has reduced energy drain (photosynthesis handled separately)
-		if traits.IsFlora(org.Traits) {
-			energyDrain *= 0.2
+		// Fauna photosynthesis: organisms with photosynthetic cells can offset energy drain
+		// This allows evolution of mixed strategies (photosynthetic fauna)
+		if caps.PhotoWeight > 0 && s.shadowMap != nil {
+			light := s.shadowMap.SampleLight(pos.X, pos.Y)
+			photoEnergy := float32(0.1) * light * caps.PhotoWeight
+			// Cap photosynthesis at 80% of base drain (can't fully sustain on light alone)
+			maxOffset := energyDrain * 0.8
+			if photoEnergy > maxOffset {
+				photoEnergy = maxOffset
+			}
+			energyDrain -= photoEnergy
 		}
 
-		// Movement cost: active thrust × drag coefficient × mass factor
+		// Movement cost: active thrust × drag coefficient × mass factor × armor penalty
 		// Larger organisms pay MORE to move - hunting is expensive for apex predators
 		// Using cells^0.7 instead of sqrt (cells^0.5) for steeper scaling
 		// 3-cell: 2.2x, 10-cell: 5.0x, 25-cell: 9.5x (vs sqrt: 1.7x, 3.2x, 5.0x)
+		// Armor adds drag penalty: 40% more movement cost at full armor
 		massFactor := float32(math.Pow(float64(cells.Count), 0.7))
-		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 1.5 * massFactor
+		armorPenalty := float32(1.0) + caps.StructuralArmor*0.4
+		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 1.5 * massFactor * armorPenalty
 		energyDrain += thrustCost
 		org.ActiveThrust = 0 // Reset for next tick
 
@@ -111,7 +94,10 @@ func (s *EnergySystem) Update(w *ecs.World) {
 			org.BreedingCooldown--
 		}
 
-		// Update max energy based on cell count
-		org.MaxEnergy = 100 + float32(cells.Count)*50
+		// Update max energy based on cell count and storage capacity
+		// Storage cells provide bonus energy capacity (30 per cell at full storage)
+		baseMax := float32(100) + float32(cells.Count)*50
+		storageBonus := caps.StorageCapacity * float32(cells.Count) * 30
+		org.MaxEnergy = baseMax + storageBonus
 	}
 }

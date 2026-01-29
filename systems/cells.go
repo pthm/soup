@@ -4,7 +4,6 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // CellSystem handles cell aging and decomposition.
@@ -25,9 +24,6 @@ func (s *CellSystem) Update(w *ecs.World) {
 	for query.Next() {
 		org, cells := query.Get()
 
-		// Track traits that need updating
-		var activeTraits traits.Trait
-
 		// Process cells in reverse to allow safe removal
 		cellsRemoved := false
 		for i := int(cells.Count) - 1; i >= 0; i-- {
@@ -42,24 +38,11 @@ func (s *CellSystem) Update(w *ecs.World) {
 				}
 			}
 
-			// Disease speeds up decomposition
-			if cell.Mutation == traits.Disease {
-				cell.Decomposition += 0.0005
-				if cell.Decomposition >= 1 {
-					cell.Alive = false
-				}
-			}
-
 			// Remove dead cells
 			if !cell.Alive {
 				cells.RemoveCell(uint8(i))
 				cellsRemoved = true
 				continue
-			}
-
-			// Accumulate active traits
-			if cell.Trait != 0 {
-				activeTraits = activeTraits.Add(cell.Trait)
 			}
 		}
 
@@ -67,29 +50,5 @@ func (s *CellSystem) Update(w *ecs.World) {
 		if cellsRemoved {
 			org.ShapeMetrics = CalculateShapeMetrics(cells)
 		}
-
-		// Preserve core traits that aren't cell-based
-		if org.Traits.Has(traits.Flora) {
-			activeTraits = activeTraits.Add(traits.Flora)
-		}
-		if org.Traits.Has(traits.Herbivore) {
-			activeTraits = activeTraits.Add(traits.Herbivore)
-		}
-		if org.Traits.Has(traits.Carnivore) {
-			activeTraits = activeTraits.Add(traits.Carnivore)
-		}
-		if org.Traits.Has(traits.Carrion) {
-			activeTraits = activeTraits.Add(traits.Carrion)
-		}
-		if org.Traits.Has(traits.Rooted) {
-			activeTraits = activeTraits.Add(traits.Rooted)
-		}
-		if org.Traits.Has(traits.Floating) {
-			activeTraits = activeTraits.Add(traits.Floating)
-		}
-		// Note: Male/Female traits are deprecated and no longer propagated
-		// Reproduction mode is now determined by ReproductiveMode spectrum from CPPN
-
-		org.Traits = activeTraits
 	}
 }

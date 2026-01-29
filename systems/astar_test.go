@@ -6,57 +6,6 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
-// TestNavGridBasic verifies NavGrid creation and cell queries.
-func TestNavGridBasic(t *testing.T) {
-	grid := NewNavGrid(160, 100)
-
-	if grid.Width() != 10 { // 160 / 16
-		t.Errorf("Width = %d, want 10", grid.Width())
-	}
-	if grid.Height() != 6 { // 100 / 16
-		t.Errorf("Height = %d, want 6", grid.Height())
-	}
-
-	// Initially all cells should be open
-	if grid.IsBlocked(0, 0) {
-		t.Error("Expected (0,0) to be open")
-	}
-	if grid.IsBlocked(5, 3) {
-		t.Error("Expected (5,3) to be open")
-	}
-
-	// Out of bounds should be blocked
-	if !grid.IsBlocked(-1, 0) {
-		t.Error("Expected (-1,0) to be blocked (out of bounds)")
-	}
-	if !grid.IsBlocked(100, 0) {
-		t.Error("Expected (100,0) to be blocked (out of bounds)")
-	}
-}
-
-// TestNavGridWorldCoords verifies world-to-grid coordinate conversion.
-func TestNavGridWorldCoords(t *testing.T) {
-	grid := NewNavGrid(160, 100)
-
-	// Cell (0,0) center is at (8, 8) in world coords
-	gx, gy := grid.WorldToGrid(8, 8)
-	if gx != 0 || gy != 0 {
-		t.Errorf("WorldToGrid(8,8) = (%d,%d), want (0,0)", gx, gy)
-	}
-
-	// World (24, 24) should be in cell (1, 1)
-	gx, gy = grid.WorldToGrid(24, 24)
-	if gx != 1 || gy != 1 {
-		t.Errorf("WorldToGrid(24,24) = (%d,%d), want (1,1)", gx, gy)
-	}
-
-	// GridToWorld should return cell center
-	wx, wy := grid.GridToWorld(1, 1)
-	if wx != 24 || wy != 24 {
-		t.Errorf("GridToWorld(1,1) = (%f,%f), want (24,24)", wx, wy)
-	}
-}
-
 // TestAStarSimplePath verifies A* finds a straight-line path.
 func TestAStarSimplePath(t *testing.T) {
 	// Create terrain without obstacles

@@ -171,44 +171,6 @@ func copyNode(node *network.NNode) *network.NNode {
 	return newNode
 }
 
-// MutateGenome applies mutations to a genome.
-// Returns true if any mutation was applied.
-func MutateGenome(genome *genetics.Genome, opts *neat.Options, idGen *GenomeIDGenerator) (bool, error) {
-	if genome == nil {
-		return false, fmt.Errorf("cannot mutate nil genome")
-	}
-
-	mutated := false
-
-	// Weight mutation (most common)
-	if rand.Float64() < opts.MutateLinkWeightsProb {
-		mutateWeights(genome, opts.WeightMutPower)
-		mutated = true
-	}
-
-	// Add node mutation
-	if rand.Float64() < opts.MutateAddNodeProb {
-		if addNode(genome, idGen, getBrainActivators()) {
-			mutated = true
-		}
-	}
-
-	// Add link mutation
-	if rand.Float64() < opts.MutateAddLinkProb {
-		if addLink(genome, idGen) {
-			mutated = true
-		}
-	}
-
-	// Toggle enable mutation
-	if rand.Float64() < opts.MutateToggleEnableProb {
-		toggleEnable(genome)
-		mutated = true
-	}
-
-	return mutated, nil
-}
-
 func mutateWeights(genome *genetics.Genome, power float64) {
 	for _, gene := range genome.Genes {
 		if rand.Float64() < 0.9 {
@@ -381,14 +343,6 @@ func toggleEnable(genome *genetics.Genome) {
 	}
 }
 
-func getBrainActivators() []neatmath.NodeActivationType {
-	return []neatmath.NodeActivationType{
-		neatmath.SigmoidSteepenedActivation,
-		neatmath.TanhActivation,
-		neatmath.SigmoidBipolarActivation,
-	}
-}
-
 // MutateCPPNGenome applies CPPN-appropriate mutations.
 func MutateCPPNGenome(genome *genetics.Genome, opts *neat.Options, idGen *GenomeIDGenerator) (bool, error) {
 	if genome == nil {
@@ -472,49 +426,6 @@ func CloneGenome(genome *genetics.Genome, newID int) (*genetics.Genome, error) {
 	}
 
 	return genetics.NewGenome(newID, nil, newNodes, newGenes), nil
-}
-
-// CreateOffspringGenomes creates child genomes from two parents.
-func CreateOffspringGenomes(
-	bodyGenome1, bodyGenome2 *genetics.Genome,
-	brainGenome1, brainGenome2 *genetics.Genome,
-	fitness1, fitness2 float64,
-	idGen *GenomeIDGenerator,
-	opts *neat.Options,
-) (bodyChild, brainChild *genetics.Genome, err error) {
-
-	// Crossover body genomes (CPPN)
-	bodyChild, err = CrossoverGenomes(bodyGenome1, bodyGenome2, fitness1, fitness2, idGen.NextID())
-	if err != nil {
-		return nil, nil, fmt.Errorf("body crossover failed: %w", err)
-	}
-
-	// Crossover brain genomes
-	brainChild, err = CrossoverGenomes(brainGenome1, brainGenome2, fitness1, fitness2, idGen.NextID())
-	if err != nil {
-		return nil, nil, fmt.Errorf("brain crossover failed: %w", err)
-	}
-
-	// Mutate body (CPPN)
-	_, err = MutateCPPNGenome(bodyChild, opts, idGen)
-	if err != nil {
-		return nil, nil, fmt.Errorf("body mutation failed: %w", err)
-	}
-
-	// Mutate brain
-	_, err = MutateGenome(brainChild, opts, idGen)
-	if err != nil {
-		return nil, nil, fmt.Errorf("brain mutation failed: %w", err)
-	}
-
-	return bodyChild, brainChild, nil
-}
-
-// CreateInitialGenomePair creates a new body/brain genome pair for a fresh organism.
-func CreateInitialGenomePair(idGen *GenomeIDGenerator, brainConnectionProb float64) (*genetics.Genome, *genetics.Genome) {
-	bodyGenome := CreateCPPNGenome(idGen.NextID())
-	brainGenome := CreateBrainGenome(idGen.NextID(), brainConnectionProb)
-	return bodyGenome, brainGenome
 }
 
 // CreateOffspringCPPN creates a child CPPN genome from two parents.

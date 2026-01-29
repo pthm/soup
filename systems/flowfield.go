@@ -29,17 +29,6 @@ type FlowFieldSystem struct {
 	terrain     *TerrainSystem
 }
 
-// NewFlowFieldSystem creates a new flow field visualization system.
-func NewFlowFieldSystem(bounds Bounds, targetCount int) *FlowFieldSystem {
-	return &FlowFieldSystem{
-		Particles:   make([]FlowParticle, 0, targetCount),
-		noise:       NewPerlinNoise(rand.Int63()),
-		bounds:      bounds,
-		targetCount: targetCount,
-		spawnRate:   50,
-	}
-}
-
 // NewFlowFieldSystemWithTerrain creates a flow field system with terrain awareness.
 func NewFlowFieldSystemWithTerrain(bounds Bounds, targetCount int, terrain *TerrainSystem) *FlowFieldSystem {
 	return &FlowFieldSystem{

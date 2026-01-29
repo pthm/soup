@@ -3,7 +3,6 @@ package components
 
 import (
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/traits"
 	"github.com/yaricom/goNEAT/v4/neat/genetics"
 )
 
@@ -45,9 +44,10 @@ type CollisionOBB struct {
 }
 
 // Organism holds organism-specific data.
+// Note: Diet and other capabilities are now derived from cells, not stored as traits.
+// All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type Organism struct {
-	Traits            traits.Trait
-	Energy            float32
+	Energy float32
 	MaxEnergy         float32
 	CellSize          float32
 	MaxSpeed          float32
@@ -84,13 +84,12 @@ type Organism struct {
 }
 
 // Cell represents a single cell within an organism.
+// Cell function and behavior are determined by PrimaryType/SecondaryType from CPPN.
 type Cell struct {
 	GridX int8
 	GridY int8
 	Age   int32
 	MaxAge int32
-	Trait  traits.Trait
-	Mutation      traits.Mutation
 	Alive         bool
 	Decomposition float32
 
@@ -291,15 +290,6 @@ func (cb *CellBuffer) HasMouth() bool {
 	return false
 }
 
-// Spore represents a spore entity.
-type Spore struct {
-	ParentTraits traits.Trait
-	Size         float32
-	Landed       bool
-	Rooted       bool
-	Lifespan     int32
-}
-
 // FlowParticle represents a flow visualization particle.
 type FlowParticle struct {
 	Size        float32
@@ -312,23 +302,6 @@ type FlowParticle struct {
 type Trail struct {
 	Points [4]Position
 	Count  uint8
-}
-
-// AddPoint adds a point to the trail (most recent first).
-func (t *Trail) AddPoint(p Position) {
-	// Shift existing points
-	for i := len(t.Points) - 1; i > 0; i-- {
-		t.Points[i] = t.Points[i-1]
-	}
-	t.Points[0] = p
-	if t.Count < uint8(len(t.Points)) {
-		t.Count++
-	}
-}
-
-// Clear clears the trail.
-func (t *Trail) Clear() {
-	t.Count = 0
 }
 
 // Flora tag component for efficient querying.

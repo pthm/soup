@@ -1,10 +1,7 @@
 package neural
 
 import (
-	"os"
-
 	"github.com/yaricom/goNEAT/v4/neat"
-	"gopkg.in/yaml.v3"
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
@@ -104,6 +101,50 @@ func (ct CellType) IsActuator() bool {
 	return ct == CellTypeActuator
 }
 
+// Color returns RGB values for this cell type for visualization.
+func (ct CellType) Color() (r, g, b uint8) {
+	switch ct {
+	case CellTypeSensor:
+		return 100, 180, 255 // Light blue - sensing
+	case CellTypeActuator:
+		return 255, 150, 100 // Orange - motor
+	case CellTypeMouth:
+		return 255, 100, 100 // Red - feeding
+	case CellTypeDigestive:
+		return 200, 150, 100 // Tan - digestion
+	case CellTypePhotosynthetic:
+		return 100, 200, 100 // Green - photosynthesis
+	case CellTypeBioluminescent:
+		return 255, 255, 150 // Yellow - light emission
+	case CellTypeReproductive:
+		return 255, 150, 200 // Pink - reproduction
+	default:
+		return 150, 150, 150 // Gray - unknown/none
+	}
+}
+
+// GetCapabilityColor returns RGB color based on cell DigestiveSpectrum.
+// This is used when diet is derived from cell capabilities.
+func GetCapabilityColor(digestiveSpectrum float32) (r, g, b uint8) {
+	if digestiveSpectrum < 0.35 {
+		return 80, 150, 200 // Blue - herbivore
+	} else if digestiveSpectrum > 0.65 {
+		return 200, 80, 80 // Red - carnivore
+	}
+	return 180, 100, 180 // Purple - omnivore
+}
+
+// GetDietName returns a human-readable diet name based on DigestiveSpectrum.
+func GetDietName(digestiveSpectrum float32) string {
+	if digestiveSpectrum < 0.35 {
+		return "HERBIVORE"
+	}
+	if digestiveSpectrum > 0.65 {
+		return "CARNIVORE"
+	}
+	return "OMNIVORE"
+}
+
 // Config holds all neural network configuration.
 type Config struct {
 	NEAT  *neat.Options
@@ -189,20 +230,3 @@ func DefaultNEATOptions() *neat.Options {
 	}
 }
 
-// LoadConfig loads configuration from a YAML file.
-func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start with defaults
-	cfg := DefaultConfig()
-
-	// Override with file values
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
-}

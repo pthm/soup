@@ -8,7 +8,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // BehaviorSystem handles organism steering behaviors using direct neural control.
@@ -55,10 +54,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		entity := query.Entity()
 		pos, vel, org := query.Get()
 
-		// Skip stationary flora (unless dead - dead flora drifts)
-		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) && !org.Dead {
-			continue
-		}
+		// All ECS organisms are fauna (flora are in FloraSystem)
 
 		// Dead organisms only get flow field influence
 		if org.Dead {
@@ -226,15 +222,9 @@ func (s *BehaviorSystem) getBrainOutputs(
 		myDigestiveSpec = caps.DigestiveSpectrum()
 		myArmor = caps.StructuralArmor
 	} else {
-		// Fallback: estimate from traits
-		myComposition = 0.0 // Fauna-like
-		if org.Traits.Has(traits.Carnivore) {
-			myDigestiveSpec = 0.85
-		} else if org.Traits.Has(traits.Herbivore) {
-			myDigestiveSpec = 0.15
-		} else {
-			myDigestiveSpec = 0.5
-		}
+		// Fauna should always have cells - use defaults if somehow missing
+		myComposition = 0.0
+		myDigestiveSpec = 0.5
 		myArmor = 0.0
 	}
 
@@ -408,29 +398,16 @@ func (s *BehaviorSystem) buildEntityList(
 
 		other := faunaOrgs[i]
 
-		// Estimate other organism's capabilities from traits
-		// (In full model, we'd access their cells)
-		var theirDigestive float32 = 0.5
-		if other.Traits.Has(traits.Carnivore) {
-			theirDigestive = 0.85
-		} else if other.Traits.Has(traits.Herbivore) {
-			theirDigestive = 0.15
-		}
+		// Without access to other organisms' cells, use neutral/default values
+		// TODO: Access other organisms' cells via entity lookup for true capability-based check.
+		var theirDigestive float32 = 0.5   // Neutral - unknown diet
+		var theirComposition float32 = 0.0 // Fauna have low photosynthesis
+		var theirArmor float32 = 0.0       // Unknown armor
 
-		// Estimate composition (fauna have low photo, high actuator)
-		var theirComposition float32 = 0.0
-
-		// Estimate armor (simplified - could be enhanced with cell access)
-		var theirArmor float32 = 0.0
-
-		// Calculate genetic distance for friend channel
-		// Use trait similarity as a proxy for genetic distance
-		// Same diet type = more similar = lower distance
-		var geneticDistance float32 = 2.0 // Default: somewhat different
-		if org.Traits.Has(traits.Carnivore) == other.Traits.Has(traits.Carnivore) &&
-			org.Traits.Has(traits.Herbivore) == other.Traits.Has(traits.Herbivore) {
-			geneticDistance = 0.5 // Same diet type = more similar
-		}
+		// Genetic distance uses default since we can't compare cell-based traits
+		// Species ID comparison would be more accurate but requires entity lookup
+		var geneticDistance float32 = 1.0 // Default: moderately different
+		_ = other                          // Suppress unused warning
 
 		entities = append(entities, neural.EntityInfo{
 			X:               faunaPos[i].X,
@@ -445,465 +422,6 @@ func (s *BehaviorSystem) buildEntityList(
 	}
 
 	return entities
-}
-
-// findMate finds a compatible mate for breeding.
-// Note: Gender is deprecated - any nearby organism willing to breed is a potential mate.
-// The actual compatibility check (based on reproductive mode) happens in the breeding system.
-func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	maxDist := org.PerceptionRadius
-	maxDistSq := maxDist * maxDist
-	closestDistSq := maxDistSq
-	var closestX, closestY float32
-	found := false
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
-	for _, i := range nearby {
-		other := faunaOrgs[i]
-		if other == org || other.Dead {
-			continue
-		}
-
-		// Basic check: other organism should also want to breed
-		if other.BreedIntent < 0.5 {
-			continue
-		}
-
-		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if distSq < closestDistSq {
-			closestDistSq = distSq
-			closestX = faunaPos[i].X
-			closestY = faunaPos[i].Y
-			found = true
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-// findMateWeighted finds a mate using sensor-weighted perception.
-// Note: Gender is deprecated - any nearby organism willing to breed is a potential mate.
-// The actual compatibility check (based on reproductive mode) happens in the breeding system.
-func (s *BehaviorSystem) findMateWeighted(
-	pos *components.Position,
-	org *components.Organism,
-	cells *components.CellBuffer,
-	effectiveRadius float32,
-	faunaPos []components.Position,
-	faunaOrgs []*components.Organism,
-	grid *SpatialGrid,
-) (float32, float32, bool) {
-	maxDistSq := effectiveRadius * effectiveRadius
-	closestDistSq := maxDistSq
-	var closestX, closestY float32
-	found := false
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, effectiveRadius)
-	for _, i := range nearby {
-		other := faunaOrgs[i]
-		if other == org || other.Dead {
-			continue
-		}
-
-		// Basic check: other organism should also want to breed
-		if other.BreedIntent < 0.5 {
-			continue
-		}
-
-		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if distSq > maxDistSq {
-			continue
-		}
-
-		// Check line of sight - can't see through terrain
-		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
-			continue
-		}
-
-		// Apply sensor directional weighting - targets in sensor-covered directions are easier to detect
-		targetAngle := float32(math.Atan2(float64(faunaPos[i].Y-pos.Y), float64(faunaPos[i].X-pos.X))) - org.Heading
-		sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-
-		// Better sensor coverage = effectively shorter distance (easier to detect)
-		effectiveDistSq := distSq / (sensorBonus * sensorBonus)
-
-		if effectiveDistSq < closestDistSq {
-			closestDistSq = effectiveDistSq
-			closestX = faunaPos[i].X
-			closestY = faunaPos[i].Y
-			found = true
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-// countNearbySameType counts the number of nearby organisms of the same diet type.
-func (s *BehaviorSystem) countNearbySameType(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) int {
-	herdRadius := org.PerceptionRadius * 1.5
-	count := 0
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, herdRadius)
-	for _, i := range nearby {
-		other := faunaOrgs[i]
-		if other == org || other.Dead {
-			continue
-		}
-		// Same type check (carnivore with carnivore, herbivore with herbivore)
-		if org.Traits.Has(traits.Carnivore) != other.Traits.Has(traits.Carnivore) {
-			continue
-		}
-		count++
-	}
-
-	return count
-}
-
-func (s *BehaviorSystem) findFood(pos *components.Position, org *components.Organism, floraPos, faunaPos []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	const fov = math.Pi // 180 degree vision
-	maxDist := org.PerceptionRadius
-	maxDistSq := maxDist * maxDist
-	closestDistSq := maxDistSq
-	var closestX, closestY float32
-	found := false
-
-	// Herbivores seek flora
-	if org.Traits.Has(traits.Herbivore) {
-		nearby := grid.GetNearbyFlora(pos.X, pos.Y, maxDist)
-		for _, i := range nearby {
-			if floraOrgs[i].Dead {
-				continue
-			}
-			if !canSeeSq(pos.X, pos.Y, org.Heading, floraPos[i].X, floraPos[i].Y, fov, maxDistSq) {
-				continue
-			}
-			distSq := distanceSq(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y)
-			if distSq < closestDistSq {
-				closestDistSq = distSq
-				closestX = floraPos[i].X
-				closestY = floraPos[i].Y
-				found = true
-			}
-		}
-	}
-
-	// Carnivores seek fauna
-	if org.Traits.Has(traits.Carnivore) {
-		nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
-		for _, i := range nearby {
-			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
-				continue
-			}
-			if !canSeeSq(pos.X, pos.Y, org.Heading, faunaPos[i].X, faunaPos[i].Y, fov, maxDistSq) {
-				continue
-			}
-			distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-			if distSq < closestDistSq {
-				closestDistSq = distSq
-				closestX = faunaPos[i].X
-				closestY = faunaPos[i].Y
-				found = true
-			}
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-// findFoodWeighted finds food using sensor-weighted perception and capability matching.
-// Uses the organism's digestive spectrum to determine what counts as food.
-func (s *BehaviorSystem) findFoodWeighted(
-	pos *components.Position,
-	org *components.Organism,
-	cells *components.CellBuffer,
-	effectiveRadius float32,
-	floraPos, faunaPos []components.Position,
-	floraOrgs, faunaOrgs []*components.Organism,
-	grid *SpatialGrid,
-) (float32, float32, bool) {
-	maxDistSq := effectiveRadius * effectiveRadius
-	closestEffectiveDistSq := maxDistSq
-	var closestX, closestY float32
-	found := false
-
-	// Compute our digestive spectrum from cells
-	var myDigestive float32 = 0.5 // Default: omnivore
-	if cells != nil {
-		caps := cells.ComputeCapabilities()
-		myDigestive = caps.DigestiveSpectrum()
-	}
-
-	// Flora composition is 1.0 (pure photosynthetic)
-	// Edibility for flora = 1 - |digestive + 1.0 - 1| = 1 - |digestive|
-	// So herbivores (digestive~0) have high edibility, carnivores (digestive~1) have low
-	floraEdibility := neural.Edibility(myDigestive, 1.0)
-
-	// Check if we can eat flora (edibility > typical flora armor of 0.1)
-	canEatFlora := floraEdibility > 0.1
-
-	if canEatFlora {
-		nearby := grid.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
-		for _, i := range nearby {
-			if floraOrgs[i].Dead {
-				continue
-			}
-
-			distSq := distanceSq(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y)
-			if distSq > maxDistSq {
-				continue
-			}
-
-			// Check line of sight - can't see through terrain
-			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y) {
-				continue
-			}
-
-			// Calculate direction to target and apply sensor weighting
-			targetAngle := float32(math.Atan2(float64(floraPos[i].Y-pos.Y), float64(floraPos[i].X-pos.X))) - org.Heading
-			sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-
-			// Better sensor coverage and higher edibility = effectively shorter distance
-			effectiveDistSq := distSq / (sensorBonus * sensorBonus * floraEdibility)
-
-			if effectiveDistSq < closestEffectiveDistSq {
-				closestEffectiveDistSq = effectiveDistSq
-				closestX = floraPos[i].X
-				closestY = floraPos[i].Y
-				found = true
-			}
-		}
-	}
-
-	// Fauna composition is ~0 (pure actuator, no photosynthesis)
-	// Edibility for fauna = 1 - |digestive + 0 - 1| = 1 - |digestive - 1|
-	// So carnivores (digestive~1) have high edibility, herbivores (digestive~0) have low
-	faunaEdibility := neural.Edibility(myDigestive, 0.0)
-
-	// Check if we can eat fauna (edibility > 0 with no armor consideration for detection)
-	canEatFauna := faunaEdibility > 0.2
-
-	if canEatFauna {
-		nearby := grid.GetNearbyFauna(pos.X, pos.Y, effectiveRadius)
-		for _, i := range nearby {
-			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
-				continue
-			}
-
-			distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-			if distSq > maxDistSq {
-				continue
-			}
-
-			// Check line of sight - can't see through terrain
-			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
-				continue
-			}
-
-			targetAngle := float32(math.Atan2(float64(faunaPos[i].Y-pos.Y), float64(faunaPos[i].X-pos.X))) - org.Heading
-			sensorBonus := sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-
-			// Better sensor coverage and higher edibility = effectively shorter distance
-			effectiveDistSq := distSq / (sensorBonus * sensorBonus * faunaEdibility)
-
-			if effectiveDistSq < closestEffectiveDistSq {
-				closestEffectiveDistSq = effectiveDistSq
-				closestX = faunaPos[i].X
-				closestY = faunaPos[i].Y
-				found = true
-			}
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-func (s *BehaviorSystem) findDead(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, floraPos []components.Position, floraOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	maxDist := org.PerceptionRadius
-	maxDistSq := maxDist * maxDist
-	closestDistSq := maxDistSq
-	var closestX, closestY float32
-	found := false
-
-	// Find dead fauna
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxDist)
-	for _, i := range nearby {
-		if faunaOrgs[i] == org || !faunaOrgs[i].Dead {
-			continue
-		}
-		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if distSq < closestDistSq {
-			closestDistSq = distSq
-			closestX = faunaPos[i].X
-			closestY = faunaPos[i].Y
-			found = true
-		}
-	}
-
-	// Find dead flora
-	nearbyFlora := grid.GetNearbyFlora(pos.X, pos.Y, maxDist)
-	for _, i := range nearbyFlora {
-		if !floraOrgs[i].Dead {
-			continue
-		}
-		distSq := distanceSq(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y)
-		if distSq < closestDistSq {
-			closestDistSq = distSq
-			closestX = floraPos[i].X
-			closestY = floraPos[i].Y
-			found = true
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-func (s *BehaviorSystem) findPredator(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
-	// Prey have omnidirectional awareness of predators
-	baseDetectDist := org.PerceptionRadius * 1.5
-	maxSearchDist := baseDetectDist * 5
-	closestDistSq := maxSearchDist * maxSearchDist
-	var closestX, closestY float32
-	found := false
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxSearchDist)
-	for _, i := range nearby {
-		if faunaOrgs[i] == org {
-			continue
-		}
-		if !faunaOrgs[i].Traits.Has(traits.Carnivore) {
-			continue
-		}
-		if faunaOrgs[i].Dead {
-			continue
-		}
-
-		// Size visibility: larger predators are easier to spot
-		predatorCells := (faunaOrgs[i].MaxEnergy - 100) / 50
-		if predatorCells < 1 {
-			predatorCells = 1
-		}
-		sizeMultiplier := float32(math.Sqrt(float64(predatorCells)))
-
-		// Movement visibility: moving predators are easier to detect
-		thrust := faunaOrgs[i].ActiveThrust
-		movementMultiplier := float32(0.3) + thrust*40
-		if movementMultiplier > 1.5 {
-			movementMultiplier = 1.5
-		}
-
-		detectDist := baseDetectDist * sizeMultiplier * movementMultiplier
-		detectDistSq := detectDist * detectDist
-
-		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if distSq > detectDistSq {
-			continue
-		}
-		if distSq < closestDistSq {
-			closestDistSq = distSq
-			closestX = faunaPos[i].X
-			closestY = faunaPos[i].Y
-			found = true
-		}
-	}
-
-	return closestX, closestY, found
-}
-
-// findPredatorWeighted finds predators using sensor-weighted perception and capability matching.
-// A predator is anything that can eat us based on digestive spectrum vs our composition.
-func (s *BehaviorSystem) findPredatorWeighted(
-	pos *components.Position,
-	org *components.Organism,
-	cells *components.CellBuffer,
-	effectiveRadius float32,
-	faunaPos []components.Position,
-	faunaOrgs []*components.Organism,
-	grid *SpatialGrid,
-) (float32, float32, bool) {
-	// Compute our composition (how flora-like vs fauna-like we are)
-	var myComposition float32 = 0.0 // Default: pure fauna (no photosynthesis)
-	var myArmor float32 = 0.0
-	if cells != nil {
-		caps := cells.ComputeCapabilities()
-		myComposition = caps.Composition()
-		myArmor = caps.StructuralArmor
-	}
-
-	// Base detection range scaled by sensor capability
-	baseDetectDist := effectiveRadius * 1.5
-	maxSearchDist := baseDetectDist * 3
-	closestEffectiveDistSq := maxSearchDist * maxSearchDist
-	var closestX, closestY float32
-	found := false
-
-	nearby := grid.GetNearbyFauna(pos.X, pos.Y, maxSearchDist)
-	for _, i := range nearby {
-		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
-			continue
-		}
-
-		// Estimate their digestive spectrum from traits as a proxy
-		// (In full capability model, we'd have their cells to compute this)
-		// Carnivore trait suggests high digestive spectrum (~1.0)
-		// Herbivore trait suggests low digestive spectrum (~0.0)
-		var theirDigestive float32 = 0.5 // Default: omnivore
-		if faunaOrgs[i].Traits.Has(traits.Carnivore) {
-			theirDigestive = 0.85
-		} else if faunaOrgs[i].Traits.Has(traits.Herbivore) {
-			theirDigestive = 0.15
-		}
-
-		// Check if they can eat us (are they a threat?)
-		threatLevel := neural.ThreatLevel(theirDigestive, myComposition, myArmor)
-		if threatLevel <= 0 {
-			continue // They can't eat us, not a threat
-		}
-
-		// Size visibility: larger predators are easier to spot
-		predatorCells := (faunaOrgs[i].MaxEnergy - 100) / 50
-		if predatorCells < 1 {
-			predatorCells = 1
-		}
-		sizeMultiplier := float32(math.Sqrt(float64(predatorCells)))
-
-		// Movement visibility: moving predators are easier to detect
-		thrust := faunaOrgs[i].ActiveThrust
-		movementMultiplier := float32(0.3) + thrust*40
-		if movementMultiplier > 1.5 {
-			movementMultiplier = 1.5
-		}
-
-		detectDist := baseDetectDist * sizeMultiplier * movementMultiplier
-		detectDistSq := detectDist * detectDist
-
-		distSq := distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y)
-		if distSq > detectDistSq {
-			continue
-		}
-
-		// Check line of sight - can't see through terrain
-		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
-			continue
-		}
-
-		// Apply sensor weighting - predators in sensor-covered directions detected better
-		targetAngle := float32(math.Atan2(float64(faunaPos[i].Y-pos.Y), float64(faunaPos[i].X-pos.X))) - org.Heading
-
-		// Predator detection is partially omnidirectional (survival instinct)
-		// but sensors still provide a bonus for covered directions
-		// Higher threat level also makes them easier to detect (more alarming)
-		sensorBonus := 0.5 + 0.5*sensorWeightedIntensity(cells, org.Heading, targetAngle, 1.0)
-		effectiveDistSq := distSq / (sensorBonus * sensorBonus * (0.5 + threatLevel*0.5))
-
-		if effectiveDistSq < closestEffectiveDistSq {
-			closestEffectiveDistSq = effectiveDistSq
-			closestX = faunaPos[i].X
-			closestY = faunaPos[i].Y
-			found = true
-		}
-	}
-
-	return closestX, closestY, found
 }
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
@@ -923,10 +441,7 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 	flowY += 0.05
 	flowX += float32(math.Sin(float64(s.tick)*0.0002)) * 0.02
 
-	// Floating flora: very weak flow effect
-	if traits.IsFlora(org.Traits) && org.Traits.Has(traits.Floating) {
-		return flowX * 0.05, flowY * 0.05
-	}
+	// All ECS organisms are fauna (flora are in FloraSystem)
 
 	// Shape-based flow resistance
 	shapeResistance := org.ShapeMetrics.Streamlining * 0.4
@@ -935,41 +450,6 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 	factor := 1 - totalResistance*0.7
 
 	return flowX * factor, flowY * factor
-}
-
-// Helper functions
-
-func canSeeSq(px, py, heading, tx, ty, fov, maxDistSq float32) bool {
-	dx := tx - px
-	dy := ty - py
-	distSq := dx*dx + dy*dy
-
-	if distSq > maxDistSq {
-		return false
-	}
-
-	angleToTarget := float32(math.Atan2(float64(dy), float64(dx)))
-	angleDiff := angleToTarget - heading
-	for angleDiff > math.Pi {
-		angleDiff -= math.Pi * 2
-	}
-	for angleDiff < -math.Pi {
-		angleDiff += math.Pi * 2
-	}
-
-	return float32(math.Abs(float64(angleDiff))) <= fov/2
-}
-
-func distance(x1, y1, x2, y2 float32) float32 {
-	dx := x2 - x1
-	dy := y2 - y1
-	return float32(math.Sqrt(float64(dx*dx + dy*dy)))
-}
-
-func distanceSq(x1, y1, x2, y2 float32) float32 {
-	dx := x2 - x1
-	dy := y2 - y1
-	return dx*dx + dy*dy
 }
 
 // Sensor weighting functions for body-brain coupling
@@ -1012,62 +492,6 @@ func getEffectivePerceptionRadius(baseRadius float32, cells *components.CellBuff
 	// Scale: 0.5x (no sensors) to 1.5x (4+ sensor gain)
 	scale := float32(0.5 + math.Min(1.0, float64(totalGain)/4.0))
 	return baseRadius * scale
-}
-
-// sensorWeightedIntensity weights a stimulus intensity by sensor geometry.
-// Sensors facing the stimulus direction contribute more.
-func sensorWeightedIntensity(
-	cells *components.CellBuffer,
-	heading float32,
-	stimulusAngle float32, // Angle to stimulus relative to organism heading
-	rawIntensity float32,
-) float32 {
-	if cells == nil {
-		return rawIntensity
-	}
-
-	var totalWeight float32
-	var weightedIntensity float32
-
-	for i := uint8(0); i < cells.Count; i++ {
-		cell := &cells.Cells[i]
-		sensorStrength := cell.GetSensorStrength()
-		if sensorStrength == 0 {
-			continue
-		}
-
-		// Sensor's facing direction based on its grid position (outward from center)
-		sensorAngle := float32(math.Atan2(float64(cell.GridY), float64(cell.GridX)))
-
-		// Angular difference between sensor facing and stimulus direction
-		angleDiff := math.Abs(float64(normalizeAngle(sensorAngle - stimulusAngle)))
-
-		// Sensors facing the stimulus contribute more (cosine falloff)
-		// Angle diff of 0 = full contribution, Pi = zero contribution
-		directionalWeight := float32(math.Max(0, math.Cos(angleDiff)))
-
-		weight := sensorStrength * directionalWeight
-		totalWeight += weight
-		weightedIntensity += weight * rawIntensity
-	}
-
-	if totalWeight < 0.01 {
-		// No sensors facing this direction - reduced perception
-		return rawIntensity * 0.3
-	}
-
-	return weightedIntensity / totalWeight
-}
-
-// normalizeAngle wraps an angle to [-Pi, Pi].
-func normalizeAngle(angle float32) float32 {
-	for angle > math.Pi {
-		angle -= 2 * math.Pi
-	}
-	for angle < -math.Pi {
-		angle += 2 * math.Pi
-	}
-	return angle
 }
 
 // Actuator helper functions for body-brain coupling

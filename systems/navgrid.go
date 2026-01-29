@@ -33,19 +33,6 @@ func GetSizeClass(radius float32) SizeClass {
 	return SizeLarge
 }
 
-// NewNavGrid creates a new navigation grid.
-func NewNavGrid(screenWidth, screenHeight float32) *NavGrid {
-	w := int(screenWidth / NavGridCellSize)
-	h := int(screenHeight / NavGridCellSize)
-
-	return &NavGrid{
-		cells:    make([]bool, w*h),
-		cellSize: NavGridCellSize,
-		width:    w,
-		height:   h,
-	}
-}
-
 // NewNavGridFromTerrain creates a navigation grid from terrain, inflated by a radius.
 // Inflation marks cells as blocked if terrain is within 'inflation' pixels.
 func NewNavGridFromTerrain(terrain *TerrainSystem, inflation float32) *NavGrid {
@@ -148,21 +135,6 @@ func (g *NavGrid) GridToWorld(gx, gy int) (x, y float32) {
 	return
 }
 
-// Width returns the grid width in cells.
-func (g *NavGrid) Width() int {
-	return g.width
-}
-
-// Height returns the grid height in cells.
-func (g *NavGrid) Height() int {
-	return g.height
-}
-
-// CellSize returns the cell size in pixels.
-func (g *NavGrid) CellSize() float32 {
-	return g.cellSize
-}
-
 // NavGridSet holds navigation grids for different organism size classes.
 type NavGridSet struct {
 	grids [NumSizeClasses]*NavGrid
@@ -193,7 +165,3 @@ func (s *NavGridSet) GetGrid(sc SizeClass) *NavGrid {
 	return s.grids[sc]
 }
 
-// GetGridForRadius returns the navigation grid appropriate for a given collision radius.
-func (s *NavGridSet) GetGridForRadius(radius float32) *NavGrid {
-	return s.GetGrid(GetSizeClass(radius))
-}

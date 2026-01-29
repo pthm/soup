@@ -7,10 +7,10 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // PhysicsSystem updates entity positions based on velocity.
+// All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type PhysicsSystem struct {
 	filter  ecs.Filter3[components.Position, components.Velocity, components.Organism]
 	bounds  Bounds
@@ -28,14 +28,6 @@ type Occluder struct {
 	Density             float32 // 0-1, how much light is blocked (1 = fully solid, 0.3 = sparse like foliage)
 }
 
-// NewPhysicsSystem creates a new physics system.
-func NewPhysicsSystem(w *ecs.World, bounds Bounds) *PhysicsSystem {
-	return &PhysicsSystem{
-		filter: *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
-		bounds: bounds,
-	}
-}
-
 // NewPhysicsSystemWithTerrain creates a physics system with terrain collision.
 func NewPhysicsSystemWithTerrain(w *ecs.World, bounds Bounds, terrain *TerrainSystem) *PhysicsSystem {
 	return &PhysicsSystem{
@@ -51,10 +43,7 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 	for query.Next() {
 		pos, vel, org := query.Get()
 
-		// Skip stationary flora (but not if dead - dead flora can drift)
-		if traits.IsFlora(org.Traits) && !org.Traits.Has(traits.Floating) && !org.Dead {
-			continue
-		}
+		// All ECS organisms are fauna (flora are in FloraSystem)
 
 		// Dead organisms drift slowly with reduced max speed
 		maxSpeed := org.MaxSpeed
@@ -137,20 +126,15 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 			pos.X -= s.bounds.Width
 		}
 
-		// Rooted organisms stay at bottom (unless dead)
-		if org.Traits.Has(traits.Rooted) && !org.Dead {
-			pos.Y = s.bounds.Height - org.CellSize
-		} else {
-			// Vertical bounds (no wrap - top and bottom are walls)
-			cellRadius := org.CellSize * float32(3)
-			if pos.Y < cellRadius {
-				pos.Y = cellRadius
-				vel.Y *= -0.3 // Bounce slightly
-			}
-			if pos.Y > s.bounds.Height-cellRadius {
-				pos.Y = s.bounds.Height - cellRadius
-				vel.Y *= -0.3 // Bounce slightly
-			}
+		// Vertical bounds (no wrap - top and bottom are walls)
+		cellRadius := org.CellSize * float32(3)
+		if pos.Y < cellRadius {
+			pos.Y = cellRadius
+			vel.Y *= -0.3 // Bounce slightly
+		}
+		if pos.Y > s.bounds.Height-cellRadius {
+			pos.Y = s.bounds.Height - cellRadius
+			vel.Y *= -0.3 // Bounce slightly
 		}
 	}
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/traits"
 )
 
 // Breeding constants
@@ -45,10 +44,10 @@ func NewBreedingSystem(w *ecs.World, opts *neat.Options, idGen *neural.GenomeIDG
 }
 
 // OrganismCreator is called to create new organisms.
-type OrganismCreator func(x, y float32, t traits.Trait, energy float32) ecs.Entity
+type OrganismCreator func(x, y float32, energy float32) ecs.Entity
 
 // NeuralOrganismCreator is called to create neural organisms with genomes.
-type NeuralOrganismCreator func(x, y float32, t traits.Trait, energy float32, neural *components.NeuralGenome, brain *components.Brain) ecs.Entity
+type NeuralOrganismCreator func(x, y float32, energy float32, neural *components.NeuralGenome, brain *components.Brain) ecs.Entity
 
 // breeder holds data for a potential breeding organism.
 type breeder struct {
@@ -72,8 +71,8 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 	for query.Next() {
 		pos, vel, org, cells := query.Get()
 
-		// Skip flora and dead organisms
-		if traits.IsFlora(org.Traits) || org.Dead {
+		// Skip dead organisms (all ECS organisms are fauna)
+		if org.Dead {
 			continue
 		}
 
@@ -221,10 +220,9 @@ func (s *BreedingSystem) breedSexual(a, b *breeder, createOrganism OrganismCreat
 	if neuralA != nil && neuralB != nil && createNeuralOrganism != nil && s.genomeIDGen != nil && s.neatOpts != nil {
 		// Neural breeding with crossover
 		s.breedNeuralSexual(x, y, a.org, b.org, a.cells, b.cells, neuralA, neuralB, createNeuralOrganism)
-	} else {
-		// Traditional trait-based breeding
-		offspringTraits := s.inheritTraits(a.org.Traits, b.org.Traits)
-		createOrganism(x, y, offspringTraits, 50)
+	} else if createOrganism != nil {
+		// Fallback breeding
+		createOrganism(x, y, 50)
 	}
 
 	// Cost to both parents (shared cost)
@@ -250,10 +248,9 @@ func (s *BreedingSystem) breedAsexual(a *breeder, createOrganism OrganismCreator
 	if neuralA != nil && createNeuralOrganism != nil && s.genomeIDGen != nil && s.neatOpts != nil {
 		// Neural asexual reproduction - clone and mutate
 		s.breedNeuralAsexual(x, y, a.org, neuralA, createNeuralOrganism)
-	} else {
-		// Traditional trait-based - clone parent traits with small variation
-		offspringTraits := s.inheritTraitsAsexual(a.org.Traits)
-		createOrganism(x, y, offspringTraits, 50)
+	} else if createOrganism != nil {
+		// Fallback breeding
+		createOrganism(x, y, 50)
 	}
 
 	// Higher cost for single parent (solo investment)
@@ -294,7 +291,7 @@ func (s *BreedingSystem) breedNeuralSexual(
 		return
 	}
 
-	s.createOffspringFromCPPN(x, y, bodyChild, orgA.Traits, orgB.Traits, neuralA, neuralB, createNeuralOrganism)
+	s.createOffspringFromCPPN(x, y, bodyChild, neuralA, neuralB, createNeuralOrganism)
 }
 
 // breedNeuralAsexual performs neural reproduction by cloning and mutating.
@@ -314,14 +311,13 @@ func (s *BreedingSystem) breedNeuralAsexual(
 	neural.MutateCPPNGenome(bodyChild, s.neatOpts, s.genomeIDGen)
 
 	// Create offspring from mutated clone
-	s.createOffspringFromCPPN(x, y, bodyChild, org.Traits, org.Traits, neuralParent, neuralParent, createNeuralOrganism)
+	s.createOffspringFromCPPN(x, y, bodyChild, neuralParent, neuralParent, createNeuralOrganism)
 }
 
 // createOffspringFromCPPN generates morphology and brain from CPPN and creates the organism.
 func (s *BreedingSystem) createOffspringFromCPPN(
 	x, y float32,
 	bodyGenome *genetics.Genome,
-	traitsA, traitsB traits.Trait,
 	neuralA, neuralB *components.NeuralGenome,
 	createNeuralOrganism NeuralOrganismCreator,
 ) {
@@ -345,9 +341,6 @@ func (s *BreedingSystem) createOffspringFromCPPN(
 	// Determine species (based on CPPN genome compatibility)
 	childSpeciesID := neuralA.SpeciesID // Default to parent's species
 
-	// Inherit traits from parents
-	offspringTraits := s.inheritTraits(traitsA, traitsB)
-
 	// Create neural genome component
 	childNeural := &components.NeuralGenome{
 		BodyGenome:  bodyGenome,
@@ -361,78 +354,6 @@ func (s *BreedingSystem) createOffspringFromCPPN(
 		Controller: brainController,
 	}
 
-	// Create the offspring
-	createNeuralOrganism(x, y, offspringTraits, 100, childNeural, childBrain)
-}
-
-// inheritTraits combines traits from two parents (for sexual reproduction).
-// Excludes deprecated Male/Female traits.
-func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {
-	var result traits.Trait
-
-	// Inheritable diet traits (50% from each parent)
-	dietTraits := []traits.Trait{
-		traits.Herbivore,
-		traits.Carnivore,
-		traits.Carrion,
-	}
-
-	for _, t := range dietTraits {
-		// 50% chance to inherit if either parent has it
-		if (a.Has(t) || b.Has(t)) && rand.Float32() < 0.5 {
-			result = result.Add(t)
-		}
-	}
-
-	// Must have at least one diet trait
-	hasDiet := result.Has(traits.Herbivore) || result.Has(traits.Carnivore) || result.Has(traits.Carrion)
-	if !hasDiet {
-		// Pick a diet from parents
-		parentDiets := []traits.Trait{}
-		if a.Has(traits.Herbivore) || b.Has(traits.Herbivore) {
-			parentDiets = append(parentDiets, traits.Herbivore)
-		}
-		if a.Has(traits.Carnivore) || b.Has(traits.Carnivore) {
-			parentDiets = append(parentDiets, traits.Carnivore)
-		}
-		if a.Has(traits.Carrion) || b.Has(traits.Carrion) {
-			parentDiets = append(parentDiets, traits.Carrion)
-		}
-		if len(parentDiets) > 0 {
-			result = result.Add(parentDiets[rand.Intn(len(parentDiets))])
-		} else {
-			// Fallback to herbivore
-			result = result.Add(traits.Herbivore)
-		}
-	}
-
-	// Note: Male/Female traits are deprecated and not inherited
-
-	return result
-}
-
-// inheritTraitsAsexual clones parent traits for asexual reproduction.
-// Excludes deprecated Male/Female traits.
-func (s *BreedingSystem) inheritTraitsAsexual(parent traits.Trait) traits.Trait {
-	var result traits.Trait
-
-	// Copy diet traits from parent
-	if parent.Has(traits.Herbivore) {
-		result = result.Add(traits.Herbivore)
-	}
-	if parent.Has(traits.Carnivore) {
-		result = result.Add(traits.Carnivore)
-	}
-	if parent.Has(traits.Carrion) {
-		result = result.Add(traits.Carrion)
-	}
-
-	// Must have at least one diet trait
-	if !result.Has(traits.Herbivore) && !result.Has(traits.Carnivore) && !result.Has(traits.Carrion) {
-		result = result.Add(traits.Herbivore)
-	}
-
-	// Note: Male/Female traits are deprecated and not inherited
-
-	return result
+	// Create the offspring - diet derived from cells
+	createNeuralOrganism(x, y, 100, childNeural, childBrain)
 }

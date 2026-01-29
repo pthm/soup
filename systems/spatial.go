@@ -78,11 +78,6 @@ func (sg *SpatialGrid) worldToGrid(x, y float32) (int, int) {
 	return gx, gy
 }
 
-// GetNearbyFlora returns indices of flora within radius of position.
-func (sg *SpatialGrid) GetNearbyFlora(x, y, radius float32) []int {
-	return sg.getNearby(x, y, radius, true)
-}
-
 // GetNearbyFauna returns indices of fauna within radius of position.
 func (sg *SpatialGrid) GetNearbyFauna(x, y, radius float32) []int {
 	return sg.getNearby(x, y, radius, false)

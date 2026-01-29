@@ -99,29 +99,6 @@ func TestCrossoverGenomesWithDifferentFitness(t *testing.T) {
 	}
 }
 
-func TestMutateGenome(t *testing.T) {
-	genome := CreateBrainGenome(1, 0.5)
-	opts := DefaultNEATOptions()
-	idGen := NewGenomeIDGenerator()
-
-	// Force mutations to happen
-	opts.MutateLinkWeightsProb = 1.0
-
-	originalGenes := len(genome.Genes)
-	mutated, err := MutateGenome(genome, opts, idGen)
-
-	if err != nil {
-		t.Fatalf("MutateGenome failed: %v", err)
-	}
-
-	if !mutated {
-		t.Error("expected mutation to occur")
-	}
-
-	// Genes count might change due to structural mutations
-	t.Logf("Genome went from %d to %d genes", originalGenes, len(genome.Genes))
-}
-
 func TestMutateCPPNGenome(t *testing.T) {
 	genome := CreateCPPNGenome(1)
 	opts := DefaultNEATOptions()
@@ -169,47 +146,6 @@ func TestCloneGenome(t *testing.T) {
 	}
 }
 
-func TestCreateOffspringGenomes(t *testing.T) {
-	idGen := NewGenomeIDGenerator()
-	opts := DefaultNEATOptions()
-
-	body1, brain1 := CreateInitialGenomePair(idGen, 0.3)
-	body2, brain2 := CreateInitialGenomePair(idGen, 0.3)
-
-	bodyChild, brainChild, err := CreateOffspringGenomes(
-		body1, body2, brain1, brain2,
-		1.0, 1.0,
-		idGen, opts,
-	)
-
-	if err != nil {
-		t.Fatalf("CreateOffspringGenomes failed: %v", err)
-	}
-
-	if bodyChild == nil {
-		t.Error("body child is nil")
-	}
-
-	if brainChild == nil {
-		t.Error("brain child is nil")
-	}
-
-	// Build networks to verify they're valid
-	_, err = bodyChild.Genesis(bodyChild.Id)
-	if err != nil {
-		t.Errorf("body child cannot build network: %v", err)
-	}
-
-	_, err = brainChild.Genesis(brainChild.Id)
-	if err != nil {
-		t.Errorf("brain child cannot build network: %v", err)
-	}
-
-	t.Logf("Created offspring: body=%d nodes/%d genes, brain=%d nodes/%d genes",
-		len(bodyChild.Nodes), len(bodyChild.Genes),
-		len(brainChild.Nodes), len(brainChild.Genes))
-}
-
 func TestGenomeCompatibility(t *testing.T) {
 	opts := DefaultNEATOptions()
 
@@ -230,31 +166,6 @@ func TestGenomeCompatibility(t *testing.T) {
 	t.Logf("Distance between different genomes: %f", dist2)
 }
 
-func TestCreateInitialGenomePair(t *testing.T) {
-	idGen := NewGenomeIDGenerator()
-
-	body, brain := CreateInitialGenomePair(idGen, 0.3)
-
-	if body == nil {
-		t.Error("body genome is nil")
-	}
-
-	if brain == nil {
-		t.Error("brain genome is nil")
-	}
-
-	// Verify they can build networks
-	_, err := body.Genesis(body.Id)
-	if err != nil {
-		t.Errorf("body genome cannot build network: %v", err)
-	}
-
-	_, err = brain.Genesis(brain.Id)
-	if err != nil {
-		t.Errorf("brain genome cannot build network: %v", err)
-	}
-}
-
 func BenchmarkCrossoverGenomes(b *testing.B) {
 	parent1 := CreateBrainGenome(1, 0.5)
 	parent2 := CreateBrainGenome(2, 0.5)
@@ -262,16 +173,5 @@ func BenchmarkCrossoverGenomes(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = CrossoverGenomes(parent1, parent2, 1.0, 1.0, i+3)
-	}
-}
-
-func BenchmarkMutateGenome(b *testing.B) {
-	opts := DefaultNEATOptions()
-	idGen := NewGenomeIDGenerator()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		genome := CreateBrainGenome(i, 0.5)
-		_, _ = MutateGenome(genome, opts, idGen)
 	}
 }

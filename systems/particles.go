@@ -1,7 +1,6 @@
 package systems
 
 import (
-	"math"
 	"math/rand"
 )
 
@@ -77,28 +76,12 @@ func (s *ParticleSystem) Update() {
 	s.Particles = s.Particles[:alive]
 }
 
-// EmitDisease emits a disease particle (15% chance per call).
-func (s *ParticleSystem) EmitDisease(x, y float32) {
-	if rand.Float32() > 0.15 {
-		return
-	}
-	s.emit(x, y, ParticleDisease)
-}
-
 // EmitDeath emits a death particle (8% chance per call).
 func (s *ParticleSystem) EmitDeath(x, y float32) {
 	if rand.Float32() > 0.08 {
 		return
 	}
 	s.emit(x, y, ParticleDeath)
-}
-
-// EmitSplit emits a burst of split particles (8-14 particles).
-func (s *ParticleSystem) EmitSplit(x, y float32) {
-	count := 8 + rand.Intn(7) // 8-14 particles
-	for i := 0; i < count; i++ {
-		s.emitSplitParticle(x, y)
-	}
 }
 
 func (s *ParticleSystem) emit(x, y float32, ptype ParticleType) {
@@ -137,31 +120,6 @@ func (s *ParticleSystem) emit(x, y float32, ptype ParticleType) {
 		MaxLife: life,
 		Type:    ptype,
 		Size:    size,
-	})
-}
-
-func (s *ParticleSystem) emitSplitParticle(x, y float32) {
-	if len(s.Particles) >= s.maxParticles {
-		return
-	}
-
-	// Radial burst
-	angle := rand.Float32() * 2 * math.Pi
-	speed := 0.5 + rand.Float32()*0.8
-	velX := float32(math.Cos(float64(angle))) * speed
-	velY := float32(math.Sin(float64(angle))) * speed
-
-	life := int32(30 + rand.Intn(30))
-
-	s.Particles = append(s.Particles, EffectParticle{
-		X:       x + (rand.Float32()-0.5)*6,
-		Y:       y + (rand.Float32()-0.5)*6,
-		VelX:    velX,
-		VelY:    velY,
-		Life:    life,
-		MaxLife: life,
-		Type:    ParticleSplit,
-		Size:    2 + rand.Float32()*1.5,
 	})
 }
 

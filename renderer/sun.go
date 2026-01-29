@@ -251,5 +251,3 @@ func (r *SunRenderer) drawSunGlow(x, y, intensity float32) {
 	rl.DrawCircle(int32(x), int32(y), 4, rl.Color{R: 255, G: 250, B: 230, A: coreAlpha})
 }
 
-// Unload frees resources (none for this renderer).
-func (r *SunRenderer) Unload() {}

@@ -5,19 +5,17 @@ import (
 	"math/rand"
 
 	"github.com/mlange-42/ark/ecs"
-
-	"github.com/pthm-cable/soup/traits"
 )
 
 // SporeEntity represents a spore in flight.
 type SporeEntity struct {
-	X, Y           float32
-	VelX, VelY     float32
-	ParentTraits   traits.Trait
-	Lifespan       int32
-	LandedTimer    int32 // Ticks since landing
-	Landed         bool
-	Rooted         bool
+	X, Y         float32
+	VelX, VelY   float32
+	ParentRooted bool  // Whether parent was rooted (influences germination)
+	Lifespan     int32
+	LandedTimer  int32 // Ticks since landing
+	Landed       bool
+	Rooted       bool // Whether this spore will germinate as rooted
 }
 
 // SporeSystem handles flora reproduction via spores.
@@ -27,16 +25,6 @@ type SporeSystem struct {
 	bounds    Bounds
 	maxSpores int
 	terrain   *TerrainSystem
-}
-
-// NewSporeSystem creates a new spore system.
-func NewSporeSystem(bounds Bounds) *SporeSystem {
-	return &SporeSystem{
-		Spores:    make([]SporeEntity, 0, 200),
-		noise:     NewPerlinNoise(rand.Int63()),
-		bounds:    bounds,
-		maxSpores: 200,
-	}
 }
 
 // NewSporeSystemWithTerrain creates a spore system with terrain awareness.
@@ -51,7 +39,7 @@ func NewSporeSystemWithTerrain(bounds Bounds, terrain *TerrainSystem) *SporeSyst
 }
 
 // SpawnSpore creates a new spore from a parent flora.
-func (s *SporeSystem) SpawnSpore(x, y float32, parentTraits traits.Trait) {
+func (s *SporeSystem) SpawnSpore(x, y float32, parentRooted bool) {
 	if len(s.Spores) >= s.maxSpores {
 		return
 	}
@@ -65,7 +53,7 @@ func (s *SporeSystem) SpawnSpore(x, y float32, parentTraits traits.Trait) {
 		Y:            y,
 		VelX:         velX,
 		VelY:         velY,
-		ParentTraits: parentTraits,
+		ParentRooted: parentRooted,
 		Lifespan:     600,
 		LandedTimer:  0,
 		Landed:       false,
@@ -73,8 +61,12 @@ func (s *SporeSystem) SpawnSpore(x, y float32, parentTraits traits.Trait) {
 	})
 }
 
+// FloraCreator is called to create new flora when spores germinate.
+// Takes position, whether it should be rooted, and initial energy.
+type FloraCreator func(x, y float32, isRooted bool, energy float32) ecs.Entity
+
 // Update processes all spores.
-func (s *SporeSystem) Update(tick int32, createOrganism func(x, y float32, t traits.Trait, energy float32) ecs.Entity) {
+func (s *SporeSystem) Update(tick int32, createFlora FloraCreator) {
 	alive := 0
 	for i := range s.Spores {
 		spore := &s.Spores[i]
@@ -89,7 +81,7 @@ func (s *SporeSystem) Update(tick int32, createOrganism func(x, y float32, t tra
 			spore.LandedTimer++
 			if spore.LandedTimer >= 50 {
 				// Germinate into new flora
-				s.germinate(spore, createOrganism)
+				s.germinate(spore, createFlora)
 				continue // Remove spore after germination
 			}
 		} else {
@@ -214,9 +206,9 @@ func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
 	}
 }
 
-func (s *SporeSystem) germinate(spore *SporeEntity, createOrganism func(x, y float32, t traits.Trait, energy float32) ecs.Entity) {
-	// Build new flora traits
-	newTraits := traits.Flora
+func (s *SporeSystem) germinate(spore *SporeEntity, createFlora FloraCreator) {
+	// Determine if flora should be rooted
+	isRooted := false
 
 	// Check if landed on terrain (but not in top 25% where it would block sun)
 	inTopZone := spore.Y < s.bounds.Height*0.25
@@ -225,23 +217,17 @@ func (s *SporeSystem) germinate(spore *SporeEntity, createOrganism func(x, y flo
 
 	// If landed on terrain or seafloor (and not in top zone), root
 	if (onTerrain || onSeafloor || spore.Rooted) && !inTopZone {
-		newTraits = newTraits.Add(traits.Rooted)
+		isRooted = true
 	} else {
-		// Inherit parent traits with 80% probability each
-		if spore.ParentTraits.Has(traits.Rooted) && rand.Float32() < 0.8 && !inTopZone {
-			newTraits = newTraits.Add(traits.Rooted)
-		} else if spore.ParentTraits.Has(traits.Floating) && rand.Float32() < 0.8 {
-			newTraits = newTraits.Add(traits.Floating)
+		// Inherit parent's rooted/floating status with 80% probability
+		if spore.ParentRooted && rand.Float32() < 0.8 && !inTopZone {
+			isRooted = true
 		}
-
-		// If neither rooted nor floating, default to floating
-		if !newTraits.Has(traits.Rooted) && !newTraits.Has(traits.Floating) {
-			newTraits = newTraits.Add(traits.Floating)
-		}
+		// Otherwise remains floating (isRooted = false)
 	}
 
-	// Create the new organism
-	createOrganism(spore.X, spore.Y, newTraits, 60)
+	// Create the new flora
+	createFlora(spore.X, spore.Y, isRooted, 60)
 }
 
 // Count returns the current number of active spores.

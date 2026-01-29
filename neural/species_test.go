@@ -50,6 +50,16 @@ func TestSpeciesManagerAssignSpecies(t *testing.T) {
 	}
 }
 
+// getSpecies is a test helper to find a species by ID
+func getSpecies(sm *SpeciesManager, speciesID int) *Species {
+	for _, sp := range sm.Species {
+		if sp.ID == speciesID {
+			return sp
+		}
+	}
+	return nil
+}
+
 func TestSpeciesManagerMembership(t *testing.T) {
 	opts := DefaultNEATOptions()
 	sm := NewSpeciesManager(opts)
@@ -62,7 +72,7 @@ func TestSpeciesManagerMembership(t *testing.T) {
 	sm.AddMember(speciesID, 101)
 	sm.AddMember(speciesID, 102)
 
-	sp := sm.GetSpecies(speciesID)
+	sp := getSpecies(sm, speciesID)
 	if sp == nil {
 		t.Fatal("species not found")
 	}
@@ -131,7 +141,7 @@ func TestSpeciesStats(t *testing.T) {
 		// Mutate heavily to ensure difference
 		idGen := NewGenomeIDGenerator()
 		for m := 0; m < 10; m++ {
-			MutateGenome(genome, opts, idGen)
+			MutateCPPNGenome(genome, opts, idGen)
 		}
 		speciesID := sm.AssignSpecies(genome)
 		speciesIDs[i] = speciesID
@@ -166,7 +176,7 @@ func TestGetTopSpecies(t *testing.T) {
 		genome := CreateBrainGenome(i+1, 0.3)
 		// Mutate heavily to ensure difference
 		for m := 0; m < 10; m++ {
-			MutateGenome(genome, opts, idGen)
+			MutateCPPNGenome(genome, opts, idGen)
 		}
 		speciesID := sm.AssignSpecies(genome)
 		// Add i+1 members to each species
@@ -207,7 +217,7 @@ func TestSpeciesFitness(t *testing.T) {
 	sm.AccumulateFitness(speciesID, 10.0)
 	sm.AccumulateFitness(speciesID, 20.0)
 
-	sp := sm.GetSpecies(speciesID)
+	sp := getSpecies(sm, speciesID)
 	if sp.BestFitness != 20.0 {
 		t.Errorf("expected best fitness 20, got %f", sp.BestFitness)
 	}
@@ -226,14 +236,14 @@ func TestEndGeneration(t *testing.T) {
 	sm.AddMember(speciesID, 1)
 	sm.AccumulateFitness(speciesID, 100.0)
 
-	initialGen := sm.GetGeneration()
+	initialGen := sm.generation
 	sm.EndGeneration()
 
-	if sm.GetGeneration() != initialGen+1 {
+	if sm.generation != initialGen+1 {
 		t.Errorf("generation should increment")
 	}
 
-	sp := sm.GetSpecies(speciesID)
+	sp := getSpecies(sm, speciesID)
 	if sp.Age != 1 {
 		t.Errorf("species age should be 1, got %d", sp.Age)
 	}
@@ -255,7 +265,7 @@ func TestRecordOffspring(t *testing.T) {
 	sm.RecordOffspring(speciesID)
 	sm.RecordOffspring(speciesID)
 
-	sp := sm.GetSpecies(speciesID)
+	sp := getSpecies(sm, speciesID)
 	if sp.OffspringCount != 3 {
 		t.Errorf("expected 3 offspring, got %d", sp.OffspringCount)
 	}
@@ -278,9 +288,8 @@ func TestRemoveStaleSpecies(t *testing.T) {
 	}
 
 	// Species should be removed due to staleness
-	if sm.GetSpecies(speciesID) != nil {
-		// Check staleness
-		sp := sm.GetSpecies(speciesID)
+	sp := getSpecies(sm, speciesID)
+	if sp != nil {
 		t.Logf("Species staleness: %d, drop off age: %d", sp.Staleness, opts.DropOffAge)
 	}
 }

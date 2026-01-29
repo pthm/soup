@@ -211,78 +211,6 @@ func (sm *ShadowMap) buildOccluderGrid(occluders []Occluder) {
 	}
 }
 
-// getOccludersAlongRay returns indices of occluders in cells along the ray path.
-func (sm *ShadowMap) getOccludersAlongRay(x0, y0, x1, y1, cellW, cellH float32) []int {
-	// Use a simple approach: collect occluders from the start cell and end cell,
-	// plus cells in between using Bresenham-like stepping
-	seen := make(map[int]bool)
-	var result []int
-
-	// Helper to add occluders from a grid cell
-	addCell := func(gx, gy int) {
-		if gx < 0 || gx >= sm.occluderGridSize || gy < 0 || gy >= sm.occluderGridSize {
-			return
-		}
-		for _, idx := range sm.occluderGrid[gy][gx] {
-			if !seen[idx] {
-				seen[idx] = true
-				result = append(result, idx)
-			}
-		}
-	}
-
-	// Start and end grid cells
-	gx0 := int(x0 / cellW)
-	gy0 := int(y0 / cellH)
-	gx1 := int(x1 / cellW)
-	gy1 := int(y1 / cellH)
-
-	// Clamp
-	if gx0 < 0 {
-		gx0 = 0
-	}
-	if gx0 >= sm.occluderGridSize {
-		gx0 = sm.occluderGridSize - 1
-	}
-	if gy0 < 0 {
-		gy0 = 0
-	}
-	if gy0 >= sm.occluderGridSize {
-		gy0 = sm.occluderGridSize - 1
-	}
-	if gx1 < 0 {
-		gx1 = 0
-	}
-	if gx1 >= sm.occluderGridSize {
-		gx1 = sm.occluderGridSize - 1
-	}
-	if gy1 < 0 {
-		gy1 = 0
-	}
-	if gy1 >= sm.occluderGridSize {
-		gy1 = sm.occluderGridSize - 1
-	}
-
-	// Simple line traversal - add all cells in the bounding box of the ray
-	// This is a conservative approximation but fast
-	minGX, maxGX := gx0, gx1
-	if minGX > maxGX {
-		minGX, maxGX = maxGX, minGX
-	}
-	minGY, maxGY := gy0, gy1
-	if minGY > maxGY {
-		minGY, maxGY = maxGY, minGY
-	}
-
-	for gy := minGY; gy <= maxGY; gy++ {
-		for gx := minGX; gx <= maxGX; gx++ {
-			addCell(gx, gy)
-		}
-	}
-
-	return result
-}
-
 // getOccludersAlongRayFast is an allocation-free version using pre-allocated buffers.
 func (sm *ShadowMap) getOccludersAlongRayFast(x0, y0, x1, y1, cellW, cellH float32) []int {
 	// Reset candidate buffer
@@ -458,13 +386,3 @@ func (sm *ShadowMap) SampleLight(worldX, worldY float32) float32 {
 	return v0*(1-fy) + v1*fy
 }
 
-// SunDirection returns the normalized direction from a world position to the sun.
-func (sm *ShadowMap) SunDirection(worldX, worldY, sunX, sunY float32) (float32, float32) {
-	dx := sunX - worldX
-	dy := sunY - worldY
-	mag := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-	if mag < 0.001 {
-		return 0, -1 // Default to up
-	}
-	return dx / mag, dy / mag
-}

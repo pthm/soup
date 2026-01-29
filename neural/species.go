@@ -90,11 +90,6 @@ func hsvToRGB(h, s, v float64) (uint8, uint8, uint8) {
 	return uint8((r + m) * 255), uint8((g + m) * 255), uint8((b + m) * 255)
 }
 
-// GetGeneration returns the current generation number.
-func (sm *SpeciesManager) GetGeneration() int {
-	return sm.generation
-}
-
 // AssignSpecies finds or creates a species for the given genome.
 // Returns the species ID.
 func (sm *SpeciesManager) AssignSpecies(genome *genetics.Genome) int {
@@ -170,43 +165,6 @@ func (sm *SpeciesManager) RemoveMember(speciesID int, entityID int) {
 	}
 }
 
-// UpdateFitness updates the fitness statistics for a species.
-func (sm *SpeciesManager) UpdateFitness(speciesID int, fitness float64) {
-	for _, sp := range sm.Species {
-		if sp.ID == speciesID {
-			if fitness > sp.BestFitness {
-				sp.BestFitness = fitness
-				sp.Staleness = 0
-			}
-			return
-		}
-	}
-}
-
-// GetSpecies returns the species with the given ID.
-func (sm *SpeciesManager) GetSpecies(speciesID int) *Species {
-	for _, sp := range sm.Species {
-		if sp.ID == speciesID {
-			return sp
-		}
-	}
-	return nil
-}
-
-// GetSpeciesCount returns the number of active species.
-func (sm *SpeciesManager) GetSpeciesCount() int {
-	return len(sm.Species)
-}
-
-// GetMemberCount returns the total number of members across all species.
-func (sm *SpeciesManager) GetMemberCount() int {
-	count := 0
-	for _, sp := range sm.Species {
-		count += len(sp.Members)
-	}
-	return count
-}
-
 // EndGeneration processes end-of-generation updates.
 // Should be called once per generation after all fitness values are set.
 func (sm *SpeciesManager) EndGeneration() {
@@ -269,43 +227,6 @@ func (sm *SpeciesManager) RemoveStaleSpecies() {
 	}
 
 	sm.Species = active
-}
-
-// UpdateRepresentatives selects new representative genomes for each species.
-// Should be called at the start of a new generation.
-func (sm *SpeciesManager) UpdateRepresentatives(getGenome func(entityID int) *genetics.Genome) {
-	for _, sp := range sm.Species {
-		if len(sp.Members) > 0 {
-			// Pick a random member as the new representative
-			memberID := sp.Members[0] // Could randomize
-			genome := getGenome(memberID)
-			if genome != nil {
-				sp.Representative = genome
-			}
-		}
-		// Clear members for next generation
-		sp.Members = sp.Members[:0]
-	}
-}
-
-// GetSpeciesForGenome returns the species ID for a compatible genome without adding it.
-func (sm *SpeciesManager) GetSpeciesForGenome(genome *genetics.Genome) int {
-	if genome == nil {
-		return 0
-	}
-
-	for _, sp := range sm.Species {
-		if sp.Representative == nil {
-			continue
-		}
-
-		dist := GenomeCompatibility(genome, sp.Representative, sm.opts)
-		if dist < sm.opts.CompatThreshold {
-			return sp.ID
-		}
-	}
-
-	return 0 // No compatible species
 }
 
 // SpeciesStats contains summary statistics about all species.
@@ -416,11 +337,6 @@ func (sm *SpeciesManager) GetTopSpecies(n int) []SpeciesInfo {
 	}
 
 	return result
-}
-
-// CalculateCompatibility returns the compatibility distance between two genomes.
-func (sm *SpeciesManager) CalculateCompatibility(g1, g2 *genetics.Genome) float64 {
-	return GenomeCompatibility(g1, g2, sm.opts)
 }
 
 // FitnessTracker tracks fitness for organisms.

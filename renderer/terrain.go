@@ -170,7 +170,3 @@ func (r *TerrainRenderer) drawCellEdges(gx, gy int, baseX, baseY, cellSize float
 	}
 }
 
-// Unload frees resources.
-func (r *TerrainRenderer) Unload() {
-	// Nothing to unload
-}

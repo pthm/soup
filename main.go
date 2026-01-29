@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -19,7 +18,6 @@ import (
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
-	"github.com/pthm-cable/soup/traits"
 )
 
 var (
@@ -90,6 +88,13 @@ const (
 	screenHeight = 800
 )
 
+// GrowIntent constants for neural-controlled growth
+const (
+	GrowIntentThreshold = 0.4  // Minimum intent to trigger growth
+	MinGrowthInterval   = 60   // Fastest growth (high intent)
+	MaxGrowthInterval   = 300  // Slowest growth (low intent)
+)
+
 type Game struct {
 	world           *ecs.World
 	bounds          systems.Bounds
@@ -117,12 +122,10 @@ type Game struct {
 	feeding     *systems.FeedingSystem
 	spores           *systems.SporeSystem
 	breeding         *systems.BreedingSystem
-	splitting        *systems.SplittingSystem
 	particles        *systems.ParticleSystem
 	particleRenderer *renderer.ParticleRenderer
 	allocation       *systems.AllocationSystem
 	spatialGrid      *systems.SpatialGrid
-	disease          *systems.DiseaseSystem
 
 	// Neural evolution
 	neuralConfig   *neural.Config
@@ -172,7 +175,7 @@ func NewGame() *Game {
 		world:           world,
 		bounds:          bounds,
 		physics:         systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
-		energy:          systems.NewEnergySystem(world),
+		energy:          systems.NewEnergySystem(world, shadowMap),
 		cells:           systems.NewCellSystem(world),
 		behavior:        systems.NewBehaviorSystem(world, shadowMap, terrain),
 		flowField:       systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
@@ -192,11 +195,9 @@ func NewGame() *Game {
 		feeding:          systems.NewFeedingSystem(world),
 		spores:           systems.NewSporeSystemWithTerrain(bounds, terrain),
 		breeding:         systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
-		splitting:        systems.NewSplittingSystem(),
 		particles:        systems.NewParticleSystem(),
 		allocation:       systems.NewAllocationSystem(world),
 		spatialGrid:      systems.NewSpatialGrid(screenWidth, screenHeight),
-		disease:          systems.NewDiseaseSystem(),
 		particleRenderer: renderer.NewParticleRenderer(),
 
 		// Neural evolution
@@ -254,7 +255,7 @@ func NewGameHeadless() *Game {
 		world:     world,
 		bounds:    bounds,
 		physics:   systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
-		energy:    systems.NewEnergySystem(world),
+		energy:    systems.NewEnergySystem(world, shadowMap),
 		cells:     systems.NewCellSystem(world),
 		behavior:  systems.NewBehaviorSystem(world, shadowMap, terrain),
 		flowField: systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
@@ -276,11 +277,9 @@ func NewGameHeadless() *Game {
 		feeding:     systems.NewFeedingSystem(world),
 		spores:      systems.NewSporeSystemWithTerrain(bounds, terrain),
 		breeding:    systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
-		splitting:   systems.NewSplittingSystem(),
 		particles:   systems.NewParticleSystem(),
 		allocation:  systems.NewAllocationSystem(world),
 		spatialGrid: systems.NewSpatialGrid(screenWidth, screenHeight),
-		disease:     systems.NewDiseaseSystem(),
 
 		// Neural evolution
 		neuralConfig:   neuralConfig,
@@ -336,38 +335,19 @@ func (g *Game) seedUniverse() {
 		g.spores.SpawnSpore(
 			rand.Float32()*g.bounds.Width,
 			rand.Float32()*g.bounds.Height*0.5,
-			traits.Flora|traits.Rooted,
+			true, // parentRooted
 		)
 	}
 
-	// Create herbivores with neural brains (CPPN morphology + evolved behavior)
+	// Create fauna with neural brains (CPPN morphology + evolved behavior)
+	// Diet is now derived from cell DigestiveSpectrum, not from organism traits
 	// Higher initial energy gives untrained brains more time to find food
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 85; i++ {
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Herbivore,
+			// CPPN determines cell capabilities
 			200,
-		)
-	}
-
-	// Create carnivores with neural brains
-	for i := 0; i < 20; i++ {
-		g.createInitialNeuralOrganism(
-			rand.Float32()*(g.bounds.Width-100)+50,
-			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carnivore,
-			200,
-		)
-	}
-
-	// Create carrion eaters with neural brains
-	for i := 0; i < 15; i++ {
-		g.createInitialNeuralOrganism(
-			rand.Float32()*(g.bounds.Width-100)+50,
-			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carrion,
-			150,
 		)
 	}
 }
@@ -382,9 +362,8 @@ func (g *Game) createFloraLightweight(x, y float32, isRooted bool, energy float3
 }
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
-func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain) ecs.Entity {
-	// Note: Gender (Male/Female) traits are deprecated - reproduction mode is now
-	// determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
+func (g *Game) createNeuralOrganism(x, y float32, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain) ecs.Entity {
+	// Reproduction mode is determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
 
 	// Generate morphology from CPPN
 	var morph neural.MorphologyResult
@@ -416,19 +395,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		}
 	}
 
-	// Morphology-derived traits are simplified - only diet matters now
-
-	// Adjust diet traits based on morphology (if not already set)
-	if !t.Has(traits.Herbivore) && !t.Has(traits.Carnivore) && !t.Has(traits.Carrion) {
-		if morph.IsCarnivore() {
-			t = t.Add(traits.Carnivore)
-		} else if morph.IsHerbivore() {
-			t = t.Add(traits.Herbivore)
-		} else {
-			// Omnivore - add both
-			t = t.Add(traits.Herbivore)
-		}
-	}
+	// Diet is now derived from cell DigestiveSpectrum, not from organism traits
 
 	// Calculate max energy based on cell count
 	cellCount := morph.CellCount()
@@ -437,7 +404,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 	pos := &components.Position{X: x, Y: y}
 	vel := &components.Velocity{X: 0, Y: 0}
 	org := &components.Organism{
-		Traits:           t,
+		// Note: Traits field has been removed. Diet is derived from cell DigestiveSpectrum.
 		Energy:           energy,
 		MaxEnergy:        maxEnergy,
 		CellSize:         5,
@@ -456,23 +423,11 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 	// Create cell buffer from morphology
 	cells := &components.CellBuffer{}
 	for _, cellSpec := range morph.Cells {
-		// Determine cell trait from digestive spectrum
-		var cellTrait traits.Trait
-		if cellSpec.DigestiveSpectrum < 0.35 {
-			cellTrait = traits.Herbivore
-		} else if cellSpec.DigestiveSpectrum > 0.65 {
-			cellTrait = traits.Carnivore
-		} else {
-			cellTrait = t & (traits.Herbivore | traits.Carnivore | traits.Carrion)
-		}
-
 		cells.AddCell(components.Cell{
 			GridX:             cellSpec.GridX,
 			GridY:             cellSpec.GridY,
 			Age:               0,
 			MaxAge:            3000 + rand.Int31n(2000),
-			Trait:             cellTrait,
-			Mutation:          traits.NoMutation,
 			Alive:             true,
 			PrimaryType:       cellSpec.PrimaryType,
 			SecondaryType:     cellSpec.SecondaryType,
@@ -533,7 +488,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 // This is used during seeding to create the initial neural population.
 // Initial organisms are constrained to 1-4 cells for easier evolution.
 // Uses HyperNEAT: CPPN generates both morphology and brain weights.
-func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait, energy float32) ecs.Entity {
+func (g *Game) createInitialNeuralOrganism(x, y float32, energy float32) ecs.Entity {
 	// Create CPPN genome (generates both body morphology and brain weights)
 	bodyGenome := neural.CreateCPPNGenome(g.genomeIDGen.NextID())
 
@@ -582,13 +537,12 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 		Controller: brainController,
 	}
 
-	return g.createNeuralOrganismConstrained(x, y, baseTrait, energy, neuralGenome, brain, neural.InitialMaxCells)
+	return g.createNeuralOrganismConstrained(x, y, energy, neuralGenome, brain, neural.InitialMaxCells)
 }
 
 // createNeuralOrganismConstrained creates a neural organism with cell count constraint.
-func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain, maxCells int) ecs.Entity {
-	// Note: Gender (Male/Female) traits are deprecated - reproduction mode is now
-	// determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
+func (g *Game) createNeuralOrganismConstrained(x, y float32, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain, maxCells int) ecs.Entity {
+	// Reproduction mode is determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
 
 	// Generate morphology from CPPN with constrained cell count
 	var morph neural.MorphologyResult
@@ -620,17 +574,7 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 		}
 	}
 
-	// Adjust diet traits based on morphology (if not already set)
-	if !t.Has(traits.Herbivore) && !t.Has(traits.Carnivore) && !t.Has(traits.Carrion) {
-		if morph.IsCarnivore() {
-			t = t.Add(traits.Carnivore)
-		} else if morph.IsHerbivore() {
-			t = t.Add(traits.Herbivore)
-		} else {
-			// Omnivore - add both
-			t = t.Add(traits.Herbivore)
-		}
-	}
+	// Diet is now derived from cell DigestiveSpectrum, not from organism traits
 
 	// Calculate max energy based on cell count
 	cellCount := morph.CellCount()
@@ -639,7 +583,7 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 	pos := &components.Position{X: x, Y: y}
 	vel := &components.Velocity{X: 0, Y: 0}
 	org := &components.Organism{
-		Traits:           t,
+		// Note: Traits field has been removed. Diet is derived from cell DigestiveSpectrum.
 		Energy:           energy,
 		MaxEnergy:        maxEnergy,
 		CellSize:         5,
@@ -651,30 +595,19 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 		SporeInterval:    400,
 		BreedingCooldown: 300,
 		TargetCells:      uint8(cellCount),
-		EatIntent:   0.5,
-		GrowIntent:  0.3,
-		BreedIntent: 0.3,
+		EatIntent:        0.5,
+		GrowIntent:       0.3,
+		BreedIntent:      0.3,
 	}
 
 	// Create cells from morphology
 	cells := &components.CellBuffer{Count: 0}
 	for _, cellSpec := range morph.Cells {
-		// Determine cell trait from digestive spectrum
-		var cellTrait traits.Trait
-		if cellSpec.DigestiveSpectrum < 0.35 {
-			cellTrait = traits.Herbivore
-		} else if cellSpec.DigestiveSpectrum > 0.65 {
-			cellTrait = traits.Carnivore
-		} else {
-			cellTrait = t & (traits.Herbivore | traits.Carnivore | traits.Carrion)
-		}
-
 		cell := components.Cell{
 			GridX:             cellSpec.GridX,
 			GridY:             cellSpec.GridY,
 			Age:               0,
 			MaxAge:            3000 + rand.Int31n(1000),
-			Trait:             cellTrait,
 			Alive:             true,
 			PrimaryType:       cellSpec.PrimaryType,
 			SecondaryType:     cellSpec.SecondaryType,
@@ -726,12 +659,12 @@ func (g *Game) Update() {
 		}
 	}
 
-	// Left-click: select organism (or Shift+click to spawn herbivore)
+	// Left-click: select organism (or Shift+click to spawn fauna)
 	if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
 		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
-			// Shift+click: spawn neural herbivore
+			// Shift+click: spawn neural fauna (diet derived from cells)
 			pos := rl.GetMousePosition()
-			g.createInitialNeuralOrganism(pos.X, pos.Y, traits.Herbivore, 100)
+			g.createInitialNeuralOrganism(pos.X, pos.Y, 100)
 		} else {
 			// Regular click: select organism
 			entity, found := g.findOrganismAtClick()
@@ -752,10 +685,10 @@ func (g *Game) Update() {
 		)
 	}
 	if rl.IsKeyPressed(rl.KeyC) {
+		// Add new fauna - diet derived from CPPN-generated cells
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			traits.Carnivore,
 			120,
 		)
 	}
@@ -826,12 +759,8 @@ func (g *Game) Update() {
 		measure("feeding", func() { g.feeding.Update() })
 		measure("floraSystem", func() {
 			g.floraSystem.Update(g.tick, func(x, y float32, isRooted bool) {
-				g.spores.SpawnSpore(x, y, traits.Flora)
+				g.spores.SpawnSpore(x, y, isRooted)
 			})
-		})
-		measure("disease", func() {
-			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
-			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
 		})
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
@@ -841,8 +770,7 @@ func (g *Game) Update() {
 
 		// Spores (germinates into new flora via FloraSystem)
 		measure("spores", func() {
-			g.spores.Update(g.tick, func(x, y float32, t traits.Trait, energy float32) ecs.Entity {
-				isRooted := t.Has(traits.Rooted)
+			g.spores.Update(g.tick, func(x, y float32, isRooted bool, energy float32) ecs.Entity {
 				g.createFloraLightweight(x, y, isRooted, energy)
 				return ecs.Entity{} // Return zero entity, not used
 			})
@@ -928,12 +856,8 @@ func (g *Game) UpdateHeadless() {
 		measure("feeding", func() { g.feeding.Update() })
 		measure("floraSystem", func() {
 			g.floraSystem.Update(g.tick, func(x, y float32, isRooted bool) {
-				g.spores.SpawnSpore(x, y, traits.Flora)
+				g.spores.SpawnSpore(x, y, isRooted)
 			})
-		})
-		measure("disease", func() {
-			faunaPos, faunaOrgs, faunaCells, faunaGenomes := g.collectFaunaForDisease()
-			g.disease.Update(faunaPos, faunaOrgs, faunaCells, faunaGenomes, g.spatialGrid)
 		})
 		measure("energy", func() { g.energy.Update(g.world) })
 		measure("cells", func() { g.cells.Update(g.world) })
@@ -943,8 +867,7 @@ func (g *Game) UpdateHeadless() {
 
 		// Spores (germinates into new flora via FloraSystem)
 		measure("spores", func() {
-			g.spores.Update(g.tick, func(x, y float32, t traits.Trait, energy float32) ecs.Entity {
-				isRooted := t.Has(traits.Rooted)
+			g.spores.Update(g.tick, func(x, y float32, isRooted bool, energy float32) ecs.Entity {
 				g.createFloraLightweight(x, y, isRooted, energy)
 				return ecs.Entity{}
 			})
@@ -1008,27 +931,26 @@ func (g *Game) logWorldState() {
 			continue
 		}
 
-		// Only count fauna from ECS (flora are in FloraSystem)
-		if traits.IsFauna(org.Traits) {
-			faunaCount++
-			faunaEnergy += org.Energy
-			totalFaunaCells += int(cells.Count)
-			if org.Energy < minFaunaEnergy {
-				minFaunaEnergy = org.Energy
-			}
-			if org.Energy > maxFaunaEnergy {
-				maxFaunaEnergy = org.Energy
-			}
+		// All ECS organisms are fauna (flora are in FloraSystem)
+		faunaCount++
+		faunaEnergy += org.Energy
+		totalFaunaCells += int(cells.Count)
+		if org.Energy < minFaunaEnergy {
+			minFaunaEnergy = org.Energy
+		}
+		if org.Energy > maxFaunaEnergy {
+			maxFaunaEnergy = org.Energy
+		}
 
-			if org.Traits.Has(traits.Herbivore) {
-				herbivoreCount++
-			}
-			if org.Traits.Has(traits.Carnivore) {
-				carnivoreCount++
-			}
-			if org.Traits.Has(traits.Carrion) {
-				carrionCount++
-			}
+		// Count by diet based on cell capabilities
+		caps := cells.ComputeCapabilities()
+		digestiveSpectrum := caps.DigestiveSpectrum()
+		if digestiveSpectrum < 0.35 {
+			herbivoreCount++
+		} else if digestiveSpectrum > 0.65 {
+			carnivoreCount++
+		} else {
+			carrionCount++ // Using carrion slot for omnivores
 		}
 	}
 
@@ -1071,7 +993,8 @@ func (g *Game) logWorldState() {
 	query2 := g.allOrgFilter.Query()
 	for query2.Next() {
 		_, _, org, cells := query2.Get()
-		if org.Dead || traits.IsFlora(org.Traits) {
+		// All ECS organisms are fauna (flora are in FloraSystem)
+		if org.Dead {
 			continue
 		}
 		// Count allocation modes
@@ -1085,7 +1008,10 @@ func (g *Game) logWorldState() {
 		case components.ModeStore:
 			modeStore++
 		}
-		if traits.IsOmnivore(org.Traits) {
+		// Count omnivores based on cell digestive spectrum
+		caps := cells.ComputeCapabilities()
+		digestiveSpectrum := caps.DigestiveSpectrum()
+		if digestiveSpectrum >= 0.35 && digestiveSpectrum <= 0.65 {
 			omnivores++
 		}
 		if org.AllocationMode == components.ModeBreed && org.Energy >= org.MaxEnergy*0.35 && cells.Count >= 1 && org.BreedingCooldown == 0 {
@@ -1134,9 +1060,8 @@ func (g *Game) logNeuralStats() {
 	logf("║ Total Offspring: %d | Avg Staleness: %.1f",
 		stats.TotalOffspring, stats.AverageStaleness)
 
-	// Count neural organisms and disease
+	// Count neural organisms
 	neuralCount := 0
-	diseasedCount := 0
 	var totalNodes, totalGenes int
 	var minNodes, maxNodes int = 9999, 0
 	var minGenes, maxGenes int = 9999, 0
@@ -1144,18 +1069,10 @@ func (g *Game) logNeuralStats() {
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
-		_, _, org, cells := query.Get()
+		_, _, org, _ := query.Get()
 
 		if org.Dead {
 			continue
-		}
-
-		// Check for disease
-		for i := uint8(0); i < cells.Count; i++ {
-			if cells.Cells[i].Mutation == traits.Disease && cells.Cells[i].Alive {
-				diseasedCount++
-				break
-			}
 		}
 
 		if g.neuralGenomeMap.Has(entity) {
@@ -1198,8 +1115,7 @@ func (g *Game) logNeuralStats() {
 	}
 
 	logf("╠══════════════════════════════════════════════════════════════════╣")
-	logf("║ Neural Organisms: %d | Diseased: %d (%.1f%%)", neuralCount, diseasedCount,
-		float64(diseasedCount)/float64(max(neuralCount, 1))*100)
+	logf("║ Neural Organisms: %d", neuralCount)
 	logf("║ Brain Complexity:")
 	logf("║   Nodes: avg=%.1f, min=%d, max=%d", avgNodes, minNodes, maxNodes)
 	logf("║   Genes: avg=%.1f, min=%d, max=%d", avgGenes, minGenes, maxGenes)
@@ -1312,51 +1228,13 @@ func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organis
 	return nil, faunaOrgs
 }
 
-func (g *Game) collectFaunaForDisease() ([]components.Position, []*components.Organism, []*components.CellBuffer, []*components.NeuralGenome) {
-	var positions []components.Position
-	var organisms []*components.Organism
-	var cellBuffers []*components.CellBuffer
-	var genomes []*components.NeuralGenome
-
-	query := g.faunaCellFilter.Query()
-	for query.Next() {
-		entity := query.Entity()
-		pos, org, cells, _ := query.Get()
-
-		positions = append(positions, *pos)
-		organisms = append(organisms, org)
-		cellBuffers = append(cellBuffers, cells)
-
-		// Get neural genome if available
-		var genome *components.NeuralGenome
-		if g.neuralGenomeMap.Has(entity) {
-			genome = g.neuralGenomeMap.Get(entity)
-		}
-		genomes = append(genomes, genome)
-	}
-
-	return positions, organisms, cellBuffers, genomes
-}
-
 func (g *Game) updateGrowth() {
-	// Collect deferred actions to avoid modifying world during query
-	type splitRequest struct {
-		pos   *components.Position
-		vel   *components.Velocity
-		org   *components.Organism
-		cells *components.CellBuffer
-	}
-	var pendingSplits []splitRequest
-
-	type sporeRequest struct {
-		x, y   float32
-		traits traits.Trait
-	}
-	var pendingSpores []sporeRequest
+	// Note: Flora are now managed by FloraSystem, not ECS
+	// Spore spawning for flora is handled in FloraSystem.Update()
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
-		pos, vel, org, cells := query.Get()
+		pos, _, org, cells := query.Get()
 
 		if org.Dead {
 			// Emit death particles
@@ -1364,66 +1242,31 @@ func (g *Game) updateGrowth() {
 			continue
 		}
 
-		// Check for disease and emit particles
-		for i := uint8(0); i < cells.Count; i++ {
-			if cells.Cells[i].Mutation == traits.Disease {
-				cellX := pos.X + float32(cells.Cells[i].GridX)*org.CellSize
-				cellY := pos.Y + float32(cells.Cells[i].GridY)*org.CellSize
-				g.particles.EmitDisease(cellX, cellY)
-				break // Only emit once per organism per tick
-			}
+		org.GrowthTimer++
+
+		// Scale growth interval by GrowIntent: high intent = faster growth
+		// Maps GrowIntent (0-1) to interval range (MaxGrowthInterval to MinGrowthInterval)
+		effectiveInterval := int32(MaxGrowthInterval) - int32(float32(MaxGrowthInterval-MinGrowthInterval)*org.GrowIntent)
+
+		// Determine if mode allows growth
+		// ModeGrow always allows, ModeStore allows if intent is very high (>= 0.8)
+		modeAllows := org.AllocationMode == components.ModeGrow
+		if org.AllocationMode == components.ModeStore && org.GrowIntent >= 0.8 {
+			modeAllows = true
 		}
 
-		org.GrowthTimer++
-		// Only grow if in Grow mode and below target cell count
-		canGrow := org.AllocationMode == components.ModeGrow && cells.Count < org.TargetCells
-		if org.GrowthTimer >= org.GrowthInterval && org.Energy > 40 && canGrow {
+		// Gate conditions for growth
+		intentStrong := org.GrowIntent >= GrowIntentThreshold
+		belowTarget := cells.Count < org.TargetCells
+		hasEnergy := org.Energy > 40
+
+		canGrow := modeAllows && intentStrong && belowTarget && hasEnergy
+
+		if org.GrowthTimer >= effectiveInterval && canGrow {
 			org.GrowthTimer = 0
 			g.tryGrow(pos, org, cells)
-
-			// Queue splitting for after query completes
-			if g.shouldTrySplit(cells) {
-				pendingSplits = append(pendingSplits, splitRequest{pos, vel, org, cells})
-			}
-		}
-
-		// Spore timer (flora only)
-		if traits.IsFlora(org.Traits) {
-			org.SporeTimer++
-			// Queue spore spawn for after query completes
-			if org.SporeTimer >= org.SporeInterval && org.Energy > 40 {
-				org.SporeTimer = 0
-				org.Energy -= 15 // Cost per spore
-				pendingSpores = append(pendingSpores, sporeRequest{pos.X, pos.Y - org.CellSize, org.Traits})
-			}
 		}
 	}
-
-	// Process deferred splits (after query iteration completes)
-	// Note: Splitting is for fauna only (neural organisms)
-	for _, req := range pendingSplits {
-		// Pass nil for createOrganism since fauna splitting needs special handling
-		// TODO: Implement proper fauna splitting with neural inheritance
-		g.splitting.TrySplit(req.pos, req.vel, req.org, req.cells, nil, g.particles)
-	}
-
-	// Process deferred spore spawns
-	for _, req := range pendingSpores {
-		g.spores.SpawnSpore(req.x, req.y, req.traits)
-	}
-}
-
-// shouldTrySplit checks if an organism should attempt to split.
-func (g *Game) shouldTrySplit(cells *components.CellBuffer) bool {
-	if cells.Count < 4 {
-		return false
-	}
-	for i := uint8(0); i < cells.Count; i++ {
-		if cells.Cells[i].Mutation == traits.Splitting {
-			return true
-		}
-	}
-	return false
 }
 
 type gridPos struct{ x, y int8 }
@@ -1454,163 +1297,37 @@ func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, ce
 		return
 	}
 
-	// Pick position - weighted for flora (phototropism), random for fauna
-	var newPos gridPos
-	if traits.IsFlora(org.Traits) {
-		newPos = g.selectFloraGrowthPosition(orgPos, org, candidates)
-	} else {
-		newPos = candidates[rand.Intn(len(candidates))]
-	}
+	// All ECS organisms are fauna (flora are in FloraSystem)
+	// Pick random growth position
+	newPos := candidates[rand.Intn(len(candidates))]
 
-	// Pick random trait
-	var newTrait traits.Trait
-	if traits.IsFlora(org.Traits) {
-		newTrait = pickFloraTraitWeighted()
-	} else {
-		newTrait = pickFaunaTraitWeighted()
-	}
+	// New cells inherit properties from a random existing cell
+	// This allows the organism's morphology to grow organically
+	sourceCell := &cells.Cells[rand.Intn(int(cells.Count))]
 
-	// Add cell
+	// Add cell with inherited properties
 	cells.AddCell(components.Cell{
-		GridX:         newPos.x,
-		GridY:         newPos.y,
-		Age:           0,
-		MaxAge:        3000 + rand.Int31n(2000),
-		Trait:         newTrait,
-		Mutation:      pickMutation(),
-		Alive:         true,
-		Decomposition: 0,
+		GridX:             newPos.x,
+		GridY:             newPos.y,
+		Age:               0,
+		MaxAge:            3000 + rand.Int31n(2000),
+		Alive:             true,
+		Decomposition:     0,
+		PrimaryType:       sourceCell.PrimaryType,
+		SecondaryType:     sourceCell.SecondaryType,
+		PrimaryStrength:   sourceCell.PrimaryStrength * (0.8 + rand.Float32()*0.4), // Slight variation
+		SecondaryStrength: sourceCell.SecondaryStrength * (0.8 + rand.Float32()*0.4),
+		DigestiveSpectrum: sourceCell.DigestiveSpectrum,
+		StructuralArmor:   sourceCell.StructuralArmor,
+		StorageCapacity:   sourceCell.StorageCapacity,
+		ReproductiveMode:  sourceCell.ReproductiveMode,
 	})
-
-	// Add trait to organism
-	if newTrait != 0 {
-		org.Traits = org.Traits.Add(newTrait)
-	}
 
 	// Recalculate shape metrics and collision OBB after growth
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
 	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	org.Energy -= 30
-}
-
-// selectFloraGrowthPosition uses phototropism to weight growth toward light.
-func (g *Game) selectFloraGrowthPosition(orgPos *components.Position, org *components.Organism, candidates []gridPos) gridPos {
-	if len(candidates) == 1 {
-		return candidates[0]
-	}
-
-	sunX := g.light.PosX * g.bounds.Width
-	sunY := g.light.PosY * g.bounds.Height
-
-	// Calculate weights for each candidate
-	weights := make([]float32, len(candidates))
-	totalWeight := float32(0)
-
-	for i, c := range candidates {
-		// World position of candidate
-		worldX := orgPos.X + float32(c.x)*org.CellSize
-		worldY := orgPos.Y + float32(c.y)*org.CellSize
-
-		// Base weight from light intensity
-		light := g.shadowMap.SampleLight(worldX, worldY)
-		weight := light
-
-		// Direction to sun
-		toSunX, toSunY := g.shadowMap.SunDirection(worldX, worldY, sunX, sunY)
-
-		// Growth direction (normalized)
-		growthDX := float32(c.x)
-		growthDY := float32(c.y)
-		growthMag := float32(math.Sqrt(float64(growthDX*growthDX + growthDY*growthDY)))
-		if growthMag > 0 {
-			growthDX /= growthMag
-			growthDY /= growthMag
-		}
-
-		// Dot product: direction bonus for growing toward sun
-		dot := growthDX*toSunX + growthDY*toSunY
-		weight += dot * 0.3
-
-		// Rooted flora prefer growing upward, penalize downward
-		if org.Traits.Has(traits.Rooted) {
-			if c.y < 0 { // Growing up
-				weight *= 1.5
-			} else if c.y > 0 { // Growing down
-				weight -= 0.3
-			}
-		}
-
-		// Minimum weight
-		if weight < 0.01 {
-			weight = 0.01
-		}
-
-		weights[i] = weight
-		totalWeight += weight
-	}
-
-	// Weighted random selection
-	r := rand.Float32() * totalWeight
-	cumulative := float32(0)
-	for i, w := range weights {
-		cumulative += w
-		if r <= cumulative {
-			return candidates[i]
-		}
-	}
-
-	// Fallback
-	return candidates[len(candidates)-1]
-}
-
-func pickFloraTraitWeighted() traits.Trait {
-	r := rand.Float32()
-	// Flora can gain Floating trait through growth
-	if r < 0.03 {
-		return traits.Floating
-	}
-	return 0 // Most flora cells are simple
-}
-
-func pickFaunaTraitWeighted() traits.Trait {
-	// Simplified: only diet traits can evolve through growth
-	r := rand.Float32()
-	total := float32(0)
-
-	weights := []struct {
-		t traits.Trait
-		w float32
-	}{
-		{traits.Herbivore, 0.05}, // Can become omnivore
-		{traits.Carnivore, 0.03}, // Can become predator
-		{traits.Carrion, 0.05},   // Can become scavenger
-	}
-
-	for _, w := range weights {
-		total += w.w
-		if r < total {
-			return w.t
-		}
-	}
-
-	// ~87% chance of no trait (simple growth)
-	return 0
-}
-
-func pickMutation() traits.Mutation {
-	// Use weights from traits package for consistency
-	r := rand.Float32()
-	total := float32(0)
-
-	for mutation, weight := range traits.MutationWeights {
-		total += weight
-		if r < total {
-			return mutation
-		}
-	}
-
-	return traits.NoMutation
 }
 
 // updateDayNightCycle keeps light at constant intensity (day/night cycle disabled).
@@ -1958,20 +1675,10 @@ func (g *Game) drawTooltip() {
 	// Build tooltip content
 	var lines []string
 
-	// Type header
-	if traits.IsFlora(org.Traits) {
-		lines = append(lines, "FLORA")
-	} else if org.Traits.Has(traits.Carnivore) && org.Traits.Has(traits.Herbivore) {
-		lines = append(lines, "OMNIVORE")
-	} else if org.Traits.Has(traits.Carnivore) {
-		lines = append(lines, "CARNIVORE")
-	} else if org.Traits.Has(traits.Herbivore) {
-		lines = append(lines, "HERBIVORE")
-	} else if org.Traits.Has(traits.Carrion) {
-		lines = append(lines, "SCAVENGER")
-	} else {
-		lines = append(lines, "ORGANISM")
-	}
+	// Type header - determined by cell capabilities
+	caps := cells.ComputeCapabilities()
+	dietName := neural.GetDietName(caps.DigestiveSpectrum())
+	lines = append(lines, dietName)
 
 	lines = append(lines, "")
 
@@ -1986,43 +1693,17 @@ func (g *Game) drawTooltip() {
 
 	lines = append(lines, "")
 
-	// Traits
-	traitNames := traits.TraitNames(org.Traits)
-	if len(traitNames) > 0 {
-		lines = append(lines, "Traits:")
-		// Group traits into rows of 2
-		for i := 0; i < len(traitNames); i += 2 {
-			if i+1 < len(traitNames) {
-				lines = append(lines, fmt.Sprintf("  %s, %s", traitNames[i], traitNames[i+1]))
-			} else {
-				lines = append(lines, fmt.Sprintf("  %s", traitNames[i]))
-			}
-		}
+	// Capabilities (derived from cells)
+	lines = append(lines, "Capabilities:")
+	lines = append(lines, fmt.Sprintf("  Diet: %.2f", caps.DigestiveSpectrum()))
+	if caps.StructuralArmor > 0 {
+		lines = append(lines, fmt.Sprintf("  Armor: %.2f", caps.StructuralArmor))
 	}
-
-	// Mutations
-	var mutations []string
-	for i := uint8(0); i < cells.Count; i++ {
-		if cells.Cells[i].Mutation != traits.NoMutation {
-			mutName := traits.MutationName(cells.Cells[i].Mutation)
-			if mutName != "" {
-				// Check if already in list
-				found := false
-				for _, m := range mutations {
-					if m == mutName {
-						found = true
-						break
-					}
-				}
-				if !found {
-					mutations = append(mutations, mutName)
-				}
-			}
-		}
+	if caps.StorageCapacity > 0 {
+		lines = append(lines, fmt.Sprintf("  Storage: %.2f", caps.StorageCapacity))
 	}
-	if len(mutations) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "Mutations: "+strings.Join(mutations, ", "))
+	if caps.PhotoWeight > 0 {
+		lines = append(lines, fmt.Sprintf("  Photo: %.2f", caps.PhotoWeight))
 	}
 
 	// Calculate tooltip dimensions
@@ -2056,8 +1737,8 @@ func (g *Game) drawTooltip() {
 	rl.DrawRectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight, rl.Color{R: 20, G: 25, B: 30, A: 230})
 	rl.DrawRectangleLines(tooltipX, tooltipY, tooltipWidth, tooltipHeight, rl.Color{R: 60, G: 70, B: 80, A: 255})
 
-	// Draw text
-	r, gr, b := traits.GetTraitColor(org.Traits)
+	// Draw text - use capability-based color
+	r, gr, b := neural.GetCapabilityColor(caps.DigestiveSpectrum())
 	headerColor := rl.Color{R: r, G: gr, B: b, A: 255}
 
 	for i, line := range lines {
@@ -2073,6 +1754,9 @@ func (g *Game) drawTooltip() {
 func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *components.Organism, cells *components.CellBuffer) {
 	var r, gr, b uint8
 
+	// Compute capabilities for color
+	caps := cells.ComputeCapabilities()
+
 	// Use species color if enabled and organism has neural genome
 	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
 		neuralGenome := g.neuralGenomeMap.Get(entity)
@@ -2080,10 +1764,10 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 			speciesColor := g.speciesManager.GetSpeciesColor(neuralGenome.SpeciesID)
 			r, gr, b = speciesColor.R, speciesColor.G, speciesColor.B
 		} else {
-			r, gr, b = traits.GetTraitColor(org.Traits)
+			r, gr, b = neural.GetCapabilityColor(caps.DigestiveSpectrum())
 		}
 	} else {
-		r, gr, b = traits.GetTraitColor(org.Traits)
+		r, gr, b = neural.GetCapabilityColor(caps.DigestiveSpectrum())
 	}
 
 	baseColor := rl.Color{R: r, G: gr, B: b, A: 255}
@@ -2147,22 +1831,6 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 			rotationDeg,
 			cellColor,
 		)
-
-		// Draw mutation indicator (also affected by lighting)
-		if cell.Mutation != traits.NoMutation {
-			var mutColor rl.Color
-			switch cell.Mutation {
-			case traits.Disease:
-				mutColor = rl.Color{R: uint8(100 * light), G: uint8(50 * light), B: uint8(100 * light), A: 200}
-			case traits.Rage:
-				mutColor = rl.Color{R: uint8(255 * light), G: uint8(100 * light), B: uint8(50 * light), A: 200}
-			case traits.Growth:
-				mutColor = rl.Color{R: uint8(100 * light), G: uint8(255 * light), B: uint8(100 * light), A: 200}
-			case traits.Splitting:
-				mutColor = rl.Color{R: uint8(200 * light), G: uint8(200 * light), B: uint8(50 * light), A: 200}
-			}
-			rl.DrawCircle(int32(cellX), int32(cellY), 1, mutColor)
-		}
 	}
 }
 
@@ -2259,7 +1927,8 @@ func (g *Game) drawUI() {
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		_, _, org, cells := query.Get()
-		if !org.Dead && traits.IsFauna(org.Traits) {
+		// All ECS organisms are fauna (flora are in FloraSystem)
+		if !org.Dead {
 			faunaCount++
 			totalCells += int(cells.Count)
 		}
@@ -2410,24 +2079,15 @@ func (g *Game) drawInfoPanel() {
 
 	y := panelY + padding
 
-	// === HEADER: Organism type ===
-	r, gr, b := traits.GetTraitColor(org.Traits)
+	// Compute capabilities for display
+	caps := cells.ComputeCapabilities()
+	digestiveSpectrum := caps.DigestiveSpectrum()
+
+	// === HEADER: Organism type (from cell capabilities) ===
+	r, gr, b := neural.GetCapabilityColor(digestiveSpectrum)
 	headerColor := rl.Color{R: r, G: gr, B: b, A: 255}
 
-	var typeName string
-	if traits.IsFlora(org.Traits) {
-		typeName = "FLORA"
-	} else if org.Traits.Has(traits.Carnivore) && org.Traits.Has(traits.Herbivore) {
-		typeName = "OMNIVORE"
-	} else if org.Traits.Has(traits.Carnivore) {
-		typeName = "CARNIVORE"
-	} else if org.Traits.Has(traits.Herbivore) {
-		typeName = "HERBIVORE"
-	} else if org.Traits.Has(traits.Carrion) {
-		typeName = "SCAVENGER"
-	} else {
-		typeName = "ORGANISM"
-	}
+	typeName := neural.GetDietName(digestiveSpectrum)
 
 	if org.Dead {
 		typeName = "DEAD " + typeName
@@ -2482,14 +2142,22 @@ func (g *Game) drawInfoPanel() {
 	rl.DrawText(fmt.Sprintf("Mode: %s", modeName), panelX+padding, y, 12, rl.LightGray)
 	y += lineHeight + 6
 
-	// === TRAITS ===
-	traitNames := traits.TraitNames(org.Traits)
-	if len(traitNames) > 0 {
-		rl.DrawText("Traits", panelX+padding, y, 14, rl.Yellow)
+	// === CAPABILITIES ===
+	rl.DrawText("Capabilities", panelX+padding, y, 14, rl.Yellow)
+	y += lineHeight
+	rl.DrawText(fmt.Sprintf("Diet: %.2f", digestiveSpectrum), panelX+padding, y, 12, rl.LightGray)
+	y += lineHeight
+	if caps.StructuralArmor > 0 {
+		rl.DrawText(fmt.Sprintf("Armor: %.2f", caps.StructuralArmor), panelX+padding, y, 12, rl.LightGray)
 		y += lineHeight
-		traitText := strings.Join(traitNames, ", ")
-		rl.DrawText(traitText, panelX+padding, y, 12, rl.LightGray)
-		y += lineHeight + 6
+	}
+	if caps.StorageCapacity > 0 {
+		rl.DrawText(fmt.Sprintf("Storage: %.2f", caps.StorageCapacity), panelX+padding, y, 12, rl.LightGray)
+		y += lineHeight
+	}
+	if caps.PhotoWeight > 0 {
+		rl.DrawText(fmt.Sprintf("Photosynthesis: %.2f", caps.PhotoWeight), panelX+padding, y, 12, rl.LightGray)
+		y += lineHeight
 	}
 
 	// === NEURAL INFO ===

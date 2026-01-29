@@ -76,18 +76,6 @@ func NewPathfinder(terrain TerrainQuerier) *Pathfinder {
 	return pf
 }
 
-// NewPathfinderWithParams creates a pathfinder with custom parameters.
-func NewPathfinderWithParams(terrain TerrainQuerier, params PathfindingParams) *Pathfinder {
-	pf := &Pathfinder{
-		terrain: terrain,
-		params:  params,
-	}
-	if ts, ok := terrain.(*TerrainSystem); ok {
-		pf.astar = NewAStarPlanner(ts)
-	}
-	return pf
-}
-
 // SetTick updates the pathfinder's tick counter for path cache validation.
 func (p *Pathfinder) SetTick(tick int32) {
 	p.tick = tick

@@ -8,7 +8,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/traits"
 )
 
 const (
@@ -134,10 +133,7 @@ func (s *FeedingSystem) Update() {
 			continue
 		}
 
-		// Skip flora (they don't actively feed)
-		if traits.IsFlora(org.Traits) {
-			continue
-		}
+		// All ECS organisms are fauna (flora are in FloraSystem)
 
 		// Check eat intent from brain (>0.5 means try to eat)
 		if org.EatIntent < 0.5 {

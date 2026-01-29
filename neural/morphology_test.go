@@ -111,8 +111,8 @@ func TestGenerateMorphologyDiversity(t *testing.T) {
 	}
 
 	for i, m := range morphologies {
-		t.Logf("Morphology %d: %d cells, diet=%.2f, dims=%dx%d",
-			i+1, len(m.Cells), m.DietBias, m.Width(), m.Height())
+		t.Logf("Morphology %d: %d cells, diet=%.2f",
+			i+1, len(m.Cells), m.DietBias)
 	}
 }
 
@@ -175,22 +175,12 @@ func TestSelectCellFunctionsNoSecondary(t *testing.T) {
 	}
 }
 
-func TestCellSpecGetFunctions(t *testing.T) {
+func TestCellSpecHasFunction(t *testing.T) {
 	spec := CellSpec{
 		PrimaryType:        CellTypeSensor,
 		SecondaryType:      CellTypeActuator,
 		EffectivePrimary:   0.8,
 		EffectiveSecondary: 0.3,
-	}
-
-	// GetSensorStrength should return primary strength
-	if spec.GetSensorStrength() != 0.8 {
-		t.Errorf("expected sensor strength 0.8, got %.2f", spec.GetSensorStrength())
-	}
-
-	// GetActuatorStrength should return secondary strength
-	if spec.GetActuatorStrength() != 0.3 {
-		t.Errorf("expected actuator strength 0.3, got %.2f", spec.GetActuatorStrength())
 	}
 
 	// HasFunction tests
@@ -272,7 +262,7 @@ func TestEnsureViabilityAddsMissingActuator(t *testing.T) {
 	}
 }
 
-func TestMorphologyResultMethods(t *testing.T) {
+func TestMorphologyResultCellCount(t *testing.T) {
 	genome := CreateCPPNGenome(1)
 	result, err := GenerateMorphology(genome, 32, 0.0)
 	if err != nil {
@@ -284,81 +274,23 @@ func TestMorphologyResultMethods(t *testing.T) {
 		t.Errorf("CellCount() mismatch")
 	}
 
-	// Test Bounds
-	minX, minY, maxX, maxY := result.Bounds()
-	t.Logf("Bounds: (%d,%d) to (%d,%d)", minX, minY, maxX, maxY)
-
-	// Verify all cells are within bounds
+	// Verify viability
+	hasSensor := false
+	hasActuator := false
 	for _, c := range result.Cells {
-		if c.GridX < minX || c.GridX > maxX || c.GridY < minY || c.GridY > maxY {
-			t.Errorf("cell (%d,%d) outside bounds", c.GridX, c.GridY)
+		if c.PrimaryType == CellTypeSensor || c.SecondaryType == CellTypeSensor {
+			hasSensor = true
+		}
+		if c.PrimaryType == CellTypeActuator || c.SecondaryType == CellTypeActuator {
+			hasActuator = true
 		}
 	}
 
-	// Test Width and Height
-	width := result.Width()
-	height := result.Height()
-	if width < 1 || height < 1 {
-		t.Errorf("invalid dimensions: %dx%d", width, height)
-	}
-
-	// Test Centroid
-	cx, cy := result.Centroid()
-	t.Logf("Centroid: (%.2f, %.2f)", cx, cy)
-
-	// Test diet classification
-	if result.DietBias > 0.3 && !result.IsCarnivore() {
-		t.Error("should be carnivore")
-	}
-	if result.DietBias < -0.3 && !result.IsHerbivore() {
-		t.Error("should be herbivore")
-	}
-	if result.DietBias >= -0.3 && result.DietBias <= 0.3 && !result.IsOmnivore() {
-		t.Error("should be omnivore")
-	}
-
-	// Test sensor/actuator counts
-	sensorCount := result.SensorCount()
-	actuatorCount := result.ActuatorCount()
-	t.Logf("Sensors: %d, Actuators: %d", sensorCount, actuatorCount)
-
-	// Should have at least one of each due to viability
-	if sensorCount == 0 {
+	if !hasSensor {
 		t.Error("expected at least 1 sensor")
 	}
-	if actuatorCount == 0 {
+	if !hasActuator {
 		t.Error("expected at least 1 actuator")
-	}
-}
-
-func TestMorphologyResultSymmetry(t *testing.T) {
-	// Test with a known symmetric morphology
-	result := MorphologyResult{
-		Cells: []CellSpec{
-			{GridX: 0, GridY: 0, PrimaryType: CellTypeSensor},
-			{GridX: -1, GridY: 0, PrimaryType: CellTypeActuator},
-			{GridX: 1, GridY: 0, PrimaryType: CellTypeActuator},
-			{GridX: -1, GridY: 1, PrimaryType: CellTypeMouth},
-			{GridX: 1, GridY: 1, PrimaryType: CellTypeMouth},
-		},
-	}
-
-	if !result.IsSymmetric() {
-		t.Error("expected symmetric morphology to be detected as symmetric")
-	}
-
-	// Test with asymmetric morphology
-	asymResult := MorphologyResult{
-		Cells: []CellSpec{
-			{GridX: 0, GridY: 0, PrimaryType: CellTypeSensor},
-			{GridX: 1, GridY: 0, PrimaryType: CellTypeActuator},
-			{GridX: 2, GridY: 0, PrimaryType: CellTypeActuator},
-			{GridX: 3, GridY: 1, PrimaryType: CellTypeMouth},
-		},
-	}
-
-	if asymResult.IsSymmetric() {
-		t.Error("expected asymmetric morphology to not be detected as symmetric")
 	}
 }
 
@@ -390,20 +322,6 @@ func TestMorphologyEmptyCells(t *testing.T) {
 
 	if result.CellCount() != 0 {
 		t.Error("CellCount should be 0 for empty morphology")
-	}
-
-	minX, minY, maxX, maxY := result.Bounds()
-	if minX != 0 || minY != 0 || maxX != 0 || maxY != 0 {
-		t.Error("Bounds should be 0 for empty morphology")
-	}
-
-	cx, cy := result.Centroid()
-	if cx != 0 || cy != 0 {
-		t.Error("Centroid should be 0 for empty morphology")
-	}
-
-	if !result.IsSymmetric() {
-		t.Error("Empty morphology should be considered symmetric")
 	}
 }
 
