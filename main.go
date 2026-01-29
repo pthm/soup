@@ -100,7 +100,6 @@ type Game struct {
 	waterBackground *renderer.WaterBackground
 	sunRenderer     *renderer.SunRenderer
 	light           renderer.LightState
-	nightTicks      int32 // Counter for darkness period
 	tick          int32
 	paused        bool
 	stepsPerFrame int
@@ -169,7 +168,7 @@ func NewGame() *Game {
 		flowRenderer:    renderer.NewFlowRenderer(screenWidth, screenHeight, 0.08),
 		waterBackground: renderer.NewWaterBackground(screenWidth, screenHeight),
 		sunRenderer:     renderer.NewSunRenderer(screenWidth, screenHeight),
-		light:           renderer.LightState{PosX: 1.2, PosY: -0.15, Intensity: 1.0}, // Start off-screen right
+		light:           renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0}, // Static sun at top center
 		stepsPerFrame: 1,
 		perf:          NewPerfStats(),
 
@@ -241,7 +240,7 @@ func NewGameHeadless() *Game {
 		waterBackground: nil,
 		sunRenderer:     nil,
 		particleRenderer: nil,
-		light:           renderer.LightState{PosX: 1.2, PosY: -0.15, Intensity: 1.0},
+		light:           renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
 		stepsPerFrame:   1,
 		perf:            NewPerfStats(),
 
@@ -1520,88 +1519,11 @@ func pickMutation() traits.Mutation {
 	return traits.NoMutation
 }
 
-// updateDayNightCycle moves the sun across the sky and adjusts light intensity.
+// updateDayNightCycle keeps light at constant intensity (day/night cycle disabled).
 func (g *Game) updateDayNightCycle() {
-	// Day cycle duration in ticks (about 60 seconds at normal speed)
-	const cycleDuration = 3600
-	const sunSpeed = 1.4 / float32(cycleDuration) // Travel 1.4 units (from 1.2 to -0.2)
-	const darknessDuration = 300                  // ~5 seconds of darkness (reduced from 15)
-
-	// Minimum ambient light during daytime transitions (prevents pitch black)
-	const minDaytimeIntensity float32 = 0.15
-	// Minimum night intensity (allows some visibility at night)
-	const minNightIntensity float32 = 0.05
-
-	// If in darkness period, count down
-	if g.nightTicks > 0 {
-		g.nightTicks--
-		// Smooth transition into and out of night using remaining ticks
-		nightProgress := float32(g.nightTicks) / float32(darknessDuration)
-		// Creates a smooth dip: high at start/end of night, lowest in middle
-		if nightProgress > 0.5 {
-			// First half: transitioning into night
-			g.light.Intensity = minNightIntensity + (nightProgress-0.5)*2*minDaytimeIntensity
-		} else {
-			// Second half: transitioning out of night
-			g.light.Intensity = minNightIntensity + (0.5-nightProgress)*2*minDaytimeIntensity
-		}
-		// When darkness ends, reset sun to right side
-		if g.nightTicks == 0 {
-			g.light.PosX = 1.2
-		}
-		return
-	}
-
-	// Move sun from right to left
-	g.light.PosX -= sunSpeed
-
-	// When sun goes off-screen left, enter darkness period then reset
-	if g.light.PosX < -0.2 {
-		g.nightTicks = darknessDuration
-		g.light.Intensity = minDaytimeIntensity
-		return
-	}
-
-	// Calculate intensity based on sun position using smoothstep curve
-	// This keeps intensity high longer during midday and transitions smoothly at edges
-	if g.light.PosX >= 0 && g.light.PosX <= 1.0 {
-		// Distance from center (0 at center, 0.5 at edges)
-		centerDist := g.light.PosX - 0.5
-		if centerDist < 0 {
-			centerDist = -centerDist
-		}
-		normalizedDist := centerDist / 0.5 // 0 at center, 1 at edges
-
-		// Smoothstep curve: stays at 1.0 longer in middle, smooth falloff at edges
-		// Formula: 1 - smoothstep(0, 1, normalizedDist) where smoothstep = 3x² - 2x³
-		// But we want to keep it bright longer, so we use a modified curve:
-		// - Use power of 0.7 to compress the middle (bright) region
-		// - Then apply smoothstep for gradual edge falloff
-		compressed := float32(1.0)
-		if normalizedDist > 0.3 {
-			// Only start dimming after 30% from center (0.15 from edge)
-			edgeDist := (normalizedDist - 0.3) / 0.7 // 0 to 1 over the outer 70%
-			// Smoothstep: 3x² - 2x³ gives smooth S-curve
-			smoothed := edgeDist * edgeDist * (3 - 2*edgeDist)
-			compressed = 1.0 - smoothed
-		}
-
-		// Apply minimum floor and scale
-		g.light.Intensity = minDaytimeIntensity + compressed*(1.0-minDaytimeIntensity)
-	} else if g.light.PosX > 1.0 {
-		// Sun entering from right - gradual fade in
-		entryDist := (g.light.PosX - 1.0) / 0.2 // 0 at edge, 1 at start position
-		g.light.Intensity = minDaytimeIntensity + (1.0-entryDist)*(0.5-minDaytimeIntensity)
-	} else {
-		// Sun exiting left - gradual fade out
-		exitDist := (-0.2 - g.light.PosX) / 0.2 // Would be negative, but we're below -0.2
-		if g.light.PosX >= -0.2 {
-			exitDist = (0 - g.light.PosX) / 0.2 // 0 at edge, 1 at exit position
-			g.light.Intensity = minDaytimeIntensity + (1.0-exitDist)*(0.5-minDaytimeIntensity)
-		} else {
-			g.light.Intensity = minNightIntensity
-		}
-	}
+	// Static sun at top center with constant full intensity
+	g.light.PosX = 0.5
+	g.light.Intensity = 1.0
 }
 
 func (g *Game) cleanupDead() {
