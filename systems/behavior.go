@@ -13,30 +13,36 @@ import (
 
 // BehaviorSystem handles organism steering behaviors using direct neural control.
 type BehaviorSystem struct {
-	filter    ecs.Filter3[components.Position, components.Velocity, components.Organism]
-	brainMap  *ecs.Map[components.Brain]
-	cellsMap  *ecs.Map[components.CellBuffer]
-	noise     *PerlinNoise
-	tick      int32
-	shadowMap *ShadowMap
-	terrain   *TerrainSystem
+	filter     ecs.Filter3[components.Position, components.Velocity, components.Organism]
+	brainMap   *ecs.Map[components.Brain]
+	cellsMap   *ecs.Map[components.CellBuffer]
+	noise      *PerlinNoise
+	tick       int32
+	shadowMap  *ShadowMap
+	terrain    *TerrainSystem
+	pathfinder *Pathfinder // Phase 5: navigation layer between brain and actuators
+	pathCaches map[ecs.Entity]*PathCache // A* path caches per organism
 }
 
 // NewBehaviorSystem creates a new behavior system.
 func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSystem) *BehaviorSystem {
 	return &BehaviorSystem{
-		filter:    *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
-		brainMap:  ecs.NewMap[components.Brain](w),
-		cellsMap:  ecs.NewMap[components.CellBuffer](w),
-		noise:     NewPerlinNoise(rand.Int63()),
-		shadowMap: shadowMap,
-		terrain:   terrain,
+		filter:     *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
+		brainMap:   ecs.NewMap[components.Brain](w),
+		cellsMap:   ecs.NewMap[components.CellBuffer](w),
+		noise:      NewPerlinNoise(rand.Int63()),
+		shadowMap:  shadowMap,
+		terrain:    terrain,
+		pathfinder: NewPathfinder(terrain),
+		pathCaches: make(map[ecs.Entity]*PathCache),
 	}
 }
 
 // Update runs the behavior system with actuator-driven neural control.
 func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
 	s.tick++
+	// Update pathfinder tick for A* path cache validation
+	s.pathfinder.SetTick(s.tick)
 
 	query := s.filter.Query()
 	for query.Next() {
@@ -50,6 +56,9 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 
 		// Dead organisms only get flow field influence
 		if org.Dead {
+			// Clean up path cache for dead organisms
+			delete(s.pathCaches, entity)
+
 			flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 			vel.X += flowX * 1.5
 			vel.Y += flowY * 1.5
@@ -71,21 +80,77 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			outputs = neural.DefaultOutputs()
 		}
 
-		// Store intents for other systems (feeding, breeding, growth)
+		// Store intents for other systems (feeding, breeding, growth, bioluminescence)
 		org.DesireAngle = outputs.DesireAngle
 		org.DesireDistance = outputs.DesireDistance
 		org.EatIntent = outputs.Eat
 		org.GrowIntent = outputs.Grow
 		org.BreedIntent = outputs.Breed
+		org.GlowIntent = outputs.Glow
 
-		// Phase 4: Convert desire to turn/thrust (temporary until Phase 5 pathfinding)
-		turn, thrustIntent := outputs.ToTurnThrust()
-		org.TurnOutput = turn
-		org.ThrustOutput = thrustIntent
+		// Phase 5b: Compute emitted light from glow intent and bioluminescent capability
+		if cells != nil && outputs.Glow > 0 {
+			caps := cells.ComputeCapabilities()
+			org.EmittedLight = outputs.Glow * caps.BioluminescentCap
+		} else {
+			org.EmittedLight = 0
+		}
+
+		// Phase 5: Use pathfinding layer to convert desire to turn/thrust
+		// Pathfinding handles terrain avoidance so brain only learns strategy
+		flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
+
+		// Get collision radius from OBB if available, otherwise estimate
+		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
+
+		var navResult PathfindingResult
+
+		// Use A* for longer-range navigation (desireDistance >= 0.2)
+		// Use context steering for short-range movement
+		const astarThreshold = float32(0.2)
+
+		if outputs.DesireDistance >= astarThreshold && s.pathfinder.HasAStarPlanner() {
+			// Compute target position from desire angle and distance
+			// Project the desire into world space
+			projectionDist := s.pathfinder.params.MaxTargetDistance * outputs.DesireDistance
+			targetAngle := org.Heading + outputs.DesireAngle
+			targetX := pos.X + float32(math.Cos(float64(targetAngle)))*projectionDist
+			targetY := pos.Y + float32(math.Sin(float64(targetAngle)))*projectionDist
+
+			// Get or create path cache for this entity
+			cache, exists := s.pathCaches[entity]
+			if !exists {
+				cache = &PathCache{}
+				s.pathCaches[entity] = cache
+			}
+
+			navResult = s.pathfinder.NavigateWithAStar(
+				pos.X, pos.Y,
+				org.Heading,
+				targetX, targetY,
+				outputs.DesireDistance,
+				flowX, flowY,
+				&org.OBB,
+				org.CellSize,
+				cache,
+			)
+		} else {
+			// Short-range: use context steering directly
+			navResult = s.pathfinder.Navigate(
+				pos.X, pos.Y,
+				org.Heading,
+				outputs.DesireAngle, outputs.DesireDistance,
+				flowX, flowY,
+				organismRadius,
+			)
+		}
+
+		org.TurnOutput = navResult.Turn
+		org.ThrustOutput = navResult.Thrust
 
 		// Calculate actuator-driven forces
 		// Actuator positions and strengths determine how Turn/Thrust translate to movement
-		thrust, torque := calculateActuatorForces(cells, org.Heading, thrustIntent, turn)
+		thrust, torque := calculateActuatorForces(cells, org.Heading, navResult.Thrust, navResult.Turn)
 
 		// Apply torque to heading
 		org.Heading += torque
@@ -105,8 +170,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * 0.1
 		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * 0.1
 
-		// Apply flow field
-		flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
+		// Apply flow field (already computed for pathfinding)
 		vel.X += thrustX + flowX
 		vel.Y += thrustY + flowY
 
@@ -246,28 +310,17 @@ func (s *BehaviorSystem) getBrainOutputs(
 		sensory.FlowAlignment = 0
 	}
 
-	// Terrain sensing and openness (Phase 4b)
+	// Phase 5: Openness scalar for terrain awareness
+	// Pathfinding layer handles actual terrain avoidance, brain just gets context
 	if s.terrain != nil {
 		terrainDist := s.terrain.DistanceToSolid(pos.X, pos.Y)
 		if terrainDist < effectiveRadius {
-			sensory.TerrainFound = true
-			sensory.TerrainDistance = terrainDist
-
-			gx, gy := s.terrain.GetGradient(pos.X, pos.Y)
-			cosH := float32(math.Cos(float64(-org.Heading)))
-			sinH := float32(math.Sin(float64(-org.Heading)))
-			sensory.TerrainGradientX = gx*cosH - gy*sinH
-			sensory.TerrainGradientY = gx*sinH + gy*cosH
-
-			// Phase 4b: Openness = normalized distance to terrain
-			// 0 = touching terrain, 1 = terrain at edge of perception
+			// Openness = normalized distance to terrain (0 = touching, 1 = far)
 			sensory.Openness = terrainDist / effectiveRadius
 		} else {
-			// No terrain within perception range = fully open
 			sensory.Openness = 1.0
 		}
 	} else {
-		// No terrain system = assume fully open
 		sensory.Openness = 1.0
 	}
 
@@ -382,6 +435,7 @@ func (s *BehaviorSystem) buildEntityList(
 			StructuralArmor: theirArmor,
 			GeneticDistance: geneticDistance,
 			IsFlora:         false,
+			EmittedLight:    other.EmittedLight, // Phase 5b: bioluminescence
 		})
 	}
 

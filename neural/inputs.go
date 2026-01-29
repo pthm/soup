@@ -24,12 +24,6 @@ type SensoryInputs struct {
 	LightFB float32 // Front-back gradient: >0 means brighter ahead
 	LightLR float32 // Left-right gradient: >0 means brighter to the right
 
-	// Terrain awareness (kept for Phase 5 pathfinding transition)
-	TerrainDistance  float32 // Distance to nearest solid terrain
-	TerrainGradientX float32 // Direction away from terrain (world X)
-	TerrainGradientY float32 // Direction away from terrain (world Y)
-	TerrainFound     bool    // True if terrain is within sensing range
-
 	// Internal state
 	Energy           float32
 	MaxEnergy        float32
@@ -122,7 +116,7 @@ func (s *SensoryInputs) FromPolarVision(pv *PolarVision) {
 }
 
 // BehaviorOutputs holds the decoded outputs from the brain network.
-// Phase 4: Intent-based system with 5 outputs.
+// Phase 5: Intent-based system with 6 outputs.
 type BehaviorOutputs struct {
 	// Movement intent (Phase 4)
 	DesireAngle    float32 // -π to +π: where to go relative to heading
@@ -132,11 +126,12 @@ type BehaviorOutputs struct {
 	Eat   float32 // 0 to 1: feeding intent (>0.5 = try to eat)
 	Grow  float32 // 0 to 1: growth intent (allocate energy to new cells)
 	Breed float32 // 0 to 1: reproduction intent (>0.5 = try to reproduce)
+	Glow  float32 // 0 to 1: bioluminescence intent (Phase 5b)
 }
 
 // DecodeOutputs converts raw network outputs to intent values.
 // Raw outputs are in [0, 1] range from sigmoid activation.
-// Phase 4 layout: [DesireAngle, DesireDistance, Eat, Grow, Breed]
+// Phase 5 layout: [DesireAngle, DesireDistance, Eat, Grow, Breed, Glow]
 func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
 		// Return defaults if not enough outputs
@@ -154,6 +149,8 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 		Grow: float32(raw[3]),
 		// Breed: sigmoid [0,1] -> [0,1]
 		Breed: float32(raw[4]),
+		// Glow: sigmoid [0,1] -> [0,1]
+		Glow: float32(raw[5]),
 	}
 }
 
@@ -166,6 +163,7 @@ func DefaultOutputs() BehaviorOutputs {
 		Eat:            0.5, // Neutral eating intent
 		Grow:           0.3, // Low growth intent
 		Breed:          0.3, // Low breeding intent
+		Glow:           0.0, // No glow by default (saves energy)
 	}
 }
 

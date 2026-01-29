@@ -12,8 +12,8 @@ import (
 const BrainInputs = 19
 
 // BrainOutputs is the number of outputs from the brain network.
-// Phase 4: DesireAngle, DesireDistance, Eat, Grow, Breed (intent-based)
-const BrainOutputs = 5
+// Phase 5: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow (intent-based)
+const BrainOutputs = 6
 
 // CPPNInputs is the number of inputs to the CPPN.
 // Inputs: x, y, distance, angle, bias

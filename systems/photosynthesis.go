@@ -31,7 +31,9 @@ func (s *PhotosynthesisSystem) Update() {
 			continue
 		}
 
-		// Sample light at organism position
+		// Sample ambient light at organism position
+		// Phase 5b note: Only uses ambient light from shadowMap, not bioluminescence.
+		// This ensures self-emitted light doesn't contribute to photosynthesis (no energy loops).
 		light := s.shadowMap.SampleLight(pos.X, pos.Y)
 
 		// Rooted flora is slightly adapted to lower light but not immune to shade

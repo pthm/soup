@@ -71,3 +71,69 @@ func clampFloat(v, minVal, maxVal float32) float32 {
 	}
 	return v
 }
+
+// ComputeCollisionOBB computes an oriented bounding box from an organism's cells.
+// The OBB is aligned to the organism's local coordinate system and rotates with heading.
+func ComputeCollisionOBB(cells *components.CellBuffer, cellSize float32) components.CollisionOBB {
+	if cells.Count == 0 {
+		// Minimum OBB for organisms with no cells
+		return components.CollisionOBB{
+			HalfWidth:  cellSize,
+			HalfHeight: cellSize,
+			OffsetX:    0,
+			OffsetY:    0,
+		}
+	}
+
+	// Find bounding box of cells in grid coordinates
+	minX, minY := int8(127), int8(127)
+	maxX, maxY := int8(-128), int8(-128)
+
+	for i := uint8(0); i < cells.Count; i++ {
+		c := &cells.Cells[i]
+		if !c.Alive {
+			continue
+		}
+		if c.GridX < minX {
+			minX = c.GridX
+		}
+		if c.GridX > maxX {
+			maxX = c.GridX
+		}
+		if c.GridY < minY {
+			minY = c.GridY
+		}
+		if c.GridY > maxY {
+			maxY = c.GridY
+		}
+	}
+
+	// Handle case where all cells are dead
+	if minX > maxX {
+		return components.CollisionOBB{
+			HalfWidth:  cellSize,
+			HalfHeight: cellSize,
+			OffsetX:    0,
+			OffsetY:    0,
+		}
+	}
+
+	// Convert grid bounds to world coordinates
+	// Grid coordinates are centered at (0,0), so a cell at (0,0) is at world origin
+	// Each cell occupies cellSize world units
+
+	// Width spans from minX to maxX, plus cellSize for the cell itself, plus padding
+	width := float32(maxX-minX+1)*cellSize + cellSize // +1 cell padding
+	height := float32(maxY-minY+1)*cellSize + cellSize
+
+	// Center offset: average of min/max in each dimension
+	centerX := float32(minX+maxX) / 2.0 * cellSize
+	centerY := float32(minY+maxY) / 2.0 * cellSize
+
+	return components.CollisionOBB{
+		HalfWidth:  width / 2,
+		HalfHeight: height / 2,
+		OffsetX:    centerX,
+		OffsetY:    centerY,
+	}
+}

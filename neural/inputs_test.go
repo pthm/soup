@@ -164,8 +164,8 @@ func TestFromPolarVision(t *testing.T) {
 }
 
 func TestDecodeOutputs(t *testing.T) {
-	// Phase 4: Simulate sigmoid outputs (0-1 range) - 5 outputs: DesireAngle, DesireDistance, Eat, Grow, Breed
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7}
+	// Phase 5: Simulate sigmoid outputs (0-1 range) - 6 outputs: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow
+	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7, 0.4}
 
 	outputs := DecodeOutputs(raw)
 
@@ -193,6 +193,11 @@ func TestDecodeOutputs(t *testing.T) {
 	// Check Breed (0.7 sigmoid -> 0.7 breed)
 	if math.Abs(float64(outputs.Breed-0.7)) > 0.01 {
 		t.Errorf("breed: expected 0.7, got %f", outputs.Breed)
+	}
+
+	// Check Glow (0.4 sigmoid -> 0.4 glow)
+	if math.Abs(float64(outputs.Glow-0.4)) > 0.01 {
+		t.Errorf("glow: expected 0.4, got %f", outputs.Glow)
 	}
 
 	t.Logf("Outputs: %+v", outputs)
@@ -426,7 +431,7 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 }
 
 func BenchmarkDecodeOutputs(b *testing.B) {
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7} // Phase 4: 5 outputs
+	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7, 0.4} // Phase 5: 6 outputs
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -22,7 +22,7 @@ type SubstrateNode struct {
 type Substrate struct {
 	SensorNodes []SubstrateNode // Input layer: one per sensor cell
 	HiddenNodes []SubstrateNode // Hidden layer: fixed positions
-	OutputNodes []SubstrateNode // Output layer: Turn, Thrust, Eat, Mate
+	OutputNodes []SubstrateNode // Output layer: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow
 }
 
 // BuildSubstrateFromMorphology creates a substrate where sensor nodes
@@ -62,16 +62,18 @@ func BuildSubstrateFromMorphology(morph *MorphologyResult) *Substrate {
 		})
 	}
 
-	// Output nodes for the 4 behavior outputs, spread along bottom
-	// Turn, Thrust, Eat, Mate
+	// Output nodes for the 6 behavior outputs (Phase 5), spread along bottom
+	// DesireAngle, DesireDistance, Eat, Grow, Breed, Glow
 	outputPositions := []struct {
 		x, y float64
 		name string
 	}{
-		{-0.75, -1.0, "turn"},
-		{-0.25, -1.0, "thrust"},
-		{0.25, -1.0, "eat"},
-		{0.75, -1.0, "mate"},
+		{-1.0, -1.0, "desire_angle"},
+		{-0.6, -1.0, "desire_distance"},
+		{-0.2, -1.0, "eat"},
+		{0.2, -1.0, "grow"},
+		{0.6, -1.0, "breed"},
+		{1.0, -1.0, "glow"},
 	}
 	for i, pos := range outputPositions {
 		s.OutputNodes = append(s.OutputNodes, SubstrateNode{
@@ -181,7 +183,7 @@ func BuildBrainFromCPPN(cppnGenome *genetics.Genome, morph *MorphologyResult) (*
 		nodeID++
 	}
 
-	// Output nodes (4 behavior outputs)
+	// Output nodes (6 behavior outputs: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow)
 	outputNodes := make([]*network.NNode, BrainOutputs)
 	for i := 0; i < BrainOutputs; i++ {
 		node := network.NewNNode(nodeID, network.OutputNeuron)
@@ -310,8 +312,8 @@ func BuildBrainFromCPPN(cppnGenome *genetics.Genome, morph *MorphologyResult) (*
 	}, nil
 }
 
-// SimplifiedHyperNEATBrain creates a brain that maps the standard 14 inputs
-// to 4 outputs, but uses CPPN-queried weights based on sensor/actuator geometry.
+// SimplifiedHyperNEATBrain creates a brain that maps the standard inputs
+// to 6 outputs, but uses CPPN-queried weights based on sensor/actuator geometry.
 // This is a simpler approach that maintains compatibility with existing systems.
 func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResult) (*BrainController, error) {
 	// Build CPPN network
@@ -322,7 +324,7 @@ func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResu
 
 	substrate := BuildSubstrateFromMorphology(morph)
 
-	// Create standard brain structure (14 inputs, 4 outputs)
+	// Create standard brain structure (BrainInputs inputs, BrainOutputs outputs)
 	nodes := make([]*network.NNode, 0, BrainInputs+BrainOutputs)
 
 	// Input nodes

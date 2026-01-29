@@ -74,16 +74,42 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		pos.X += vel.X
 		pos.Y += vel.Y
 
-		// Terrain collision
+		// Terrain collision - slide along walls instead of bouncing
+		// Use OBB collision if available, fall back to circle collision
 		if s.terrain != nil {
-			radius := org.CellSize * 3
-			if s.terrain.CheckCircleCollision(pos.X, pos.Y, radius) {
-				openX, openY, nx, ny := s.terrain.FindNearestOpen(pos.X, pos.Y, radius)
-				pos.X, pos.Y = openX, openY
-				// Reflect velocity
+			var collides bool
+			var nx, ny float32
+
+			// Check if OBB is valid (has non-zero half-extents)
+			if org.OBB.HalfWidth > 0 && org.OBB.HalfHeight > 0 {
+				collides = s.terrain.CheckOBBCollision(pos.X, pos.Y, org.Heading, &org.OBB)
+				if collides {
+					openX, openY, normalX, normalY := s.terrain.FindNearestOpenOBB(pos.X, pos.Y, org.Heading, &org.OBB)
+					pos.X, pos.Y = openX, openY
+					nx, ny = normalX, normalY
+				}
+			} else {
+				// Fallback to circle collision for organisms without OBB
+				radius := org.CellSize * 3
+				collides = s.terrain.CheckCircleCollision(pos.X, pos.Y, radius)
+				if collides {
+					openX, openY, normalX, normalY := s.terrain.FindNearestOpen(pos.X, pos.Y, radius)
+					pos.X, pos.Y = openX, openY
+					nx, ny = normalX, normalY
+				}
+			}
+
+			if collides {
+				// Project velocity onto wall (slide along it)
+				// Remove the component going into the wall
 				dot := vel.X*nx + vel.Y*ny
-				vel.X = (vel.X - 2*dot*nx) * 0.3
-				vel.Y = (vel.Y - 2*dot*ny) * 0.3
+				if dot < 0 { // Only if moving into wall
+					vel.X -= dot * nx
+					vel.Y -= dot * ny
+				}
+				// Apply friction from wall contact
+				vel.X *= 0.8
+				vel.Y *= 0.8
 			}
 		}
 

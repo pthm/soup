@@ -29,8 +29,8 @@ func NewBrainController(genome *genetics.Genome) (*BrainController, error) {
 }
 
 // Think processes sensory inputs and returns behavior outputs.
-// Inputs should be a slice of BrainInputs (14) float64 values.
-// Returns a slice of BrainOutputs (8) float64 values.
+// Inputs should be a slice of BrainInputs (19) float64 values.
+// Returns a slice of BrainOutputs (6) float64 values.
 func (b *BrainController) Think(inputs []float64) ([]float64, error) {
 	if len(inputs) != BrainInputs {
 		return nil, fmt.Errorf("expected %d inputs, got %d", BrainInputs, len(inputs))

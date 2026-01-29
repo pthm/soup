@@ -397,8 +397,9 @@ func (g *Game) createFlora(x, y float32, t traits.Trait, energy float32) ecs.Ent
 		Alive:    true,
 	})
 
-	// Calculate shape metrics
+	// Calculate shape metrics and collision OBB
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	return g.floraMapper.NewEntity(pos, vel, org, cells, &components.Flora{})
 }
@@ -512,8 +513,9 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 		})
 	}
 
-	// Calculate shape metrics
+	// Calculate shape metrics and collision OBB
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	// Create fauna entity (neural organisms are always fauna)
 	entity := g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
@@ -719,8 +721,9 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 		cells.AddCell(cell)
 	}
 
-	// Calculate shape metrics from morphology
+	// Calculate shape metrics and collision OBB from morphology
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	// Create entity
 	var entity ecs.Entity
@@ -1514,8 +1517,9 @@ func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, ce
 		org.Traits = org.Traits.Add(newTrait)
 	}
 
-	// Recalculate shape metrics after growth
+	// Recalculate shape metrics and collision OBB after growth
 	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
+	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	org.Energy -= 30
 }

@@ -2,6 +2,8 @@ package systems
 
 import (
 	"math"
+
+	"github.com/pthm-cable/soup/components"
 )
 
 // TerrainCell represents the type of terrain in a cell.
@@ -481,4 +483,245 @@ func (t *TerrainSystem) GridHeight() int {
 // Noise returns the noise generator for rendering effects.
 func (t *TerrainSystem) Noise() *PerlinNoise {
 	return t.noise
+}
+
+// CheckOBBCollision checks if an oriented bounding box intersects solid terrain.
+// Uses SAT (Separating Axis Theorem) for OBB-vs-AABB collision.
+// Returns true if collision detected.
+func (t *TerrainSystem) CheckOBBCollision(posX, posY, heading float32, obb *components.CollisionOBB) bool {
+	// Transform OBB center to world space
+	sinH := float32(math.Sin(float64(heading)))
+	cosH := float32(math.Cos(float64(heading)))
+
+	// OBB center in world coordinates
+	centerX := posX + obb.OffsetX*cosH - obb.OffsetY*sinH
+	centerY := posY + obb.OffsetX*sinH + obb.OffsetY*cosH
+
+	// Compute conservative AABB that contains the rotated OBB
+	// For a rotated rectangle, the AABB half-extents are:
+	// hw = |hw * cos| + |hh * sin|
+	// hh = |hw * sin| + |hh * cos|
+	absCosH := float32(math.Abs(float64(cosH)))
+	absSinH := float32(math.Abs(float64(sinH)))
+	aabbHalfW := obb.HalfWidth*absCosH + obb.HalfHeight*absSinH
+	aabbHalfH := obb.HalfWidth*absSinH + obb.HalfHeight*absCosH
+
+	// Grid cells that the AABB could overlap
+	minGX := int((centerX - aabbHalfW) / t.cellSize)
+	maxGX := int((centerX + aabbHalfW) / t.cellSize)
+	minGY := int((centerY - aabbHalfH) / t.cellSize)
+	maxGY := int((centerY + aabbHalfH) / t.cellSize)
+
+	// Clamp to grid bounds
+	if minGX < 0 {
+		minGX = 0
+	}
+	if maxGX >= t.gridWidth {
+		maxGX = t.gridWidth - 1
+	}
+	if minGY < 0 {
+		minGY = 0
+	}
+	if maxGY >= t.gridHeight {
+		maxGY = t.gridHeight - 1
+	}
+
+	// OBB axes (unit vectors)
+	axisX := [2]float32{cosH, sinH}
+	axisY := [2]float32{-sinH, cosH}
+
+	for gy := minGY; gy <= maxGY; gy++ {
+		for gx := minGX; gx <= maxGX; gx++ {
+			if t.grid[gy][gx] == TerrainEmpty {
+				continue
+			}
+
+			// Terrain cell AABB
+			cellMinX := float32(gx) * t.cellSize
+			cellMaxX := cellMinX + t.cellSize
+			cellMinY := float32(gy) * t.cellSize
+			cellMaxY := cellMinY + t.cellSize
+			cellCenterX := (cellMinX + cellMaxX) / 2
+			cellCenterY := (cellMinY + cellMaxY) / 2
+			cellHalfW := t.cellSize / 2
+			cellHalfH := t.cellSize / 2
+
+			// SAT: test 4 axes (2 OBB axes + 2 AABB axes)
+			if !satTestOBBvsAABB(centerX, centerY, obb.HalfWidth, obb.HalfHeight, axisX, axisY,
+				cellCenterX, cellCenterY, cellHalfW, cellHalfH) {
+				continue
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
+// satTestOBBvsAABB performs SAT test between OBB and AABB.
+// Returns true if they overlap.
+func satTestOBBvsAABB(
+	obbCX, obbCY, obbHW, obbHH float32,
+	obbAxisX, obbAxisY [2]float32,
+	aabbCX, aabbCY, aabbHW, aabbHH float32,
+) bool {
+	// Vector from OBB center to AABB center
+	dx := aabbCX - obbCX
+	dy := aabbCY - obbCY
+
+	// Test OBB's X axis
+	{
+		// Project centers onto axis
+		projCenter := dx*obbAxisX[0] + dy*obbAxisX[1]
+		// OBB extent on its own axis
+		obbExtent := obbHW
+		// AABB extent on OBB's X axis
+		aabbExtent := aabbHW*absFloat32(obbAxisX[0]) + aabbHH*absFloat32(obbAxisX[1])
+		if absFloat32(projCenter) > obbExtent+aabbExtent {
+			return false
+		}
+	}
+
+	// Test OBB's Y axis
+	{
+		projCenter := dx*obbAxisY[0] + dy*obbAxisY[1]
+		obbExtent := obbHH
+		aabbExtent := aabbHW*absFloat32(obbAxisY[0]) + aabbHH*absFloat32(obbAxisY[1])
+		if absFloat32(projCenter) > obbExtent+aabbExtent {
+			return false
+		}
+	}
+
+	// Test AABB's X axis (1, 0)
+	{
+		projCenter := dx
+		obbExtent := obbHW*absFloat32(obbAxisX[0]) + obbHH*absFloat32(obbAxisY[0])
+		aabbExtent := aabbHW
+		if absFloat32(projCenter) > obbExtent+aabbExtent {
+			return false
+		}
+	}
+
+	// Test AABB's Y axis (0, 1)
+	{
+		projCenter := dy
+		obbExtent := obbHW*absFloat32(obbAxisX[1]) + obbHH*absFloat32(obbAxisY[1])
+		aabbExtent := aabbHH
+		if absFloat32(projCenter) > obbExtent+aabbExtent {
+			return false
+		}
+	}
+
+	return true
+}
+
+func absFloat32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// FindNearestOpenOBB finds the nearest open position for an OBB and returns the collision normal.
+func (t *TerrainSystem) FindNearestOpenOBB(posX, posY, heading float32, obb *components.CollisionOBB) (openX, openY, normalX, normalY float32) {
+	openX, openY = posX, posY
+
+	// Get gradient direction (away from terrain)
+	gx, gy := t.GetGradient(posX, posY)
+	if gx == 0 && gy == 0 {
+		gx, gy = 0, -1 // Push up by default
+	}
+
+	// Push out along gradient
+	// Use the larger half-extent for push distance
+	pushDist := obb.HalfWidth
+	if obb.HalfHeight > pushDist {
+		pushDist = obb.HalfHeight
+	}
+	pushDist += t.cellSize * 0.5
+
+	openX = posX + gx*pushDist
+	openY = posY + gy*pushDist
+
+	// Iterate to find open space
+	for i := 0; i < 5 && t.CheckOBBCollision(openX, openY, heading, obb); i++ {
+		openX += gx * t.cellSize
+		openY += gy * t.cellSize
+	}
+
+	normalX = gx
+	normalY = gy
+	return
+}
+
+// GetOBBCollisionNormal returns the accumulated collision normal for an OBB against terrain.
+// Used for smoother wall sliding.
+func (t *TerrainSystem) GetOBBCollisionNormal(posX, posY, heading float32, obb *components.CollisionOBB) (normalX, normalY float32) {
+	// Transform OBB center to world space
+	sinH := float32(math.Sin(float64(heading)))
+	cosH := float32(math.Cos(float64(heading)))
+
+	centerX := posX + obb.OffsetX*cosH - obb.OffsetY*sinH
+	centerY := posY + obb.OffsetX*sinH + obb.OffsetY*cosH
+
+	// Compute conservative AABB
+	absCosH := float32(math.Abs(float64(cosH)))
+	absSinH := float32(math.Abs(float64(sinH)))
+	aabbHalfW := obb.HalfWidth*absCosH + obb.HalfHeight*absSinH
+	aabbHalfH := obb.HalfWidth*absSinH + obb.HalfHeight*absCosH
+
+	// Grid cells to check
+	minGX := int((centerX - aabbHalfW) / t.cellSize)
+	maxGX := int((centerX + aabbHalfW) / t.cellSize)
+	minGY := int((centerY - aabbHalfH) / t.cellSize)
+	maxGY := int((centerY + aabbHalfH) / t.cellSize)
+
+	if minGX < 0 {
+		minGX = 0
+	}
+	if maxGX >= t.gridWidth {
+		maxGX = t.gridWidth - 1
+	}
+	if minGY < 0 {
+		minGY = 0
+	}
+	if maxGY >= t.gridHeight {
+		maxGY = t.gridHeight - 1
+	}
+
+	// Accumulate normals from colliding cells
+	var sumNX, sumNY float32
+
+	for gy := minGY; gy <= maxGY; gy++ {
+		for gx := minGX; gx <= maxGX; gx++ {
+			if t.grid[gy][gx] == TerrainEmpty {
+				continue
+			}
+
+			cellCenterX := (float32(gx) + 0.5) * t.cellSize
+			cellCenterY := (float32(gy) + 0.5) * t.cellSize
+
+			// Direction from cell to organism center
+			dx := centerX - cellCenterX
+			dy := centerY - cellCenterY
+
+			// Weight by inverse distance
+			distSq := dx*dx + dy*dy
+			if distSq < 0.01 {
+				distSq = 0.01
+			}
+			weight := 1.0 / distSq
+
+			sumNX += dx * weight
+			sumNY += dy * weight
+		}
+	}
+
+	// Normalize
+	mag := float32(math.Sqrt(float64(sumNX*sumNX + sumNY*sumNY)))
+	if mag > 0.001 {
+		normalX = sumNX / mag
+		normalY = sumNY / mag
+	}
+	return
 }

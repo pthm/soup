@@ -35,6 +35,15 @@ type ShapeMetrics struct {
 	DragCoefficient float32 // 0.3 (streamlined) to 1.0 (blunt)
 }
 
+// CollisionOBB defines an oriented bounding box for terrain collision.
+// The OBB is computed from the organism's cell layout and rotates with heading.
+type CollisionOBB struct {
+	HalfWidth  float32 // Half-extent along local X axis
+	HalfHeight float32 // Half-extent along local Y axis
+	OffsetX    float32 // Center offset from organism position (local X)
+	OffsetY    float32 // Center offset from organism position (local Y)
+}
+
 // Organism holds organism-specific data.
 type Organism struct {
 	Traits            traits.Trait
@@ -56,17 +65,22 @@ type Organism struct {
 	DeadTime          int32        // Ticks since death (for decomposition/removal)
 	ShapeMetrics      ShapeMetrics // Physical shape characteristics
 	ActiveThrust      float32      // Thrust magnitude this tick (for energy cost)
+	OBB               CollisionOBB // Collision bounding box computed from cells
 
-	// Brain outputs (Phase 4: intent-based)
+	// Brain outputs (Phase 5: intent-based)
 	DesireAngle    float32 // Brain output: -π to +π, where to go relative to heading
 	DesireDistance float32 // Brain output: 0-1, movement urgency
 	EatIntent      float32 // Brain output: 0-1, >0.5 means try to eat
 	GrowIntent     float32 // Brain output: 0-1, allocate energy to growth
 	BreedIntent    float32 // Brain output: 0-1, >0.5 means try to reproduce
+	GlowIntent     float32 // Brain output: 0-1, bioluminescence intensity (Phase 5b)
 
-	// Derived motor outputs (computed from desire, will be replaced by pathfinding in Phase 5)
+	// Derived motor outputs (computed by pathfinding layer in Phase 5)
 	TurnOutput   float32 // -1 to +1, current turn output
 	ThrustOutput float32 // 0 to 1, current thrust output
+
+	// Bioluminescence state (Phase 5b)
+	EmittedLight float32 // Current light emission (GlowIntent × BioluminescentCap)
 }
 
 // Cell represents a single cell within an organism.
@@ -169,14 +183,16 @@ func (cb *CellBuffer) RemoveCell(idx uint8) {
 
 // Capabilities holds computed capability values from cells.
 type Capabilities struct {
-	PhotoWeight     float32 // Total photosynthetic strength
-	ActuatorWeight  float32 // Total actuator strength
-	SensorWeight    float32 // Total sensor strength
-	MouthSize       float32 // Total mouth strength (for feeding)
-	DigestiveSum    float32 // Sum of digestive spectrum weighted by strength
-	DigestiveCount  int     // Number of digestive cells
-	StructuralArmor float32 // Average structural armor
-	StorageCapacity float32 // Average storage capacity
+	PhotoWeight        float32 // Total photosynthetic strength
+	ActuatorWeight     float32 // Total actuator strength
+	SensorWeight       float32 // Total sensor strength
+	MouthSize          float32 // Total mouth strength (for feeding)
+	DigestiveSum       float32 // Sum of digestive spectrum weighted by strength
+	DigestiveCount     int     // Number of digestive cells
+	StructuralArmor    float32 // Average structural armor
+	StorageCapacity    float32 // Average storage capacity
+	BioluminescentCap  float32 // Total bioluminescent capability (Phase 5b)
+	ReproductiveWeight float32 // Total reproductive capability
 }
 
 // Composition returns the flora/fauna composition ratio.
@@ -217,6 +233,8 @@ func (cb *CellBuffer) ComputeCapabilities() Capabilities {
 		caps.ActuatorWeight += cell.GetFunctionStrength(neural.CellTypeActuator)
 		caps.SensorWeight += cell.GetFunctionStrength(neural.CellTypeSensor)
 		caps.MouthSize += cell.GetFunctionStrength(neural.CellTypeMouth)
+		caps.BioluminescentCap += cell.GetFunctionStrength(neural.CellTypeBioluminescent)
+		caps.ReproductiveWeight += cell.GetFunctionStrength(neural.CellTypeReproductive)
 
 		// Digestive cells contribute to spectrum
 		digestiveStr := cell.GetFunctionStrength(neural.CellTypeDigestive)
