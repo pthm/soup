@@ -99,7 +99,7 @@ func (r *TerrainRenderer) Draw(terrain *systems.TerrainSystem, tick int32) {
 
 // drawCellEdges adds visual depth with edge highlights and shadows.
 func (r *TerrainRenderer) drawCellEdges(gx, gy int, baseX, baseY, cellSize float32,
-	grid *[80][128]systems.TerrainCell, gridW, gridH int, baseColor rl.Color, noise *systems.PerlinNoise) {
+	grid [][]systems.TerrainCell, gridW, gridH int, baseColor rl.Color, noise *systems.PerlinNoise) {
 
 	// Check neighbors for edge detection
 	hasTop := gy > 0 && grid[gy-1][gx] != systems.TerrainEmpty

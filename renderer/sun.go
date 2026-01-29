@@ -177,8 +177,12 @@ func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, m
 	minProjX, minProjY := projectPoint(minCorner.x, minCorner.y)
 	maxProjX, maxProjY := projectPoint(maxCorner.x, maxCorner.y)
 
-	// Draw main shadow quad - opacity scales with sun intensity
-	shadowAlpha := uint8(80 * intensity)
+	// Draw main shadow quad - opacity scales with sun intensity and occluder density
+	density := occ.Density
+	if density <= 0 {
+		return // No shadow for zero-density occluders
+	}
+	shadowAlpha := uint8(80 * intensity * density)
 	shadowColor := rl.Color{R: 5, G: 8, B: 12, A: shadowAlpha}
 	rl.DrawTriangle(
 		rl.Vector2{X: minCorner.x, Y: minCorner.y},
@@ -193,9 +197,9 @@ func (r *SunRenderer) drawShadow(lightX, lightY float32, occ systems.Occluder, m
 		shadowColor,
 	)
 
-	// Draw soft penumbra edges - also scale with intensity
+	// Draw soft penumbra edges - also scale with intensity and density
 	penumbraOffset := float32(0.08)
-	penumbraAlpha := uint8(30 * intensity)
+	penumbraAlpha := uint8(30 * intensity * density)
 	penumbraColor := rl.Color{R: 5, G: 8, B: 12, A: penumbraAlpha}
 
 	// Left penumbra

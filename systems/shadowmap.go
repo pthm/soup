@@ -5,37 +5,66 @@ import (
 )
 
 const (
-	shadowMapWidth  = 64 // Reduced from 128 for performance
-	shadowMapHeight = 64
-	occluderGridSize = 16 // Spatial grid for occluders
+	// Target cell size in pixels for shadow map (lower resolution than terrain)
+	shadowCellSize = 20.0
+	// Occluder grid uses larger cells for spatial acceleration
+	occluderCellSize = 80.0
 )
 
 // ShadowMap stores light intensity values for photosynthesis and phototropism.
 type ShadowMap struct {
-	grid           [shadowMapHeight][shadowMapWidth]float32
-	width, height  float32
-	updateInterval int32
-	lastUpdate     int32
+	grid             [][]float32
+	gridWidth        int
+	gridHeight       int
+	width, height    float32
+	updateInterval   int32
+	lastUpdate       int32
 	// Spatial grid for occluder acceleration
-	occluderGrid   [occluderGridSize][occluderGridSize][]int // indices into occluders slice
+	occluderGrid     [][][]int // indices into occluders slice
+	occluderGridSize int
 	// Pre-allocated buffers to avoid allocations in hot path
-	seenGeneration int           // Incremented each frame to avoid clearing seen array
-	occluderSeen   []int         // Stores generation when occluder was last seen
-	candidateBuf   []int         // Reusable buffer for candidate occluders
+	seenGeneration int   // Incremented each frame to avoid clearing seen array
+	occluderSeen   []int // Stores generation when occluder was last seen
+	candidateBuf   []int // Reusable buffer for candidate occluders
 }
 
 // NewShadowMap creates a new shadow map for the given screen dimensions.
 func NewShadowMap(screenWidth, screenHeight float32) *ShadowMap {
-	sm := &ShadowMap{
-		width:          screenWidth,
-		height:         screenHeight,
-		updateInterval: 8, // Update every 8 ticks (increased from 5)
+	// Calculate grid dimensions based on screen size (square cells)
+	gridWidth := int(screenWidth / shadowCellSize)
+	gridHeight := int(screenHeight / shadowCellSize)
+	occGridSize := int(screenWidth / occluderCellSize)
+	if int(screenHeight/occluderCellSize) < occGridSize {
+		occGridSize = int(screenHeight / occluderCellSize)
 	}
-	// Initialize all cells to full light
-	for y := 0; y < shadowMapHeight; y++ {
-		for x := 0; x < shadowMapWidth; x++ {
-			sm.grid[y][x] = 1.0
+	if occGridSize < 4 {
+		occGridSize = 4
+	}
+
+	// Allocate the shadow grid
+	grid := make([][]float32, gridHeight)
+	for y := range grid {
+		grid[y] = make([]float32, gridWidth)
+		for x := range grid[y] {
+			grid[y][x] = 1.0 // Initialize to full light
 		}
+	}
+
+	// Allocate the occluder grid
+	occGrid := make([][][]int, occGridSize)
+	for y := range occGrid {
+		occGrid[y] = make([][]int, occGridSize)
+	}
+
+	sm := &ShadowMap{
+		grid:             grid,
+		gridWidth:        gridWidth,
+		gridHeight:       gridHeight,
+		width:            screenWidth,
+		height:           screenHeight,
+		updateInterval:   8, // Update every 8 ticks
+		occluderGrid:     occGrid,
+		occluderGridSize: occGridSize,
 	}
 	return sm
 }
@@ -60,17 +89,17 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 		sm.candidateBuf = make([]int, 0, 64)
 	}
 
-	cellWidth := sm.width / shadowMapWidth
-	cellHeight := sm.height / shadowMapHeight
-	occGridCellW := sm.width / occluderGridSize
-	occGridCellH := sm.height / occluderGridSize
+	cellWidth := sm.width / float32(sm.gridWidth)
+	cellHeight := sm.height / float32(sm.gridHeight)
+	occGridCellW := sm.width / float32(sm.occluderGridSize)
+	occGridCellH := sm.height / float32(sm.occluderGridSize)
 
 	// Pre-compute max distance once
 	maxDist := float32(math.Sqrt(float64(sm.width*sm.width + sm.height*sm.height)))
 
 	// For each grid cell, calculate light intensity
-	for gy := 0; gy < shadowMapHeight; gy++ {
-		for gx := 0; gx < shadowMapWidth; gx++ {
+	for gy := 0; gy < sm.gridHeight; gy++ {
+		for gx := 0; gx < sm.gridWidth; gx++ {
 			// Increment generation for this grid cell to invalidate seen markers
 			sm.seenGeneration++
 
@@ -143,14 +172,14 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 // buildOccluderGrid populates the spatial grid with occluder indices.
 func (sm *ShadowMap) buildOccluderGrid(occluders []Occluder) {
 	// Clear the grid
-	for y := 0; y < occluderGridSize; y++ {
-		for x := 0; x < occluderGridSize; x++ {
+	for y := 0; y < sm.occluderGridSize; y++ {
+		for x := 0; x < sm.occluderGridSize; x++ {
 			sm.occluderGrid[y][x] = sm.occluderGrid[y][x][:0]
 		}
 	}
 
-	cellW := sm.width / occluderGridSize
-	cellH := sm.height / occluderGridSize
+	cellW := sm.width / float32(sm.occluderGridSize)
+	cellH := sm.height / float32(sm.occluderGridSize)
 
 	for i, occ := range occluders {
 		// Find all grid cells this occluder overlaps
@@ -163,14 +192,14 @@ func (sm *ShadowMap) buildOccluderGrid(occluders []Occluder) {
 		if minGX < 0 {
 			minGX = 0
 		}
-		if maxGX >= occluderGridSize {
-			maxGX = occluderGridSize - 1
+		if maxGX >= sm.occluderGridSize {
+			maxGX = sm.occluderGridSize - 1
 		}
 		if minGY < 0 {
 			minGY = 0
 		}
-		if maxGY >= occluderGridSize {
-			maxGY = occluderGridSize - 1
+		if maxGY >= sm.occluderGridSize {
+			maxGY = sm.occluderGridSize - 1
 		}
 
 		// Add to all overlapping cells
@@ -191,7 +220,7 @@ func (sm *ShadowMap) getOccludersAlongRay(x0, y0, x1, y1, cellW, cellH float32) 
 
 	// Helper to add occluders from a grid cell
 	addCell := func(gx, gy int) {
-		if gx < 0 || gx >= occluderGridSize || gy < 0 || gy >= occluderGridSize {
+		if gx < 0 || gx >= sm.occluderGridSize || gy < 0 || gy >= sm.occluderGridSize {
 			return
 		}
 		for _, idx := range sm.occluderGrid[gy][gx] {
@@ -212,26 +241,26 @@ func (sm *ShadowMap) getOccludersAlongRay(x0, y0, x1, y1, cellW, cellH float32) 
 	if gx0 < 0 {
 		gx0 = 0
 	}
-	if gx0 >= occluderGridSize {
-		gx0 = occluderGridSize - 1
+	if gx0 >= sm.occluderGridSize {
+		gx0 = sm.occluderGridSize - 1
 	}
 	if gy0 < 0 {
 		gy0 = 0
 	}
-	if gy0 >= occluderGridSize {
-		gy0 = occluderGridSize - 1
+	if gy0 >= sm.occluderGridSize {
+		gy0 = sm.occluderGridSize - 1
 	}
 	if gx1 < 0 {
 		gx1 = 0
 	}
-	if gx1 >= occluderGridSize {
-		gx1 = occluderGridSize - 1
+	if gx1 >= sm.occluderGridSize {
+		gx1 = sm.occluderGridSize - 1
 	}
 	if gy1 < 0 {
 		gy1 = 0
 	}
-	if gy1 >= occluderGridSize {
-		gy1 = occluderGridSize - 1
+	if gy1 >= sm.occluderGridSize {
+		gy1 = sm.occluderGridSize - 1
 	}
 
 	// Simple line traversal - add all cells in the bounding box of the ray
@@ -269,26 +298,26 @@ func (sm *ShadowMap) getOccludersAlongRayFast(x0, y0, x1, y1, cellW, cellH float
 	if gx0 < 0 {
 		gx0 = 0
 	}
-	if gx0 >= occluderGridSize {
-		gx0 = occluderGridSize - 1
+	if gx0 >= sm.occluderGridSize {
+		gx0 = sm.occluderGridSize - 1
 	}
 	if gy0 < 0 {
 		gy0 = 0
 	}
-	if gy0 >= occluderGridSize {
-		gy0 = occluderGridSize - 1
+	if gy0 >= sm.occluderGridSize {
+		gy0 = sm.occluderGridSize - 1
 	}
 	if gx1 < 0 {
 		gx1 = 0
 	}
-	if gx1 >= occluderGridSize {
-		gx1 = occluderGridSize - 1
+	if gx1 >= sm.occluderGridSize {
+		gx1 = sm.occluderGridSize - 1
 	}
 	if gy1 < 0 {
 		gy1 = 0
 	}
-	if gy1 >= occluderGridSize {
-		gy1 = occluderGridSize - 1
+	if gy1 >= sm.occluderGridSize {
+		gy1 = sm.occluderGridSize - 1
 	}
 
 	// Get bounding box of the ray
@@ -380,8 +409,8 @@ func (sm *ShadowMap) rayIntersectsAABB(px, py, sunX, sunY float32, occ Occluder)
 // SampleLight returns the light intensity at a world position using bilinear interpolation.
 func (sm *ShadowMap) SampleLight(worldX, worldY float32) float32 {
 	// Convert world coordinates to grid coordinates
-	cellWidth := sm.width / shadowMapWidth
-	cellHeight := sm.height / shadowMapHeight
+	cellWidth := sm.width / float32(sm.gridWidth)
+	cellHeight := sm.height / float32(sm.gridHeight)
 
 	gx := worldX/cellWidth - 0.5
 	gy := worldY/cellHeight - 0.5
@@ -393,11 +422,11 @@ func (sm *ShadowMap) SampleLight(worldX, worldY float32) float32 {
 	if gy < 0 {
 		gy = 0
 	}
-	if gx >= shadowMapWidth-1 {
-		gx = shadowMapWidth - 1.001
+	if gx >= float32(sm.gridWidth-1) {
+		gx = float32(sm.gridWidth) - 1.001
 	}
-	if gy >= shadowMapHeight-1 {
-		gy = shadowMapHeight - 1.001
+	if gy >= float32(sm.gridHeight-1) {
+		gy = float32(sm.gridHeight) - 1.001
 	}
 
 	// Get integer and fractional parts
@@ -410,11 +439,11 @@ func (sm *ShadowMap) SampleLight(worldX, worldY float32) float32 {
 	fy := gy - float32(y0)
 
 	// Clamp indices
-	if x1 >= shadowMapWidth {
-		x1 = shadowMapWidth - 1
+	if x1 >= sm.gridWidth {
+		x1 = sm.gridWidth - 1
 	}
-	if y1 >= shadowMapHeight {
-		y1 = shadowMapHeight - 1
+	if y1 >= sm.gridHeight {
+		y1 = sm.gridHeight - 1
 	}
 
 	// Bilinear interpolation

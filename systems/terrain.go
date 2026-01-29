@@ -14,14 +14,13 @@ const (
 )
 
 const (
-	// Target ~10px square cells for 1280x800 screen (higher resolution)
-	terrainGridWidth  = 128 // 1280 / 10 = 128
-	terrainGridHeight = 80  // 800 / 10 = 80
+	// Target cell size in pixels (2px for high resolution terrain)
+	terrainCellSize = 2.0
 )
 
 // TerrainSystem manages procedural terrain with collision detection.
 type TerrainSystem struct {
-	grid          [terrainGridHeight][terrainGridWidth]TerrainCell
+	grid          [][]TerrainCell
 	cellSize      float32 // Square cells
 	width         float32
 	height        float32
@@ -33,15 +32,23 @@ type TerrainSystem struct {
 
 // NewTerrainSystem creates a new terrain system and generates terrain.
 func NewTerrainSystem(screenWidth, screenHeight float32, seed int64) *TerrainSystem {
-	// Calculate cell size to get square cells
-	cellSize := screenWidth / terrainGridWidth // Should equal screenHeight / terrainGridHeight
+	// Calculate grid dimensions based on screen size and target cell size
+	gridWidth := int(screenWidth / terrainCellSize)
+	gridHeight := int(screenHeight / terrainCellSize)
+
+	// Allocate the grid as a slice of slices
+	grid := make([][]TerrainCell, gridHeight)
+	for y := range grid {
+		grid[y] = make([]TerrainCell, gridWidth)
+	}
 
 	t := &TerrainSystem{
-		cellSize:   cellSize,
+		grid:       grid,
+		cellSize:   terrainCellSize,
 		width:      screenWidth,
 		height:     screenHeight,
-		gridWidth:  terrainGridWidth,
-		gridHeight: terrainGridHeight,
+		gridWidth:  gridWidth,
+		gridHeight: gridHeight,
 		noise:      NewPerlinNoise(seed),
 	}
 	t.Generate(seed)
@@ -457,8 +464,8 @@ func (t *TerrainSystem) CellHeight() float32 {
 }
 
 // Grid returns a reference to the terrain grid for rendering.
-func (t *TerrainSystem) Grid() *[terrainGridHeight][terrainGridWidth]TerrainCell {
-	return &t.grid
+func (t *TerrainSystem) Grid() [][]TerrainCell {
+	return t.grid
 }
 
 // GridWidth returns the terrain grid width.

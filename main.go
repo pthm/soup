@@ -91,43 +91,43 @@ const (
 )
 
 type Game struct {
-	world         *ecs.World
-	bounds        systems.Bounds
-	physics       *systems.PhysicsSystem
-	energy        *systems.EnergySystem
-	cells         *systems.CellSystem
-	behavior      *systems.BehaviorSystem
+	world           *ecs.World
+	bounds          systems.Bounds
+	physics         *systems.PhysicsSystem
+	energy          *systems.EnergySystem
+	cells           *systems.CellSystem
+	behavior        *systems.BehaviorSystem
 	flowField       *systems.FlowFieldSystem
 	flowRenderer    *renderer.FlowRenderer
 	waterBackground *renderer.WaterBackground
 	sunRenderer     *renderer.SunRenderer
 	light           renderer.LightState
-	tick          int32
-	paused        bool
-	stepsPerFrame int
-	perf          *PerfStats
+	tick            int32
+	paused          bool
+	stepsPerFrame   int
+	perf            *PerfStats
 
 	// Terrain
 	terrain         *systems.TerrainSystem
 	terrainRenderer *renderer.TerrainRenderer
 
 	// New systems
-	shadowMap      *systems.ShadowMap
-	photosynthesis *systems.PhotosynthesisSystem
-	feeding        *systems.FeedingSystem
-	spores         *systems.SporeSystem
-	breeding       *systems.BreedingSystem
-	splitting      *systems.SplittingSystem
-	particles      *systems.ParticleSystem
+	shadowMap        *systems.ShadowMap
+	photosynthesis   *systems.PhotosynthesisSystem
+	feeding          *systems.FeedingSystem
+	spores           *systems.SporeSystem
+	breeding         *systems.BreedingSystem
+	splitting        *systems.SplittingSystem
+	particles        *systems.ParticleSystem
 	particleRenderer *renderer.ParticleRenderer
-	allocation     *systems.AllocationSystem
-	spatialGrid    *systems.SpatialGrid
-	disease        *systems.DiseaseSystem
+	allocation       *systems.AllocationSystem
+	spatialGrid      *systems.SpatialGrid
+	disease          *systems.DiseaseSystem
 
 	// Neural evolution
-	neuralConfig    *neural.Config
-	genomeIDGen     *neural.GenomeIDGenerator
-	speciesManager  *neural.SpeciesManager
+	neuralConfig   *neural.Config
+	genomeIDGen    *neural.GenomeIDGenerator
+	speciesManager *neural.SpeciesManager
 
 	// Display settings
 	showSpeciesColors bool // Toggle species coloring with 'S' key
@@ -146,10 +146,10 @@ type Game struct {
 	brainMap        *ecs.Map[components.Brain]
 
 	// Filters for querying
-	floraFilter      *ecs.Filter3[components.Position, components.Organism, components.Flora]
-	faunaFilter      *ecs.Filter3[components.Position, components.Organism, components.Fauna]
-	faunaCellFilter  *ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Fauna]
-	allOrgFilter     *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
+	floraFilter     *ecs.Filter3[components.Position, components.Organism, components.Flora]
+	faunaFilter     *ecs.Filter3[components.Position, components.Organism, components.Fauna]
+	faunaCellFilter *ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Fauna]
+	allOrgFilter    *ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
 }
 
 func NewGame() *Game {
@@ -190,29 +190,29 @@ func NewGame() *Game {
 		terrainRenderer: renderer.NewTerrainRenderer(screenWidth, screenHeight),
 
 		// New systems
-		shadowMap:      shadowMap,
-		photosynthesis: systems.NewPhotosynthesisSystem(world, shadowMap),
-		feeding:        systems.NewFeedingSystem(world),
-		spores:         systems.NewSporeSystemWithTerrain(bounds, terrain),
-		breeding:       systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
-		splitting:      systems.NewSplittingSystem(),
-		particles:      systems.NewParticleSystem(),
-		allocation:     systems.NewAllocationSystem(world),
-		spatialGrid:   systems.NewSpatialGrid(screenWidth, screenHeight),
-		disease:       systems.NewDiseaseSystem(),
+		shadowMap:        shadowMap,
+		photosynthesis:   systems.NewPhotosynthesisSystem(world, shadowMap),
+		feeding:          systems.NewFeedingSystem(world),
+		spores:           systems.NewSporeSystemWithTerrain(bounds, terrain),
+		breeding:         systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
+		splitting:        systems.NewSplittingSystem(),
+		particles:        systems.NewParticleSystem(),
+		allocation:       systems.NewAllocationSystem(world),
+		spatialGrid:      systems.NewSpatialGrid(screenWidth, screenHeight),
+		disease:          systems.NewDiseaseSystem(),
 		particleRenderer: renderer.NewParticleRenderer(),
 
 		// Neural evolution
-		neuralConfig:    neuralConfig,
-		genomeIDGen:     genomeIDGen,
-		speciesManager:  neural.NewSpeciesManager(neuralConfig.NEAT),
+		neuralConfig:   neuralConfig,
+		genomeIDGen:    genomeIDGen,
+		speciesManager: neural.NewSpeciesManager(neuralConfig.NEAT),
 
 		// Display settings
 		showSpeciesColors: false,
 		showNeuralStats:   false,
 
-		floraMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
-		faunaMapper:   ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
+		floraMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Flora](world),
+		faunaMapper:     ecs.NewMap5[components.Position, components.Velocity, components.Organism, components.CellBuffer, components.Fauna](world),
 		floraFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Flora](world),
 		faunaFilter:     ecs.NewFilter3[components.Position, components.Organism, components.Fauna](world),
 		faunaCellFilter: ecs.NewFilter4[components.Position, components.Organism, components.CellBuffer, components.Fauna](world),
@@ -248,13 +248,13 @@ func NewGameHeadless() *Game {
 	genomeIDGen := neural.NewGenomeIDGenerator()
 
 	g := &Game{
-		world:            world,
-		bounds:           bounds,
-		physics:          systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
-		energy:           systems.NewEnergySystem(world),
-		cells:            systems.NewCellSystem(world),
-		behavior:         systems.NewBehaviorSystem(world, shadowMap, terrain),
-		flowField:        systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
+		world:     world,
+		bounds:    bounds,
+		physics:   systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
+		energy:    systems.NewEnergySystem(world),
+		cells:     systems.NewCellSystem(world),
+		behavior:  systems.NewBehaviorSystem(world, shadowMap, terrain),
+		flowField: systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
 		// Skip renderers - they require raylib
 		flowRenderer:     nil,
 		waterBackground:  nil,
@@ -1248,13 +1248,13 @@ func (g *Game) collectOccluders() []systems.Occluder {
 	// Start with terrain occluders (static, cached, full density)
 	occluders := append([]systems.Occluder{}, g.terrain.GetOccluders()...)
 
-	// Add flora occluders only (fauna don't cast shadows)
-	// Flora has reduced density to simulate light filtering through gaps in leaves/vines
+	// Add floating flora occluders only (fauna don't cast shadows)
+	// Rooted flora don't cast shadows - they're attached to terrain which already casts shadows
 	query := g.floraFilter.Query()
 	for query.Next() {
 		pos, org, _ := query.Get()
 
-		if org.Dead {
+		if org.Dead || org.Traits.Has(traits.Rooted) {
 			continue
 		}
 
@@ -1265,7 +1265,7 @@ func (g *Game) collectOccluders() []systems.Occluder {
 			Y:       pos.Y - size/2,
 			Width:   size,
 			Height:  size,
-			Density: 0.3, // Sparse foliage - lets most light through
+			Density: 0.08, // Very sparse foliage - minimal shadow
 		})
 	}
 
@@ -1319,10 +1319,10 @@ func (g *Game) collectFaunaForDisease() ([]components.Position, []*components.Or
 func (g *Game) updateGrowth() {
 	// Collect deferred actions to avoid modifying world during query
 	type splitRequest struct {
-		pos       *components.Position
-		vel       *components.Velocity
-		org       *components.Organism
-		cells     *components.CellBuffer
+		pos   *components.Position
+		vel   *components.Velocity
+		org   *components.Organism
+		cells *components.CellBuffer
 	}
 	var pendingSplits []splitRequest
 
@@ -2110,12 +2110,12 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		cellColor.G = uint8(float32(cellColor.G) * light)
 		cellColor.B = uint8(float32(cellColor.B) * light)
 
-		// Draw cell
-		rl.DrawRectangle(
-			int32(cellX-org.CellSize/2),
-			int32(cellY-org.CellSize/2),
-			int32(org.CellSize),
-			int32(org.CellSize),
+		// Draw cell with rotation matching organism heading
+		rotationDeg := org.Heading * 180 / math.Pi
+		rl.DrawRectanglePro(
+			rl.Rectangle{X: cellX, Y: cellY, Width: org.CellSize, Height: org.CellSize},
+			rl.Vector2{X: org.CellSize / 2, Y: org.CellSize / 2}, // rotate around cell center
+			rotationDeg,
 			cellColor,
 		)
 
