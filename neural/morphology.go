@@ -31,6 +31,9 @@ type CellSpec struct {
 	// Spectrum value (only meaningful for digestive cells)
 	DigestiveSpectrum float32 // 0=herbivore, 1=carnivore
 
+	// Reproductive mode (only meaningful for reproductive cells)
+	ReproductiveMode float32 // 0=asexual, 0.5=mixed, 1=sexual
+
 	// Additive modifiers (incur costs)
 	StructuralArmor  float32 // 0-1, damage reduction (adds drag)
 	StorageCapacity  float32 // 0-1, max energy bonus (adds metabolism)
@@ -180,21 +183,46 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 	// Build CellSpecs from candidates
 	cells := make([]CellSpec, len(candidates))
 	for i, c := range candidates {
-		// Extract functional outputs (indices 1-7)
-		functionalOutputs := c.outputs[CPPNOutSensor : CPPNOutSensor+CPPNFunctionalOutputs]
+		// Extract functional outputs explicitly (the 7 cell type functions)
+		// This fixes a bug where StructuralArmor was included instead of Reproductive
+		functionalOutputs := []float64{
+			c.outputs[CPPNOutSensor],         // 0 → CellTypeSensor
+			c.outputs[CPPNOutActuator],       // 1 → CellTypeActuator
+			c.outputs[CPPNOutMouth],          // 2 → CellTypeMouth
+			c.outputs[CPPNOutDigestive],      // 3 → CellTypeDigestive
+			c.outputs[CPPNOutPhotosynthetic], // 4 → CellTypePhotosynthetic
+			c.outputs[CPPNOutBioluminescent], // 5 → CellTypeBioluminescent
+			c.outputs[CPPNOutReproductive],   // 6 → CellTypeReproductive
+		}
 		primary, secondary, effPrimary, effSecondary := SelectCellFunctions(functionalOutputs)
 
-		// Raw strengths before penalty
-		var rawPrimary, rawSecondary float32
-		if int(primary) > 0 && int(primary) <= CPPNFunctionalOutputs {
-			rawPrimary = float32((c.outputs[int(primary)] + 1.0) / 2.0)
+		// Raw strengths before penalty - map CellType to CPPN output index
+		cellTypeToOutput := map[CellType]int{
+			CellTypeSensor:         CPPNOutSensor,
+			CellTypeActuator:       CPPNOutActuator,
+			CellTypeMouth:          CPPNOutMouth,
+			CellTypeDigestive:      CPPNOutDigestive,
+			CellTypePhotosynthetic: CPPNOutPhotosynthetic,
+			CellTypeBioluminescent: CPPNOutBioluminescent,
+			CellTypeReproductive:   CPPNOutReproductive,
 		}
-		if secondary != CellTypeNone && int(secondary) > 0 && int(secondary) <= CPPNFunctionalOutputs {
-			rawSecondary = float32((c.outputs[int(secondary)] + 1.0) / 2.0)
+
+		var rawPrimary, rawSecondary float32
+		if outIdx, ok := cellTypeToOutput[primary]; ok {
+			rawPrimary = float32((c.outputs[outIdx] + 1.0) / 2.0)
+		}
+		if secondary != CellTypeNone {
+			if outIdx, ok := cellTypeToOutput[secondary]; ok {
+				rawSecondary = float32((c.outputs[outIdx] + 1.0) / 2.0)
+			}
 		}
 
 		// Digestive spectrum (normalize to 0-1 range)
 		digestiveSpectrum := float32((c.outputs[CPPNOutDigestive] + 1.0) / 2.0)
+
+		// Reproductive mode (normalize to 0-1 range)
+		// For reproductive cells, this determines asexual(0) vs sexual(1)
+		reproductiveMode := float32((c.outputs[CPPNOutReproductive] + 1.0) / 2.0)
 
 		// Additive modifiers (normalize to 0-1)
 		structuralArmor := float32((c.outputs[CPPNOutStructuralArmor] + 1.0) / 2.0)
@@ -210,6 +238,7 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 			EffectivePrimary:   effPrimary,
 			EffectiveSecondary: effSecondary,
 			DigestiveSpectrum:  digestiveSpectrum,
+			ReproductiveMode:   reproductiveMode,
 			StructuralArmor:    structuralArmor,
 			StorageCapacity:    storageCapacity,
 		}

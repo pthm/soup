@@ -87,12 +87,8 @@ func (s *CellSystem) Update(w *ecs.World) {
 		if org.Traits.Has(traits.Floating) {
 			activeTraits = activeTraits.Add(traits.Floating)
 		}
-		if org.Traits.Has(traits.Male) {
-			activeTraits = activeTraits.Add(traits.Male)
-		}
-		if org.Traits.Has(traits.Female) {
-			activeTraits = activeTraits.Add(traits.Female)
-		}
+		// Note: Male/Female traits are deprecated and no longer propagated
+		// Reproduction mode is now determined by ReproductiveMode spectrum from CPPN
 
 		org.Traits = activeTraits
 	}

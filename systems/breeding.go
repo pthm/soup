@@ -6,20 +6,30 @@ import (
 
 	"github.com/mlange-42/ark/ecs"
 	"github.com/yaricom/goNEAT/v4/neat"
+	"github.com/yaricom/goNEAT/v4/neat/genetics"
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/traits"
 )
 
-// BreedingSystem handles fauna sexual reproduction.
+// Breeding constants
+const (
+	BreedIntentThreshold = 0.6  // Brain output threshold for breeding intent
+	MinEnergyRatio       = 0.7  // Minimum energy ratio for reproduction
+	AsexualEnergyCost    = 20.0 // Energy cost for asexual reproduction (single parent)
+	SexualEnergyCost     = 15.0 // Energy cost for sexual reproduction (per parent)
+	MateProximity        = 80.0 // Maximum distance for finding mates
+)
+
+// BreedingSystem handles fauna reproduction (both asexual and sexual).
 type BreedingSystem struct {
-	filter       ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
-	neuralMap    *ecs.Map[components.NeuralGenome]
-	brainMap     *ecs.Map[components.Brain]
-	neatOpts     *neat.Options
-	genomeIDGen  *neural.GenomeIDGenerator
-	cppnConfig   neural.CPPNConfig
+	filter      ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
+	neuralMap   *ecs.Map[components.NeuralGenome]
+	brainMap    *ecs.Map[components.Brain]
+	neatOpts    *neat.Options
+	genomeIDGen *neural.GenomeIDGenerator
+	cppnConfig  neural.CPPNConfig
 }
 
 // NewBreedingSystem creates a new breeding system.
@@ -40,20 +50,22 @@ type OrganismCreator func(x, y float32, t traits.Trait, energy float32) ecs.Enti
 // NeuralOrganismCreator is called to create neural organisms with genomes.
 type NeuralOrganismCreator func(x, y float32, t traits.Trait, energy float32, neural *components.NeuralGenome, brain *components.Brain) ecs.Entity
 
+// breeder holds data for a potential breeding organism.
+type breeder struct {
+	entity    ecs.Entity
+	pos       *components.Position
+	vel       *components.Velocity
+	org       *components.Organism
+	cells     *components.CellBuffer
+	caps      components.Capabilities
+	speciesID int
+}
+
 // Update processes breeding for all eligible fauna.
-// createOrganism is used for non-neural organisms.
-// createNeuralOrganism is used for neural organisms (can be nil to skip neural breeding).
+// Organisms can reproduce sexually (with a mate) or asexually (cloning with mutation)
+// based on their ReproductiveMode derived from CPPN.
 func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
 	// Collect all potential breeders
-	type breeder struct {
-		entity    ecs.Entity
-		pos       *components.Position
-		vel       *components.Velocity
-		org       *components.Organism
-		cells     *components.CellBuffer
-		speciesID int // Species ID for assortative mating
-	}
-
 	var breeders []breeder
 
 	query := s.filter.Query()
@@ -65,8 +77,16 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			continue
 		}
 
-		// Check eligibility
+		// Check basic eligibility
 		if !s.isEligible(org, cells) {
+			continue
+		}
+
+		// Compute capabilities (includes reproductive mode)
+		caps := cells.ComputeCapabilities()
+
+		// Must have reproductive capability to breed
+		if caps.ReproductiveWeight <= 0 {
 			continue
 		}
 
@@ -85,39 +105,56 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			vel:       vel,
 			org:       org,
 			cells:     cells,
+			caps:      caps,
 			speciesID: speciesID,
 		})
 	}
 
-	// Try to find compatible pairs
+	// Track which organisms have bred this tick
 	bred := make(map[ecs.Entity]bool)
 
+	// Process each eligible breeder
 	for i := range breeders {
 		if bred[breeders[i].entity] {
 			continue
 		}
 
-		for j := i + 1; j < len(breeders); j++ {
-			if bred[breeders[j].entity] {
-				continue
-			}
+		a := &breeders[i]
 
-			a := &breeders[i]
-			b := &breeders[j]
+		// Get reproductive mode (0=asexual, 0.5=mixed, 1=sexual)
+		reproMode := a.caps.ReproductiveMode()
 
-			if s.isCompatible(a.org, b.org, a.pos, b.pos, a.speciesID, b.speciesID) {
-				s.breed(a.entity, b.entity, a.pos, b.pos, a.org, b.org, a.cells, b.cells, createOrganism, createNeuralOrganism)
-				bred[a.entity] = true
-				bred[b.entity] = true
-				break
+		// Try sexual reproduction based on reproductive mode
+		if rand.Float32() < reproMode {
+			// Look for a compatible mate
+			for j := range breeders {
+				if i == j || bred[breeders[j].entity] {
+					continue
+				}
+
+				b := &breeders[j]
+
+				if s.isCompatibleForSexual(a, b) {
+					s.breedSexual(a, b, createOrganism, createNeuralOrganism)
+					bred[a.entity] = true
+					bred[b.entity] = true
+					break
+				}
 			}
+		}
+
+		// If not bred yet, try asexual reproduction
+		if !bred[a.entity] && rand.Float32() < (1.0-reproMode) {
+			s.breedAsexual(a, createOrganism, createNeuralOrganism)
+			bred[a.entity] = true
 		}
 	}
 }
 
+// isEligible checks if an organism meets basic requirements to attempt reproduction.
 func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
-	// Check breed intent from brain (>0.5 means try to reproduce)
-	if org.BreedIntent < 0.5 {
+	// Check breed intent from brain (threshold for wanting to reproduce)
+	if org.BreedIntent < BreedIntentThreshold {
 		return false
 	}
 
@@ -126,12 +163,12 @@ func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.
 		return false
 	}
 
-	// Energy must be above 35% of max
-	if org.Energy < org.MaxEnergy*0.35 {
+	// Energy must be above minimum ratio
+	if org.Energy < org.MaxEnergy*MinEnergyRatio {
 		return false
 	}
 
-	// Only need 1 cell
+	// Must have at least 1 cell
 	if cells.Count < 1 {
 		return false
 	}
@@ -144,66 +181,90 @@ func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.
 	return true
 }
 
-func (s *BreedingSystem) isCompatible(a, b *components.Organism, posA, posB *components.Position, speciesA, speciesB int) bool {
-	// Must have opposite genders
-	aIsMale := a.Traits.Has(traits.Male)
-	bIsMale := b.Traits.Has(traits.Male)
-	if aIsMale == bIsMale {
+// isCompatibleForSexual checks if two organisms can mate sexually.
+// No longer requires opposite genders - any two willing organisms can mate.
+func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
+	// Both must be eligible (already checked) and have reproductive capability
+	if a.caps.ReproductiveWeight <= 0 || b.caps.ReproductiveWeight <= 0 {
 		return false
 	}
 
-	// Must be within proximity (80 units - more forgiving for sparse populations)
-	dx := posA.X - posB.X
-	dy := posA.Y - posB.Y
+	// Must be within proximity
+	dx := a.pos.X - b.pos.X
+	dy := a.pos.Y - b.pos.Y
 	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-	if dist > 80 {
+	if dist > MateProximity {
 		return false
 	}
 
-	// No breeding preference by species - organisms breed freely like aquatic species
-	// Species are tracked for genetic clustering, not reproductive barriers
-	// This allows maximum gene flow while still measuring genetic diversity
-	_ = speciesA // unused but kept for potential future use
-	_ = speciesB
+	// Both should prefer sexual reproduction (or at least be willing)
+	// Use the average of their reproductive modes as compatibility
+	avgReproMode := (a.caps.ReproductiveMode() + b.caps.ReproductiveMode()) / 2
+	if avgReproMode < 0.3 {
+		// Both lean heavily asexual, unlikely to mate
+		return false
+	}
 
 	return true
 }
 
-func (s *BreedingSystem) breed(
-	entityA, entityB ecs.Entity,
-	posA, posB *components.Position,
-	orgA, orgB *components.Organism,
-	cellsA, cellsB *components.CellBuffer,
-	createOrganism OrganismCreator,
-	createNeuralOrganism NeuralOrganismCreator,
-) {
+// breedSexual performs sexual reproduction between two organisms.
+func (s *BreedingSystem) breedSexual(a, b *breeder, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
 	// Position: midpoint between parents
-	x := (posA.X + posB.X) / 2
-	y := (posA.Y + posB.Y) / 2
+	x := (a.pos.X + b.pos.X) / 2
+	y := (a.pos.Y + b.pos.Y) / 2
 
 	// Check if both parents have neural genomes
-	neuralA := s.neuralMap.Get(entityA)
-	neuralB := s.neuralMap.Get(entityB)
+	neuralA := s.neuralMap.Get(a.entity)
+	neuralB := s.neuralMap.Get(b.entity)
 
 	if neuralA != nil && neuralB != nil && createNeuralOrganism != nil && s.genomeIDGen != nil && s.neatOpts != nil {
-		// Neural breeding
-		s.breedNeural(x, y, orgA, orgB, cellsA, cellsB, neuralA, neuralB, createNeuralOrganism)
+		// Neural breeding with crossover
+		s.breedNeuralSexual(x, y, a.org, b.org, a.cells, b.cells, neuralA, neuralB, createNeuralOrganism)
 	} else {
 		// Traditional trait-based breeding
-		offspringTraits := s.inheritTraits(orgA.Traits, orgB.Traits)
+		offspringTraits := s.inheritTraits(a.org.Traits, b.org.Traits)
 		createOrganism(x, y, offspringTraits, 50)
 	}
 
-	// Cost to parents (reduced for faster population growth)
-	orgA.Energy -= 15
-	orgB.Energy -= 15
+	// Cost to both parents (shared cost)
+	a.org.Energy -= SexualEnergyCost
+	b.org.Energy -= SexualEnergyCost
 
-	// Set cooldowns (reduced for more frequent breeding)
-	orgA.BreedingCooldown = 120
-	orgB.BreedingCooldown = 120
+	// Set cooldowns
+	a.org.BreedingCooldown = 120
+	b.org.BreedingCooldown = 120
 }
 
-func (s *BreedingSystem) breedNeural(
+// breedAsexual performs asexual reproduction (budding/cloning with mutation).
+func (s *BreedingSystem) breedAsexual(a *breeder, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
+	// Position: slight offset from parent
+	offsetX := (rand.Float32() - 0.5) * 40
+	offsetY := (rand.Float32() - 0.5) * 40
+	x := a.pos.X + offsetX
+	y := a.pos.Y + offsetY
+
+	// Check if parent has neural genome
+	neuralA := s.neuralMap.Get(a.entity)
+
+	if neuralA != nil && createNeuralOrganism != nil && s.genomeIDGen != nil && s.neatOpts != nil {
+		// Neural asexual reproduction - clone and mutate
+		s.breedNeuralAsexual(x, y, a.org, neuralA, createNeuralOrganism)
+	} else {
+		// Traditional trait-based - clone parent traits with small variation
+		offspringTraits := s.inheritTraitsAsexual(a.org.Traits)
+		createOrganism(x, y, offspringTraits, 50)
+	}
+
+	// Higher cost for single parent (solo investment)
+	a.org.Energy -= AsexualEnergyCost
+
+	// Set cooldown
+	a.org.BreedingCooldown = 150 // Slightly longer cooldown for asexual
+}
+
+// breedNeuralSexual performs neural reproduction with genome crossover.
+func (s *BreedingSystem) breedNeuralSexual(
 	x, y float32,
 	orgA, orgB *components.Organism,
 	cellsA, cellsB *components.CellBuffer,
@@ -215,7 +276,6 @@ func (s *BreedingSystem) breedNeural(
 	fitnessB := neural.CalculateBreedingFitness(orgB.Energy, orgB.MaxEnergy, int(cellsB.Count))
 
 	// HyperNEAT: Crossover and mutate only the CPPN genome
-	// The brain will be derived from the CPPN + morphology
 	bodyChild, err := neural.CreateOffspringCPPN(
 		neuralA.BodyGenome, neuralB.BodyGenome,
 		fitnessA, fitnessB,
@@ -234,15 +294,45 @@ func (s *BreedingSystem) breedNeural(
 		return
 	}
 
+	s.createOffspringFromCPPN(x, y, bodyChild, orgA.Traits, orgB.Traits, neuralA, neuralB, createNeuralOrganism)
+}
+
+// breedNeuralAsexual performs neural reproduction by cloning and mutating.
+func (s *BreedingSystem) breedNeuralAsexual(
+	x, y float32,
+	org *components.Organism,
+	neuralParent *components.NeuralGenome,
+	createNeuralOrganism NeuralOrganismCreator,
+) {
+	// Clone parent's CPPN genome
+	bodyChild, err := neural.CloneGenome(neuralParent.BodyGenome, s.genomeIDGen.NextID())
+	if err != nil || bodyChild == nil {
+		return
+	}
+
+	// Apply mutations (slightly higher mutation rate for asexual to maintain diversity)
+	neural.MutateCPPNGenome(bodyChild, s.neatOpts, s.genomeIDGen)
+
+	// Create offspring from mutated clone
+	s.createOffspringFromCPPN(x, y, bodyChild, org.Traits, org.Traits, neuralParent, neuralParent, createNeuralOrganism)
+}
+
+// createOffspringFromCPPN generates morphology and brain from CPPN and creates the organism.
+func (s *BreedingSystem) createOffspringFromCPPN(
+	x, y float32,
+	bodyGenome *genetics.Genome,
+	traitsA, traitsB traits.Trait,
+	neuralA, neuralB *components.NeuralGenome,
+	createNeuralOrganism NeuralOrganismCreator,
+) {
 	// Generate morphology from child CPPN
-	morph, err := neural.GenerateMorphology(bodyChild, s.cppnConfig.MaxCells, s.cppnConfig.CellThreshold)
+	morph, err := neural.GenerateMorphology(bodyGenome, s.cppnConfig.MaxCells, s.cppnConfig.CellThreshold)
 	if err != nil {
 		return
 	}
 
 	// HyperNEAT: Build brain from CPPN + morphology
-	// CPPN determines connection weights based on sensor/actuator positions
-	brainController, err := neural.SimplifiedHyperNEATBrain(bodyChild, &morph)
+	brainController, err := neural.SimplifiedHyperNEATBrain(bodyGenome, &morph)
 	if err != nil {
 		// Fallback to traditional brain creation
 		brainGenome := neural.CreateBrainGenome(s.genomeIDGen.NextID(), 0.3)
@@ -255,14 +345,13 @@ func (s *BreedingSystem) breedNeural(
 	// Determine species (based on CPPN genome compatibility)
 	childSpeciesID := neuralA.SpeciesID // Default to parent's species
 
-	// Inherit traits from parents (still use trait system alongside neural)
-	offspringTraits := s.inheritTraits(orgA.Traits, orgB.Traits)
+	// Inherit traits from parents
+	offspringTraits := s.inheritTraits(traitsA, traitsB)
 
 	// Create neural genome component
-	// BrainGenome stores the derived brain for compatibility/inspection
 	childNeural := &components.NeuralGenome{
-		BodyGenome:  bodyChild,
-		BrainGenome: brainController.Genome, // Store derived brain genome
+		BodyGenome:  bodyGenome,
+		BrainGenome: brainController.Genome,
 		SpeciesID:   childSpeciesID,
 		Generation:  max(neuralA.Generation, neuralB.Generation) + 1,
 	}
@@ -272,10 +361,12 @@ func (s *BreedingSystem) breedNeural(
 		Controller: brainController,
 	}
 
-	// Create the offspring with enough energy to survive
+	// Create the offspring
 	createNeuralOrganism(x, y, offspringTraits, 100, childNeural, childBrain)
 }
 
+// inheritTraits combines traits from two parents (for sexual reproduction).
+// Excludes deprecated Male/Female traits.
 func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {
 	var result traits.Trait
 
@@ -315,22 +406,33 @@ func (s *BreedingSystem) inheritTraits(a, b traits.Trait) traits.Trait {
 		}
 	}
 
+	// Note: Male/Female traits are deprecated and not inherited
+
 	return result
 }
 
-func countSharedTraits(a, b traits.Trait) int {
-	// Traits to check (diet only)
-	checkTraits := []traits.Trait{
-		traits.Herbivore,
-		traits.Carnivore,
-		traits.Carrion,
+// inheritTraitsAsexual clones parent traits for asexual reproduction.
+// Excludes deprecated Male/Female traits.
+func (s *BreedingSystem) inheritTraitsAsexual(parent traits.Trait) traits.Trait {
+	var result traits.Trait
+
+	// Copy diet traits from parent
+	if parent.Has(traits.Herbivore) {
+		result = result.Add(traits.Herbivore)
+	}
+	if parent.Has(traits.Carnivore) {
+		result = result.Add(traits.Carnivore)
+	}
+	if parent.Has(traits.Carrion) {
+		result = result.Add(traits.Carrion)
 	}
 
-	count := 0
-	for _, t := range checkTraits {
-		if a.Has(t) && b.Has(t) {
-			count++
-		}
+	// Must have at least one diet trait
+	if !result.Has(traits.Herbivore) && !result.Has(traits.Carnivore) && !result.Has(traits.Carrion) {
+		result = result.Add(traits.Herbivore)
 	}
-	return count
+
+	// Note: Male/Female traits are deprecated and not inherited
+
+	return result
 }

@@ -406,14 +406,8 @@ func (g *Game) createFlora(x, y float32, t traits.Trait, energy float32) ecs.Ent
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.
 func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain) ecs.Entity {
-	// Assign gender if fauna (all fauna can breed)
-	if traits.IsFauna(t) {
-		if rand.Float32() > 0.5 {
-			t = t.Add(traits.Male)
-		} else {
-			t = t.Add(traits.Female)
-		}
-	}
+	// Note: Gender (Male/Female) traits are deprecated - reproduction mode is now
+	// determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
 
 	// Generate morphology from CPPN
 	var morph neural.MorphologyResult
@@ -510,6 +504,7 @@ func (g *Game) createNeuralOrganism(x, y float32, t traits.Trait, energy float32
 			DigestiveSpectrum: cellSpec.DigestiveSpectrum,
 			StructuralArmor:   cellSpec.StructuralArmor,
 			StorageCapacity:   cellSpec.StorageCapacity,
+			ReproductiveMode:  cellSpec.ReproductiveMode,
 		})
 	}
 
@@ -615,14 +610,8 @@ func (g *Game) createInitialNeuralOrganism(x, y float32, baseTrait traits.Trait,
 
 // createNeuralOrganismConstrained creates a neural organism with cell count constraint.
 func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, energy float32, neuralGenome *components.NeuralGenome, brain *components.Brain, maxCells int) ecs.Entity {
-	// Assign gender if fauna (all fauna can breed)
-	if traits.IsFauna(t) {
-		if rand.Float32() > 0.5 {
-			t = t.Add(traits.Male)
-		} else {
-			t = t.Add(traits.Female)
-		}
-	}
+	// Note: Gender (Male/Female) traits are deprecated - reproduction mode is now
+	// determined by ReproductiveMode spectrum from CPPN (0=asexual, 0.5=mixed, 1=sexual)
 
 	// Generate morphology from CPPN with constrained cell count
 	var morph neural.MorphologyResult
@@ -717,6 +706,7 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, t traits.Trait, ene
 			DigestiveSpectrum: cellSpec.DigestiveSpectrum,
 			StructuralArmor:   cellSpec.StructuralArmor,
 			StorageCapacity:   cellSpec.StorageCapacity,
+			ReproductiveMode:  cellSpec.ReproductiveMode,
 		}
 		cells.AddCell(cell)
 	}

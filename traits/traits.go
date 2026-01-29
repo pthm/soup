@@ -15,9 +15,12 @@ const (
 	Rooted   // Anchored to bottom
 	Floating // Drifts in space
 
-	// Gender (for breeding)
-	Male
-	Female
+	// Deprecated: Gender traits are no longer used for breeding.
+	// Reproduction mode is now determined by the ReproductiveMode spectrum
+	// from CPPN (0=asexual, 0.5=mixed, 1=sexual).
+	// These constants are kept for backward compatibility only.
+	Male   // Deprecated: use ReproductiveMode instead
+	Female // Deprecated: use ReproductiveMode instead
 )
 
 // Mutation defines cell mutations.

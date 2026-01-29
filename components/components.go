@@ -106,6 +106,9 @@ type Cell struct {
 	// Modifiers
 	StructuralArmor float32 // 0-1, damage reduction (adds drag)
 	StorageCapacity float32 // 0-1, max energy bonus (adds metabolism)
+
+	// Reproduction spectrum (from CPPN)
+	ReproductiveMode float32 // 0=asexual, 0.5=mixed, 1=sexual
 }
 
 // GetSensorStrength returns the effective sensor capability of this cell.
@@ -193,6 +196,8 @@ type Capabilities struct {
 	StorageCapacity    float32 // Average storage capacity
 	BioluminescentCap  float32 // Total bioluminescent capability (Phase 5b)
 	ReproductiveWeight float32 // Total reproductive capability
+	ReproductiveSum    float32 // Sum of reproductive mode values from reproductive cells
+	ReproductiveCount  int     // Number of reproductive cells
 }
 
 // Composition returns the flora/fauna composition ratio.
@@ -213,6 +218,17 @@ func (c *Capabilities) DigestiveSpectrum() float32 {
 		return 0.5 // Neutral if no digestive cells
 	}
 	return c.DigestiveSum / float32(c.DigestiveCount)
+}
+
+// ReproductiveMode returns the average reproductive mode across reproductive cells.
+// 0.0 = pure asexual (budding/cloning)
+// 0.5 = mixed (opportunistic)
+// 1.0 = pure sexual (requires mate)
+func (c *Capabilities) ReproductiveMode() float32 {
+	if c.ReproductiveCount == 0 {
+		return 0.5 // Default to mixed if no reproductive cells
+	}
+	return c.ReproductiveSum / float32(c.ReproductiveCount)
 }
 
 // ComputeCapabilities calculates capability totals from all alive cells.
@@ -241,6 +257,13 @@ func (cb *CellBuffer) ComputeCapabilities() Capabilities {
 		if digestiveStr > 0 {
 			caps.DigestiveSum += cell.DigestiveSpectrum * digestiveStr
 			caps.DigestiveCount++
+		}
+
+		// Reproductive cells contribute to mode
+		reproStr := cell.GetFunctionStrength(neural.CellTypeReproductive)
+		if reproStr > 0 {
+			caps.ReproductiveSum += cell.ReproductiveMode
+			caps.ReproductiveCount++
 		}
 
 		// Modifiers

@@ -443,6 +443,8 @@ func (s *BehaviorSystem) buildEntityList(
 }
 
 // findMate finds a compatible mate for breeding.
+// Note: Gender is deprecated - any nearby organism willing to breed is a potential mate.
+// The actual compatibility check (based on reproductive mode) happens in the breeding system.
 func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (float32, float32, bool) {
 	maxDist := org.PerceptionRadius
 	maxDistSq := maxDist * maxDist
@@ -456,10 +458,9 @@ func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Orga
 		if other == org || other.Dead {
 			continue
 		}
-		// Opposite gender check
-		isMale := org.Traits.Has(traits.Male)
-		otherMale := other.Traits.Has(traits.Male)
-		if isMale == otherMale {
+
+		// Basic check: other organism should also want to breed
+		if other.BreedIntent < 0.5 {
 			continue
 		}
 
@@ -476,6 +477,8 @@ func (s *BehaviorSystem) findMate(pos *components.Position, org *components.Orga
 }
 
 // findMateWeighted finds a mate using sensor-weighted perception.
+// Note: Gender is deprecated - any nearby organism willing to breed is a potential mate.
+// The actual compatibility check (based on reproductive mode) happens in the breeding system.
 func (s *BehaviorSystem) findMateWeighted(
 	pos *components.Position,
 	org *components.Organism,
@@ -496,10 +499,9 @@ func (s *BehaviorSystem) findMateWeighted(
 		if other == org || other.Dead {
 			continue
 		}
-		// Opposite gender check
-		isMale := org.Traits.Has(traits.Male)
-		otherMale := other.Traits.Has(traits.Male)
-		if isMale == otherMale {
+
+		// Basic check: other organism should also want to breed
+		if other.BreedIntent < 0.5 {
 			continue
 		}
 
