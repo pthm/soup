@@ -19,9 +19,8 @@ type BehaviorSystem struct {
 	tick        int32
 	shadowMap   *ShadowMap
 	terrain     *TerrainSystem
-	pathfinder  *Pathfinder                // Phase 5: navigation layer between brain and actuators
-	pathCaches  map[ecs.Entity]*PathCache  // A* path caches per organism
-	floraSystem *FloraSystem               // Lightweight flora system for vision
+	pathfinder  *Pathfinder  // Potential-field navigation layer
+	floraSystem *FloraSystem // Lightweight flora system for vision
 }
 
 // NewBehaviorSystem creates a new behavior system.
@@ -34,7 +33,6 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 		shadowMap:  shadowMap,
 		terrain:    terrain,
 		pathfinder: NewPathfinder(terrain),
-		pathCaches: make(map[ecs.Entity]*PathCache),
 	}
 }
 
@@ -46,8 +44,6 @@ func (s *BehaviorSystem) SetFloraSystem(fs *FloraSystem) {
 // Update runs the behavior system with actuator-driven neural control.
 func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
 	s.tick++
-	// Update pathfinder tick for A* path cache validation
-	s.pathfinder.SetTick(s.tick)
 
 	query := s.filter.Query()
 	for query.Next() {
@@ -58,9 +54,6 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 
 		// Dead organisms only get flow field influence
 		if org.Dead {
-			// Clean up path cache for dead organisms
-			delete(s.pathCaches, entity)
-
 			flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 			vel.X += flowX * 1.5
 			vel.Y += flowY * 1.5
@@ -98,54 +91,20 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			org.EmittedLight = 0
 		}
 
-		// Phase 5: Use pathfinding layer to convert desire to turn/thrust
+		// Use potential-field navigation to convert desire to turn/thrust
 		// Pathfinding handles terrain avoidance so brain only learns strategy
 		flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 
 		// Get collision radius from OBB if available, otherwise estimate
 		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
 
-		var navResult PathfindingResult
-
-		// Use A* for longer-range navigation (desireDistance >= 0.2)
-		// Use context steering for short-range movement
-		const astarThreshold = float32(0.2)
-
-		if outputs.DesireDistance >= astarThreshold && s.pathfinder.HasAStarPlanner() {
-			// Compute target position from desire angle and distance
-			// Project the desire into world space
-			projectionDist := s.pathfinder.params.MaxTargetDistance * outputs.DesireDistance
-			targetAngle := org.Heading + outputs.DesireAngle
-			targetX := pos.X + float32(math.Cos(float64(targetAngle)))*projectionDist
-			targetY := pos.Y + float32(math.Sin(float64(targetAngle)))*projectionDist
-
-			// Get or create path cache for this entity
-			cache, exists := s.pathCaches[entity]
-			if !exists {
-				cache = &PathCache{}
-				s.pathCaches[entity] = cache
-			}
-
-			navResult = s.pathfinder.NavigateWithAStar(
-				pos.X, pos.Y,
-				org.Heading,
-				targetX, targetY,
-				outputs.DesireDistance,
-				flowX, flowY,
-				&org.OBB,
-				org.CellSize,
-				cache,
-			)
-		} else {
-			// Short-range: use context steering directly
-			navResult = s.pathfinder.Navigate(
-				pos.X, pos.Y,
-				org.Heading,
-				outputs.DesireAngle, outputs.DesireDistance,
-				flowX, flowY,
-				organismRadius,
-			)
-		}
+		navResult := s.pathfinder.Navigate(
+			pos.X, pos.Y,
+			org.Heading,
+			outputs.DesireAngle, outputs.DesireDistance,
+			flowX, flowY,
+			organismRadius,
+		)
 
 		org.TurnOutput = navResult.Turn
 		org.ThrustOutput = navResult.Thrust

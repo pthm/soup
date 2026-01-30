@@ -17,8 +17,6 @@ type TerrainQuerier interface {
 type PathfindingParams struct {
 	// Steering
 	MaxTargetDistance float32 // Maximum projection distance for desire
-	ProbeDistance     float32 // How far ahead to check for obstacles
-	NumProbeRays      int     // Number of directions to probe (more = smoother but slower)
 
 	// Flow field
 	FlowInfluence float32 // How much flow affects navigation (0-1)
@@ -26,25 +24,31 @@ type PathfindingParams struct {
 	// Output limits
 	MaxTurnRate float32 // Maximum turn per tick (radians)
 
-	// A* pathfinding
-	AStarMinDistance  float32 // Minimum distance to target before using A* (use local steering below this)
-	AStarMaxAge       int32   // Maximum ticks before path recomputation
-	WaypointArrival   float32 // Distance to waypoint to consider "arrived"
+	// Potential field parameters
+	AttractionStrength float32 // Scales pull toward target (1.0)
+	RepulsionStrength  float32 // Scales push from obstacles (2.5)
+	RepulsionRadius    float32 // Obstacle influence range (40px)
+	RepulsionFalloff   float32 // Exponent for repulsion (2.0)
+	TargetDeadzone     float32 // Attraction taper distance (8px)
+	MaxForce           float32 // Cap on combined vector magnitude (1.0)
+	MinThrust          float32 // Minimum thrust when moving (0.05)
 }
 
 // DefaultPathfindingParams returns sensible defaults for pathfinding.
 func DefaultPathfindingParams() PathfindingParams {
 	return PathfindingParams{
 		MaxTargetDistance: 100.0,
-		ProbeDistance:     25.0,
-		NumProbeRays:      8, // Check 8 directions (45 degree increments)
+		FlowInfluence:     0.3,
+		MaxTurnRate:       0.3, // ~17 degrees per tick max
 
-		FlowInfluence: 0.3,
-		MaxTurnRate:   0.3, // ~17 degrees per tick max
-
-		AStarMinDistance: 64.0,  // Use A* for targets beyond 64px
-		AStarMaxAge:      120,   // Recompute path every 2 seconds at 60fps
-		WaypointArrival:  16.0,  // Waypoint reached at 16px
+		// Potential field defaults
+		AttractionStrength: 1.0,
+		RepulsionStrength:  2.5,
+		RepulsionRadius:    40.0,
+		RepulsionFalloff:   2.0,
+		TargetDeadzone:     8.0,
+		MaxForce:           1.0,
+		MinThrust:          0.05,
 	}
 }
 
@@ -55,34 +59,22 @@ type PathfindingResult struct {
 }
 
 // Pathfinder computes navigation from brain desire to motor commands.
-// Uses A* for long-range pathfinding and context steering for local navigation.
+// Uses potential-field navigation for continuous, reactive steering.
 type Pathfinder struct {
 	terrain TerrainQuerier
-	astar   *AStarPlanner
 	params  PathfindingParams
-	tick    int32
 }
 
 // NewPathfinder creates a new pathfinding layer.
 func NewPathfinder(terrain TerrainQuerier) *Pathfinder {
-	pf := &Pathfinder{
+	return &Pathfinder{
 		terrain: terrain,
 		params:  DefaultPathfindingParams(),
 	}
-	// Initialize A* planner if terrain supports it
-	if ts, ok := terrain.(*TerrainSystem); ok {
-		pf.astar = NewAStarPlanner(ts)
-	}
-	return pf
 }
 
-// SetTick updates the pathfinder's tick counter for path cache validation.
-func (p *Pathfinder) SetTick(tick int32) {
-	p.tick = tick
-}
-
-// Navigate computes turn and thrust from brain desire outputs.
-// Uses context steering to avoid obstacles while pursuing the desired direction.
+// Navigate computes turn and thrust from brain desire outputs using potential-field navigation.
+// The algorithm combines attraction toward the target, repulsion from obstacles, and flow influence.
 func (p *Pathfinder) Navigate(
 	posX, posY float32,
 	heading float32,
@@ -95,24 +87,123 @@ func (p *Pathfinder) Navigate(
 		return p.NavigateSimple(desireAngle, desireDistance)
 	}
 
-	// Target direction in world coordinates
+	// 1. Project target from desire angle/distance
 	targetAngle := heading + desireAngle
+	projectionDist := p.params.MaxTargetDistance * desireDistance
+	targetX := posX + float32(math.Cos(float64(targetAngle)))*projectionDist
+	targetY := posY + float32(math.Sin(float64(targetAngle)))*projectionDist
 
-	// Add flow influence to target
-	if p.params.FlowInfluence > 0 {
-		flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
-		if flowMag > 0.01 {
-			flowAngle := float32(math.Atan2(float64(flowY), float64(flowX)))
-			// Blend target angle with flow direction
-			targetAngle = blendAngles(targetAngle, flowAngle, p.params.FlowInfluence)
+	// 2. Compute attraction force toward target
+	attrX, attrY := p.computeAttraction(posX, posY, targetX, targetY, desireDistance)
+
+	// 3. Compute repulsion force from nearby obstacles
+	repX, repY := p.computeRepulsion(posX, posY, organismRadius)
+
+	// 4. Combine forces: attraction + repulsion + flow
+	forceX := attrX + repX + flowX*p.params.FlowInfluence
+	forceY := attrY + repY + flowY*p.params.FlowInfluence
+
+	// Clamp force magnitude
+	forceMag := float32(math.Sqrt(float64(forceX*forceX + forceY*forceY)))
+	if forceMag > p.params.MaxForce {
+		scale := p.params.MaxForce / forceMag
+		forceX *= scale
+		forceY *= scale
+		forceMag = p.params.MaxForce
+	}
+
+	// 5. Convert resultant vector to turn/thrust
+	return p.forceToTurnThrust(forceX, forceY, forceMag, heading, desireDistance)
+}
+
+// computeAttraction calculates the attraction force toward the target position.
+// Force tapers off when very close to target (within deadzone).
+func (p *Pathfinder) computeAttraction(posX, posY, targetX, targetY, desireDistance float32) (float32, float32) {
+	dx := targetX - posX
+	dy := targetY - posY
+	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+	if dist < 0.001 {
+		return 0, 0
+	}
+
+	// Normalize direction
+	dirX := dx / dist
+	dirY := dy / dist
+
+	// Calculate attraction magnitude with deadzone taper
+	mag := desireDistance * p.params.AttractionStrength
+	if dist < p.params.TargetDeadzone {
+		// Taper attraction when very close to target
+		mag *= dist / p.params.TargetDeadzone
+	}
+
+	return dirX * mag, dirY * mag
+}
+
+// computeRepulsion calculates repulsion force from nearby obstacles.
+// Samples 8 points around the organism to detect obstacles and compute gradient-based repulsion.
+func (p *Pathfinder) computeRepulsion(posX, posY, organismRadius float32) (float32, float32) {
+	var repX, repY float32
+
+	// Sample 8 points around the organism at organismRadius + RepulsionRadius*0.5
+	sampleDist := organismRadius + p.params.RepulsionRadius*0.5
+	numSamples := 8
+	angleStep := float32(2 * math.Pi / float64(numSamples))
+
+	for i := 0; i < numSamples; i++ {
+		angle := float32(i) * angleStep
+		sampleX := posX + float32(math.Cos(float64(angle)))*sampleDist
+		sampleY := posY + float32(math.Sin(float64(angle)))*sampleDist
+
+		// Get distance to solid at this sample point
+		distToSolid := p.terrain.DistanceToSolid(sampleX, sampleY)
+
+		if distToSolid < p.params.RepulsionRadius {
+			// Calculate repulsion magnitude with falloff
+			// Closer = stronger repulsion
+			normalizedDist := (p.params.RepulsionRadius - distToSolid) / p.params.RepulsionRadius
+			mag := p.params.RepulsionStrength * float32(math.Pow(float64(normalizedDist), float64(p.params.RepulsionFalloff)))
+
+			// Get repulsion direction from terrain gradient or sample-to-pos direction
+			gx, gy := p.terrain.GetGradient(sampleX, sampleY)
+			gradMag := float32(math.Sqrt(float64(gx*gx + gy*gy)))
+
+			var dirX, dirY float32
+			if gradMag > 0.001 {
+				// Use terrain gradient (points away from solid)
+				dirX = gx / gradMag
+				dirY = gy / gradMag
+			} else {
+				// Fallback: push away from sample point toward pos
+				dirX = posX - sampleX
+				dirY = posY - sampleY
+				fallbackMag := float32(math.Sqrt(float64(dirX*dirX + dirY*dirY)))
+				if fallbackMag > 0.001 {
+					dirX /= fallbackMag
+					dirY /= fallbackMag
+				}
+			}
+
+			repX += dirX * mag
+			repY += dirY * mag
 		}
 	}
 
-	// Find the best direction using context steering
-	bestAngle, clearAhead := p.findBestDirection(posX, posY, targetAngle, organismRadius)
+	return repX, repY
+}
 
-	// Calculate turn needed
-	angleDiff := normalizeAngleRange(bestAngle - heading)
+// forceToTurnThrust converts a force vector to turn and thrust outputs.
+func (p *Pathfinder) forceToTurnThrust(forceX, forceY, forceMag, heading, desireDistance float32) PathfindingResult {
+	if forceMag < 0.001 {
+		return PathfindingResult{Turn: 0, Thrust: 0}
+	}
+
+	// Calculate target angle from force vector
+	forceAngle := float32(math.Atan2(float64(forceY), float64(forceX)))
+
+	// Calculate turn needed (angle difference)
+	angleDiff := normalizeAngleRange(forceAngle - heading)
 	turn := angleDiff / math.Pi // Normalize to [-1, 1]
 
 	// Clamp turn rate
@@ -123,122 +214,23 @@ func (p *Pathfinder) Navigate(
 	}
 
 	// Calculate thrust
-	// Reduce thrust when turning sharply or when path ahead is blocked
+	// Reduce thrust when turning sharply (cos of angle diff)
 	alignmentFactor := float32(math.Cos(float64(angleDiff)))
 	if alignmentFactor < 0 {
 		alignmentFactor = 0
 	}
 
-	thrust := desireDistance * alignmentFactor
-	if !clearAhead {
-		// Reduce thrust when we need to navigate around obstacle
-		thrust *= 0.5
+	thrust := (forceMag / p.params.MaxForce) * desireDistance * alignmentFactor
+
+	// Ensure minimum thrust when there's desire to move
+	if desireDistance > 0.01 && thrust < p.params.MinThrust {
+		thrust = p.params.MinThrust
 	}
 
 	return PathfindingResult{
 		Turn:   turn,
 		Thrust: thrust,
 	}
-}
-
-// findBestDirection uses context steering to find an unblocked direction
-// closest to the desired target angle.
-func (p *Pathfinder) findBestDirection(
-	posX, posY float32,
-	targetAngle float32,
-	radius float32,
-) (bestAngle float32, clearAhead bool) {
-	probeDistance := p.params.ProbeDistance + radius
-	numRays := p.params.NumProbeRays
-	if numRays < 4 {
-		numRays = 4
-	}
-
-	// Check if directly ahead is clear
-	clearAhead = p.isDirectionClear(posX, posY, targetAngle, probeDistance, radius)
-	if clearAhead {
-		return targetAngle, true
-	}
-
-	// Target direction is blocked - find best alternative
-	// Check directions radiating out from target angle
-	angleStep := float32(math.Pi * 2 / float64(numRays))
-
-	bestAngle = targetAngle
-	bestScore := float32(-1000)
-
-	for i := 0; i < numRays; i++ {
-		// Check directions alternating left and right of target
-		// This ensures we find the closest clear direction to our target
-		var testAngle float32
-		offset := float32(i+1) * angleStep / 2
-		if i%2 == 0 {
-			testAngle = targetAngle + offset
-		} else {
-			testAngle = targetAngle - offset
-		}
-
-		if !p.isDirectionClear(posX, posY, testAngle, probeDistance, radius) {
-			continue
-		}
-
-		// Score based on how close to target direction
-		angleDiffFromTarget := math.Abs(float64(normalizeAngleRange(testAngle - targetAngle)))
-		score := float32(math.Pi - angleDiffFromTarget) // Higher score = closer to target
-
-		if score > bestScore {
-			bestScore = score
-			bestAngle = testAngle
-		}
-	}
-
-	// If no clear direction found, just try to turn away from obstacle
-	if bestScore < 0 {
-		// Get gradient away from nearest obstacle
-		gx, gy := p.terrain.GetGradient(posX, posY)
-		if gx != 0 || gy != 0 {
-			bestAngle = float32(math.Atan2(float64(gy), float64(gx)))
-		}
-	}
-
-	return bestAngle, false
-}
-
-// isDirectionClear checks if a direction is clear of obstacles.
-func (p *Pathfinder) isDirectionClear(
-	posX, posY float32,
-	angle float32,
-	distance float32,
-	radius float32,
-) bool {
-	// Check several points along the path
-	steps := 3
-	stepDist := distance / float32(steps)
-
-	dx := float32(math.Cos(float64(angle)))
-	dy := float32(math.Sin(float64(angle)))
-
-	for i := 1; i <= steps; i++ {
-		checkX := posX + dx*stepDist*float32(i)
-		checkY := posY + dy*stepDist*float32(i)
-
-		// Check if this point would collide
-		// Sample in a small pattern around the point to account for organism width
-		if p.terrain.IsSolid(checkX, checkY) {
-			return false
-		}
-		// Check sides
-		perpX := -dy * radius * 0.7
-		perpY := dx * radius * 0.7
-		if p.terrain.IsSolid(checkX+perpX, checkY+perpY) {
-			return false
-		}
-		if p.terrain.IsSolid(checkX-perpX, checkY-perpY) {
-			return false
-		}
-	}
-
-	return true
 }
 
 // blendAngles blends two angles with a weight factor.
@@ -253,7 +245,7 @@ func blendAngles(a1, a2, weight float32) float32 {
 	return float32(math.Atan2(float64(y1+y2), float64(x1+x2)))
 }
 
-// normalizeAngleRange wraps an angle to [-π, π].
+// normalizeAngleRange wraps an angle to [-pi, pi].
 func normalizeAngleRange(angle float32) float32 {
 	for angle > math.Pi {
 		angle -= 2 * math.Pi
@@ -279,78 +271,15 @@ func (p *Pathfinder) NavigateSimple(desireAngle, desireDistance float32) Pathfin
 	}
 }
 
-// NavigateWithAStar uses A* for long-range navigation with path caching.
-// For short distances or when A* is unavailable, falls back to context steering.
-func (p *Pathfinder) NavigateWithAStar(
-	posX, posY float32,
-	heading float32,
-	targetX, targetY float32,
-	desireDistance float32,
-	flowX, flowY float32,
-	obb *components.CollisionOBB,
-	cellSize float32,
-	cache *PathCache,
-) PathfindingResult {
-	// Calculate distance to target
-	dx := targetX - posX
-	dy := targetY - posY
-	distToTarget := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-	// Get collision radius for size class determination
-	radius := GetCollisionRadius(obb, cellSize)
-	sizeClass := GetSizeClass(radius)
-
-	// For short distances or no A* planner, use local context steering
-	if distToTarget < p.params.AStarMinDistance || p.astar == nil {
-		// Convert target position to desire angle relative to heading
-		targetAngle := float32(math.Atan2(float64(dy), float64(dx)))
-		desireAngle := normalizeAngleRange(targetAngle - heading)
-		return p.Navigate(posX, posY, heading, desireAngle, desireDistance, flowX, flowY, radius)
-	}
-
-	// Check if we need to recompute the A* path
-	needsPath := cache == nil || !p.astar.IsPathValid(cache, targetX, targetY, p.tick, sizeClass, p.params.AStarMaxAge)
-
-	if needsPath {
-		// Compute new A* path
-		waypoints := p.astar.FindPath(posX, posY, targetX, targetY, sizeClass)
-		if waypoints != nil && len(waypoints) > 0 {
-			cache.Waypoints = waypoints
-			cache.Index = 0
-			cache.TargetX = targetX
-			cache.TargetY = targetY
-			cache.ValidTick = p.tick
-		} else {
-			// A* failed, fall back to direct navigation
-			targetAngle := float32(math.Atan2(float64(dy), float64(dx)))
-			desireAngle := normalizeAngleRange(targetAngle - heading)
-			return p.Navigate(posX, posY, heading, desireAngle, desireDistance, flowX, flowY, radius)
+// GetCollisionRadius returns the collision radius for an organism.
+// Uses OBB if available, otherwise falls back to CellSize-based radius.
+func GetCollisionRadius(obb *components.CollisionOBB, cellSize float32) float32 {
+	if obb != nil && (obb.HalfWidth > 0 || obb.HalfHeight > 0) {
+		// Use the larger half-extent
+		if obb.HalfWidth > obb.HalfHeight {
+			return obb.HalfWidth
 		}
+		return obb.HalfHeight
 	}
-
-	// Get next waypoint from cached path
-	wpX, wpY, hasMore := GetNextWaypoint(cache, posX, posY, p.params.WaypointArrival)
-
-	// Navigate toward waypoint
-	wpDx := wpX - posX
-	wpDy := wpY - posY
-	wpAngle := float32(math.Atan2(float64(wpDy), float64(wpDx)))
-	desireAngle := normalizeAngleRange(wpAngle - heading)
-
-	// Adjust thrust based on whether we're at the final waypoint
-	adjustedThrust := desireDistance
-	if !hasMore {
-		// Near final waypoint, slow down
-		wpDist := float32(math.Sqrt(float64(wpDx*wpDx + wpDy*wpDy)))
-		if wpDist < p.params.WaypointArrival*2 {
-			adjustedThrust *= wpDist / (p.params.WaypointArrival * 2)
-		}
-	}
-
-	return p.Navigate(posX, posY, heading, desireAngle, adjustedThrust, flowX, flowY, radius)
-}
-
-// HasAStarPlanner returns true if the pathfinder has an A* planner available.
-func (p *Pathfinder) HasAStarPlanner() bool {
-	return p.astar != nil
+	return cellSize * 3
 }
