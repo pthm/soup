@@ -41,6 +41,30 @@ func (g *Game) logPerfStats() {
 		}
 		Logf("  %-18s %10s  %5.1f%%", name, avg.Round(time.Microsecond), pct)
 	}
+
+	// Log behavior subsystem breakdown
+	behaviorStats := g.behavior.GetPerfStats()
+	if behaviorStats.Count > 0 {
+		Logf("  --- Behavior Subsystems (per %d organisms) ---", behaviorStats.Count)
+		totalBehaviorNs := behaviorStats.EntityListNs + behaviorStats.VisionNs +
+			behaviorStats.BrainNs + behaviorStats.PathfindingNs + behaviorStats.ActuatorNs
+
+		logSubsystem := func(name string, ns int64) {
+			dur := time.Duration(ns)
+			pct := float64(0)
+			if totalBehaviorNs > 0 {
+				pct = float64(ns) / float64(totalBehaviorNs) * 100
+			}
+			perOrg := time.Duration(ns / int64(behaviorStats.Count))
+			Logf("    %-16s %10s  %5.1f%% (%s/org)", name, dur.Round(time.Microsecond), pct, perOrg.Round(time.Microsecond))
+		}
+
+		logSubsystem("entityList", behaviorStats.EntityListNs)
+		logSubsystem("vision", behaviorStats.VisionNs)
+		logSubsystem("brain", behaviorStats.BrainNs)
+		logSubsystem("pathfinding", behaviorStats.PathfindingNs)
+		logSubsystem("actuator", behaviorStats.ActuatorNs)
+	}
 	Logf("")
 }
 

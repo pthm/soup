@@ -111,6 +111,13 @@ func (g *Game) runSimulationStep() {
 	// Update day/night cycle
 	measure("dayNight", func() { g.updateDayNightCycle() })
 
+	// Update GPU flow field texture (if available)
+	if g.gpuFlowField != nil {
+		measure("gpuFlow", func() {
+			g.gpuFlowField.Update(g.tick, float32(g.tick)*0.016) // ~60fps time
+		})
+	}
+
 	// Update flow field particles (visual, independent)
 	measure("flowField", func() { g.flowField.Update(g.tick) })
 

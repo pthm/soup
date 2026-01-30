@@ -19,31 +19,50 @@ type FlowParticle struct {
 	TrailLen uint8
 }
 
+// FlowSampler provides flow vectors at world positions.
+// Implemented by GPUFlowField for GPU-accelerated flow.
+type FlowSampler interface {
+	Sample(worldX, worldY float32) (flowX, flowY float32)
+}
+
 // FlowFieldSystem manages flow particles for visualization.
 type FlowFieldSystem struct {
-	Particles   []FlowParticle
-	noise       *PerlinNoise
-	bounds      Bounds
-	targetCount int
-	spawnRate   int
-	terrain     *TerrainSystem
+	Particles      []FlowParticle
+	noise          *PerlinNoise
+	bounds         Bounds
+	targetCount    int
+	spawnRate      int
+	terrain        *TerrainSystem
+	updateInterval int32 // Update every N ticks (1 = every tick)
+	batchIndex     int   // Current batch being updated
+	batchCount     int   // Number of batches to split particles into
+	gpuSampler     FlowSampler // Optional GPU-based flow sampler
 }
 
 // NewFlowFieldSystemWithTerrain creates a flow field system with terrain awareness.
 func NewFlowFieldSystemWithTerrain(bounds Bounds, targetCount int, terrain *TerrainSystem) *FlowFieldSystem {
 	return &FlowFieldSystem{
-		Particles:   make([]FlowParticle, 0, targetCount),
-		noise:       NewPerlinNoise(rand.Int63()),
-		bounds:      bounds,
-		targetCount: targetCount,
-		spawnRate:   50,
-		terrain:     terrain,
+		Particles:      make([]FlowParticle, 0, targetCount),
+		noise:          NewPerlinNoise(rand.Int63()),
+		bounds:         bounds,
+		targetCount:    targetCount,
+		spawnRate:      50,
+		terrain:        terrain,
+		updateInterval: 2,  // Update every 2 ticks
+		batchCount:     4,  // Process 1/4 of particles per update
+		batchIndex:     0,
 	}
 }
 
-// Update updates all flow particles.
+// SetGPUSampler sets an optional GPU-based flow sampler.
+// When set, flow forces are sampled from GPU-generated texture instead of CPU Perlin noise.
+func (s *FlowFieldSystem) SetGPUSampler(sampler FlowSampler) {
+	s.gpuSampler = sampler
+}
+
+// Update updates all flow particles using batch processing for performance.
 func (s *FlowFieldSystem) Update(tick int32) {
-	// Spawn new particles if below target
+	// Spawn new particles if below target (always do this)
 	if len(s.Particles) < s.targetCount {
 		for i := 0; i < s.spawnRate && len(s.Particles) < s.targetCount; i++ {
 			lifespan := int32(800 + rand.Intn(600))
@@ -69,6 +88,12 @@ func (s *FlowFieldSystem) Update(tick int32) {
 		}
 	}
 
+	// Determine which batch to update this tick
+	// Each tick, we fully update 1/batchCount of the particles (flow force + physics)
+	// Other particles just get position updates (cheap)
+	currentBatch := s.batchIndex
+	s.batchIndex = (s.batchIndex + 1) % s.batchCount
+
 	// Update existing particles
 	alive := 0
 	for i := range s.Particles {
@@ -79,7 +104,10 @@ func (s *FlowFieldSystem) Update(tick int32) {
 			continue
 		}
 
-		// Shift trail history and add current position
+		// Determine if this particle is in the current batch for full update
+		inCurrentBatch := (i % s.batchCount) == currentBatch
+
+		// Shift trail history and add current position (always)
 		for j := len(p.TrailX) - 1; j > 0; j-- {
 			p.TrailX[j] = p.TrailX[j-1]
 			p.TrailY[j] = p.TrailY[j-1]
@@ -90,29 +118,32 @@ func (s *FlowFieldSystem) Update(tick int32) {
 			p.TrailLen++
 		}
 
-		// Apply flow field force
-		flowX, flowY := s.getFlowForce(p.X, p.Y, tick)
-		p.VelX += flowX
-		p.VelY += flowY
+		// Only recalculate flow force for current batch (expensive)
+		if inCurrentBatch {
+			flowX, flowY := s.getFlowForce(p.X, p.Y, tick)
+			p.VelX += flowX
+			p.VelY += flowY
+		}
 
-		// Friction
+		// Friction (always)
 		p.VelX *= 0.95
 		p.VelY *= 0.95
 
-		// Limit velocity
-		velMag := float32(math.Sqrt(float64(p.VelX*p.VelX + p.VelY*p.VelY)))
-		if velMag > 1.5 {
+		// Limit velocity (always, but skip sqrt if clearly under limit)
+		velSq := p.VelX*p.VelX + p.VelY*p.VelY
+		if velSq > 2.25 { // 1.5^2
+			velMag := float32(math.Sqrt(float64(velSq)))
 			scale := 1.5 / velMag
 			p.VelX *= scale
 			p.VelY *= scale
 		}
 
-		// Update position
+		// Update position (always)
 		p.X += p.VelX
 		p.Y += p.VelY
 
-		// Terrain collision - particles bounce off terrain
-		if s.terrain != nil && s.terrain.IsSolid(p.X, p.Y) {
+		// Terrain collision - only check for current batch (expensive)
+		if inCurrentBatch && s.terrain != nil && s.terrain.IsSolid(p.X, p.Y) {
 			// Move back
 			p.X -= p.VelX
 			p.Y -= p.VelY
@@ -123,7 +154,7 @@ func (s *FlowFieldSystem) Update(tick int32) {
 			p.TrailLen = 0
 		}
 
-		// Wrap at edges (and clear trail to avoid long lines across screen)
+		// Wrap at edges (always, cheap)
 		wrapped := false
 		if p.X < 0 {
 			p.X = s.bounds.Width
@@ -153,6 +184,12 @@ func (s *FlowFieldSystem) Update(tick int32) {
 }
 
 func (s *FlowFieldSystem) getFlowForce(x, y float32, tick int32) (float32, float32) {
+	// Use GPU sampler if available (much faster - just a texture lookup)
+	if s.gpuSampler != nil {
+		return s.gpuSampler.Sample(x, y)
+	}
+
+	// Fallback to CPU Perlin noise calculation
 	const flowScale = 0.003
 	const timeScale = 0.0001 // Slowed down 5x
 	const baseStrength = 0.08 // Reduced strength for gentler movement

@@ -3,6 +3,7 @@ package systems
 import (
 	"math"
 	"math/rand"
+	"time"
 
 	"github.com/mlange-42/ark/ecs"
 
@@ -35,6 +36,16 @@ const (
 	capabilityScale  = 4.0 // Denominator for capability scaling
 )
 
+// BehaviorPerfStats tracks subsystem timings within the behavior system.
+type BehaviorPerfStats struct {
+	EntityListNs  int64 // Time building entity lists
+	VisionNs      int64 // Time in vision scanning
+	BrainNs       int64 // Time in neural network evaluation
+	PathfindingNs int64 // Time in pathfinding
+	ActuatorNs    int64 // Time in actuator calculations
+	Count         int   // Number of organisms processed
+}
+
 // BehaviorSystem handles organism steering behaviors using direct neural control.
 type BehaviorSystem struct {
 	filter      ecs.Filter3[components.Position, components.Velocity, components.Organism]
@@ -46,6 +57,10 @@ type BehaviorSystem struct {
 	terrain     *TerrainSystem
 	pathfinder  *Pathfinder  // Potential-field navigation layer
 	floraSystem *FloraSystem // Lightweight flora system for vision
+
+	// Performance tracking
+	perfEnabled bool
+	perfStats   BehaviorPerfStats
 }
 
 // NewBehaviorSystem creates a new behavior system.
@@ -64,6 +79,18 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 // SetFloraSystem sets the flora system reference for vision queries.
 func (s *BehaviorSystem) SetFloraSystem(fs *FloraSystem) {
 	s.floraSystem = fs
+}
+
+// SetPerfEnabled enables or disables subsystem performance tracking.
+func (s *BehaviorSystem) SetPerfEnabled(enabled bool) {
+	s.perfEnabled = enabled
+}
+
+// GetPerfStats returns the accumulated performance stats and resets them.
+func (s *BehaviorSystem) GetPerfStats() BehaviorPerfStats {
+	stats := s.perfStats
+	s.perfStats = BehaviorPerfStats{}
+	return stats
 }
 
 // Update runs the behavior system with actuator-driven neural control.
@@ -123,6 +150,10 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Get collision radius from OBB if available, otherwise estimate
 		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
 
+		var pathStart time.Time
+		if s.perfEnabled {
+			pathStart = time.Now()
+		}
 		navResult := s.pathfinder.Navigate(
 			pos.X, pos.Y,
 			org.Heading,
@@ -130,13 +161,24 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			flowX, flowY,
 			organismRadius,
 		)
+		if s.perfEnabled {
+			s.perfStats.PathfindingNs += time.Since(pathStart).Nanoseconds()
+		}
 
 		org.TurnOutput = navResult.Turn
 		org.ThrustOutput = navResult.Thrust
 
 		// Calculate actuator-driven forces
 		// Actuator positions and strengths determine how Turn/Thrust translate to movement
+		var actStart time.Time
+		if s.perfEnabled {
+			actStart = time.Now()
+		}
 		thrust, torque := calculateActuatorForces(cells, org.Heading, navResult.Thrust, navResult.Turn)
+		if s.perfEnabled {
+			s.perfStats.ActuatorNs += time.Since(actStart).Nanoseconds()
+			s.perfStats.Count++
+		}
 
 		// Apply torque to heading and normalize to [0, 2*Pi]
 		org.Heading = normalizeHeading(org.Heading + torque)
@@ -227,9 +269,20 @@ func (s *BehaviorSystem) getBrainOutputs(
 	}
 
 	// Build entity list for vision scan
+	var entityListStart time.Time
+	if s.perfEnabled {
+		entityListStart = time.Now()
+	}
 	entities := s.buildEntityList(pos, org, effectiveRadius, floraPos, faunaPos, floraOrgs, faunaOrgs, grid)
+	if s.perfEnabled {
+		s.perfStats.EntityListNs += time.Since(entityListStart).Nanoseconds()
+	}
 
 	// Perform polar vision scan
+	var visionStart time.Time
+	if s.perfEnabled {
+		visionStart = time.Now()
+	}
 	var pv neural.PolarVision
 	pv.ScanEntities(visionParams, entities)
 
@@ -239,6 +292,9 @@ func (s *BehaviorSystem) getBrainOutputs(
 		lightSampler = s.shadowMap.SampleLight
 	}
 	pv.SampleDirectionalLight(pos.X, pos.Y, org.Heading, effectiveRadius, lightSampler)
+	if s.perfEnabled {
+		s.perfStats.VisionNs += time.Since(visionStart).Nanoseconds()
+	}
 
 	// Build sensory inputs with polar vision data
 	sensory := neural.SensoryInputs{
@@ -297,8 +353,15 @@ func (s *BehaviorSystem) getBrainOutputs(
 	}
 
 	// Convert to neural inputs and run brain
+	var brainStart time.Time
+	if s.perfEnabled {
+		brainStart = time.Now()
+	}
 	inputs := sensory.ToInputs()
 	rawOutputs, err := brain.Controller.Think(inputs)
+	if s.perfEnabled {
+		s.perfStats.BrainNs += time.Since(brainStart).Nanoseconds()
+	}
 	if err != nil {
 		return neural.DefaultOutputs()
 	}

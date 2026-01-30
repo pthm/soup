@@ -18,7 +18,7 @@ var (
 	perfLog         = flag.Bool("perf", false, "Enable performance logging")
 	neuralLog       = flag.Bool("neural", false, "Enable neural evolution logging")
 	neuralLogDetail = flag.Bool("neural-detail", false, "Enable detailed neural logging (genomes, individual organisms)")
-	headless        = flag.Bool("headless", false, "Run without graphics (for logging/benchmarking)")
+	headless        = flag.Bool("headless", false, "Run without graphics (hidden window, GPU compute only)")
 	maxTicks        = flag.Int("max-ticks", 0, "Stop after N ticks (0 = run forever, useful with -headless)")
 )
 
@@ -64,8 +64,9 @@ func main() {
 }
 
 // runHeadless runs the simulation without graphics for logging/benchmarking.
+// Creates a hidden window to enable GPU compute (flow field, etc).
 func runHeadless() {
-	game.Logf("Starting headless simulation...")
+	game.Logf("Starting headless simulation (GPU compute enabled)...")
 	if *initialSpeed == 0 {
 		game.Logf("  Speed: FULL (uncapped), Max ticks: %d", *maxTicks)
 	} else {
@@ -76,12 +77,18 @@ func runHeadless() {
 	}
 	game.Logf("")
 
+	// Create hidden window for GPU context (enables GPU compute without visible window)
+	rl.SetConfigFlags(rl.FlagWindowHidden)
+	rl.InitWindow(int32(game.ScreenWidth), int32(game.ScreenHeight), "Primordial Soup (Headless)")
+	defer rl.CloseWindow()
+
 	cfg := game.GameConfig{
-		Headless: true,
+		Headless: true, // Skip visual renderers, keep GPU compute
 		Width:    game.ScreenWidth,
 		Height:   game.ScreenHeight,
 	}
 	g := game.NewGame(cfg)
+	defer g.Unload()
 	g.SetLogging(*logInterval, *perfLog, *neuralLog, *neuralLogDetail)
 
 	// Apply initial speed (in headless, this is steps per "frame")

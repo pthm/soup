@@ -23,6 +23,7 @@ type Game struct {
 	behavior        *systems.BehaviorSystem
 	flowField       *systems.FlowFieldSystem
 	flowRenderer    *renderer.FlowRenderer
+	gpuFlowField    *renderer.GPUFlowField // GPU-accelerated flow field
 	waterBackground *renderer.WaterBackground
 	sunRenderer     *renderer.SunRenderer
 	light           renderer.LightState
@@ -113,7 +114,7 @@ func NewGame(cfg GameConfig) *Game {
 		energy:        systems.NewEnergySystem(world, shadowMap),
 		cells:         systems.NewCellSystem(world),
 		behavior:      systems.NewBehaviorSystem(world, shadowMap, terrain),
-		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 8000, terrain),
+		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 3000, terrain),
 		light:         renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
 		stepsPerFrame: 1,
 		perf:          NewPerfStats(),
@@ -152,7 +153,14 @@ func NewGame(cfg GameConfig) *Game {
 		uiSystemRegistry: systems.NewSystemRegistry(),
 	}
 
-	// Create renderers only for graphics mode
+	// GPU compute resources (always created - headless uses hidden window)
+	g.gpuFlowField = renderer.NewGPUFlowField(
+		float32(cfg.Width), float32(cfg.Height),
+		terrain.DistanceToSolid, // Pass terrain distance function
+	)
+	g.flowField.SetGPUSampler(g.gpuFlowField)
+
+	// Visual renderers and UI - only for graphics mode (not headless)
 	if !cfg.Headless {
 		g.flowRenderer = renderer.NewFlowRenderer(int32(cfg.Width), int32(cfg.Height), 0.08)
 		g.waterBackground = renderer.NewWaterBackground(int32(cfg.Width), int32(cfg.Height))
@@ -188,6 +196,9 @@ func (g *Game) SetLogging(logInterval int, perfLog, neuralLog, neuralLogDetail b
 	g.perfLog = perfLog
 	g.neuralLog = neuralLog
 	g.neuralLogDetail = neuralLogDetail
+
+	// Enable behavior subsystem profiling when perf logging is on
+	g.behavior.SetPerfEnabled(perfLog)
 }
 
 // SetSpeed sets the simulation speed (steps per frame).
@@ -209,6 +220,9 @@ func (g *Game) Unload() {
 	}
 	if g.waterBackground != nil {
 		g.waterBackground.Unload()
+	}
+	if g.gpuFlowField != nil {
+		g.gpuFlowField.Unload()
 	}
 }
 
