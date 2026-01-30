@@ -2,6 +2,7 @@ package neural
 
 import (
 	"math"
+	"sort"
 
 	"github.com/yaricom/goNEAT/v4/neat"
 	"github.com/yaricom/goNEAT/v4/neat/genetics"
@@ -307,14 +308,10 @@ func (sm *SpeciesManager) GetTopSpecies(n int) []SpeciesInfo {
 	sorted := make([]*Species, len(sm.Species))
 	copy(sorted, sm.Species)
 
-	// Sort by member count descending
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if len(sorted[j].Members) > len(sorted[i].Members) {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
+	// Sort by member count descending using standard library
+	sort.Slice(sorted, func(i, j int) bool {
+		return len(sorted[i].Members) > len(sorted[j].Members)
+	})
 
 	// Take top N
 	if n > len(sorted) {

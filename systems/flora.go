@@ -260,41 +260,17 @@ func (fs *FloraSystem) GetNearbyFlora(x, y, radius float32) []FloraRef {
 	radiusSq := radius * radius
 	var refs []FloraRef
 
-	// Check rooted flora
 	for i := range fs.Rooted {
 		f := &fs.Rooted[i]
-		if f.Dead {
-			continue
-		}
-		dx := f.X - x
-		dy := f.Y - y
-		if dx*dx+dy*dy <= radiusSq {
-			refs = append(refs, FloraRef{
-				Index:    i,
-				IsRooted: true,
-				X:        f.X,
-				Y:        f.Y,
-				Energy:   f.Energy,
-			})
+		if !f.Dead && distanceSq(f.X, f.Y, x, y) <= radiusSq {
+			refs = append(refs, FloraRef{Index: i, IsRooted: true, X: f.X, Y: f.Y, Energy: f.Energy})
 		}
 	}
 
-	// Check floating flora
 	for i := range fs.Floating {
 		f := &fs.Floating[i]
-		if f.Dead {
-			continue
-		}
-		dx := f.X - x
-		dy := f.Y - y
-		if dx*dx+dy*dy <= radiusSq {
-			refs = append(refs, FloraRef{
-				Index:    i,
-				IsRooted: false,
-				X:        f.X,
-				Y:        f.Y,
-				Energy:   f.Energy,
-			})
+		if !f.Dead && distanceSq(f.X, f.Y, x, y) <= radiusSq {
+			refs = append(refs, FloraRef{Index: i, IsRooted: false, X: f.X, Y: f.Y, Energy: f.Energy})
 		}
 	}
 
@@ -303,31 +279,20 @@ func (fs *FloraSystem) GetNearbyFlora(x, y, radius float32) []FloraRef {
 
 // GetAllFlora returns all living flora for behavior system vision.
 func (fs *FloraSystem) GetAllFlora() []FloraRef {
-	var refs []FloraRef
+	// Pre-allocate with estimated capacity
+	refs := make([]FloraRef, 0, len(fs.Rooted)+len(fs.Floating))
 
 	for i := range fs.Rooted {
 		f := &fs.Rooted[i]
 		if !f.Dead {
-			refs = append(refs, FloraRef{
-				Index:    i,
-				IsRooted: true,
-				X:        f.X,
-				Y:        f.Y,
-				Energy:   f.Energy,
-			})
+			refs = append(refs, FloraRef{Index: i, IsRooted: true, X: f.X, Y: f.Y, Energy: f.Energy})
 		}
 	}
 
 	for i := range fs.Floating {
 		f := &fs.Floating[i]
 		if !f.Dead {
-			refs = append(refs, FloraRef{
-				Index:    i,
-				IsRooted: false,
-				X:        f.X,
-				Y:        f.Y,
-				Energy:   f.Energy,
-			})
+			refs = append(refs, FloraRef{Index: i, IsRooted: false, X: f.X, Y: f.Y, Energy: f.Energy})
 		}
 	}
 
@@ -336,6 +301,10 @@ func (fs *FloraSystem) GetAllFlora() []FloraRef {
 
 // ApplyDamage damages a flora and returns energy extracted.
 func (fs *FloraSystem) ApplyDamage(index int, isRooted bool, damage float32) float32 {
+	// Get pointers to energy and dead fields based on flora type
+	var energy *float32
+	var dead *bool
+
 	if isRooted {
 		if index < 0 || index >= len(fs.Rooted) {
 			return 0
@@ -344,32 +313,26 @@ func (fs *FloraSystem) ApplyDamage(index int, isRooted bool, damage float32) flo
 		if f.Dead {
 			return 0
 		}
-		extracted := damage
-		if extracted > f.Energy {
-			extracted = f.Energy
+		energy, dead = &f.Energy, &f.Dead
+	} else {
+		if index < 0 || index >= len(fs.Floating) {
+			return 0
 		}
-		f.Energy -= extracted
-		if f.Energy <= 0 {
-			f.Dead = true
+		f := &fs.Floating[index]
+		if f.Dead {
+			return 0
 		}
-		return extracted
+		energy, dead = &f.Energy, &f.Dead
 	}
 
-	// Floating
-	if index < 0 || index >= len(fs.Floating) {
-		return 0
-	}
-	f := &fs.Floating[index]
-	if f.Dead {
-		return 0
-	}
+	// Extract energy up to available amount
 	extracted := damage
-	if extracted > f.Energy {
-		extracted = f.Energy
+	if extracted > *energy {
+		extracted = *energy
 	}
-	f.Energy -= extracted
-	if f.Energy <= 0 {
-		f.Dead = true
+	*energy -= extracted
+	if *energy <= 0 {
+		*dead = true
 	}
 	return extracted
 }

@@ -7,6 +7,21 @@ import (
 	"github.com/mlange-42/ark/ecs"
 )
 
+// Spore system constants
+const (
+	sporeMaxCount         = 200              // Maximum active spores
+	sporeLifespan         = 600              // Ticks before spore expires
+	sporeLandedGermTime   = 50               // Ticks after landing before germination
+	sporeGerminateEnergy  = float32(60)      // Initial energy for germinated flora
+	sporeMaxVelocity      = float32(0.8)     // Maximum spore drift speed
+	sporeDrag             = float32(0.95)    // Velocity dampening per tick
+	sporeNoiseScale       = 0.01             // Perlin noise spatial scale
+	sporeTimeScale        = 0.002            // Perlin noise temporal scale
+	sporeTopZoneFraction  = float32(0.25)    // Top zone where rooting is blocked
+	sporeSettleChance     = float32(0.002)   // Per-tick chance for floating spore to settle
+	sporeSettleMinVel     = float32(0.1)     // Max velocity to allow settling
+)
+
 // SporeEntity represents a spore in flight.
 type SporeEntity struct {
 	X, Y         float32
@@ -30,10 +45,10 @@ type SporeSystem struct {
 // NewSporeSystemWithTerrain creates a spore system with terrain awareness.
 func NewSporeSystemWithTerrain(bounds Bounds, terrain *TerrainSystem) *SporeSystem {
 	return &SporeSystem{
-		Spores:    make([]SporeEntity, 0, 200),
+		Spores:    make([]SporeEntity, 0, sporeMaxCount),
 		noise:     NewPerlinNoise(rand.Int63()),
 		bounds:    bounds,
-		maxSpores: 200,
+		maxSpores: sporeMaxCount,
 		terrain:   terrain,
 	}
 }
@@ -54,7 +69,7 @@ func (s *SporeSystem) SpawnSpore(x, y float32, parentRooted bool) {
 		VelX:         velX,
 		VelY:         velY,
 		ParentRooted: parentRooted,
-		Lifespan:     600,
+		Lifespan:     sporeLifespan,
 		LandedTimer:  0,
 		Landed:       false,
 		Rooted:       false,
@@ -79,7 +94,7 @@ func (s *SporeSystem) Update(tick int32, createFlora FloraCreator) {
 		if spore.Landed {
 			// Count down to germination
 			spore.LandedTimer++
-			if spore.LandedTimer >= 50 {
+			if spore.LandedTimer >= sporeLandedGermTime {
 				// Germinate into new flora
 				s.germinate(spore, createFlora)
 				continue // Remove spore after germination
@@ -96,9 +111,9 @@ func (s *SporeSystem) Update(tick int32, createFlora FloraCreator) {
 					for spore.Y > 0 && s.terrain.IsSolid(spore.X, spore.Y) {
 						spore.Y--
 					}
-					// Only allow rooting below the top 25% of screen
+					// Only allow rooting below the top zone of screen
 					// (don't let flora blot out the sun at the top)
-					if spore.Y > s.bounds.Height*0.25 {
+					if spore.Y > s.bounds.Height*sporeTopZoneFraction {
 						spore.Landed = true
 						spore.Rooted = true // Landing on terrain = rooted
 						spore.VelX = 0
@@ -124,7 +139,7 @@ func (s *SporeSystem) Update(tick int32, createFlora FloraCreator) {
 				} else {
 					// Floating spores have random chance to settle
 					velMag := float32(math.Sqrt(float64(spore.VelX*spore.VelX + spore.VelY*spore.VelY)))
-					if velMag < 0.1 && rand.Float32() < 0.002 {
+					if velMag < sporeSettleMinVel && rand.Float32() < sporeSettleChance {
 						spore.Landed = true
 					}
 				}
@@ -139,12 +154,9 @@ func (s *SporeSystem) Update(tick int32, createFlora FloraCreator) {
 }
 
 func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
-	const noiseScale = 0.01
-	const timeScale = 0.002
-
 	// Perlin noise for organic movement
-	noiseX := s.noise.Noise3D(float64(spore.X)*noiseScale, float64(spore.Y)*noiseScale, float64(tick)*timeScale)
-	noiseY := s.noise.Noise3D(float64(spore.X)*noiseScale+100, float64(spore.Y)*noiseScale+100, float64(tick)*timeScale)
+	noiseX := s.noise.Noise3D(float64(spore.X)*sporeNoiseScale, float64(spore.Y)*sporeNoiseScale, float64(tick)*sporeTimeScale)
+	noiseY := s.noise.Noise3D(float64(spore.X)*sporeNoiseScale+100, float64(spore.Y)*sporeNoiseScale+100, float64(tick)*sporeTimeScale)
 
 	// Apply noise force
 	spore.VelX += float32(noiseX) * 0.02
@@ -156,13 +168,13 @@ func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
 	}
 
 	// Drag
-	spore.VelX *= 0.95
-	spore.VelY *= 0.95
+	spore.VelX *= sporeDrag
+	spore.VelY *= sporeDrag
 
 	// Cap velocity
 	velMag := float32(math.Sqrt(float64(spore.VelX*spore.VelX + spore.VelY*spore.VelY)))
-	if velMag > 0.8 {
-		scale := 0.8 / velMag
+	if velMag > sporeMaxVelocity {
+		scale := sporeMaxVelocity / velMag
 		spore.VelX *= scale
 		spore.VelY *= scale
 	}
@@ -207,27 +219,33 @@ func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
 }
 
 func (s *SporeSystem) germinate(spore *SporeEntity, createFlora FloraCreator) {
-	// Determine if flora should be rooted
-	isRooted := false
+	// Check if in top zone where rooting is blocked
+	inTopZone := spore.Y < s.bounds.Height*sporeTopZoneFraction
 
-	// Check if landed on terrain (but not in top 25% where it would block sun)
-	inTopZone := spore.Y < s.bounds.Height*0.25
-	onTerrain := s.terrain != nil && s.terrain.IsSolid(spore.X, spore.Y+4) && !inTopZone
-	onSeafloor := spore.Y >= s.bounds.Height-10
-
-	// If landed on terrain or seafloor (and not in top zone), root
-	if (onTerrain || onSeafloor || spore.Rooted) && !inTopZone {
-		isRooted = true
-	} else {
-		// Inherit parent's rooted/floating status with 80% probability
-		if spore.ParentRooted && rand.Float32() < 0.8 && !inTopZone {
-			isRooted = true
-		}
-		// Otherwise remains floating (isRooted = false)
-	}
+	// Determine if flora should be rooted based on location
+	isRooted := s.shouldRoot(spore, inTopZone)
 
 	// Create the new flora
-	createFlora(spore.X, spore.Y, isRooted, 60)
+	createFlora(spore.X, spore.Y, isRooted, sporeGerminateEnergy)
+}
+
+// shouldRoot determines whether a germinating spore should become rooted flora.
+func (s *SporeSystem) shouldRoot(spore *SporeEntity, inTopZone bool) bool {
+	if inTopZone {
+		return false // Never root in top zone
+	}
+
+	// Check if on terrain or seafloor
+	onTerrain := s.terrain != nil && s.terrain.IsSolid(spore.X, spore.Y+4)
+	onSeafloor := spore.Y >= s.bounds.Height-10
+
+	if onTerrain || onSeafloor || spore.Rooted {
+		return true
+	}
+
+	// Inherit parent's rooted status with 80% probability
+	const inheritRootChance = 0.8
+	return spore.ParentRooted && rand.Float32() < inheritRootChance
 }
 
 // Count returns the current number of active spores.

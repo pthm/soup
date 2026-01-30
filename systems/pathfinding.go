@@ -203,7 +203,7 @@ func (p *Pathfinder) forceToTurnThrust(forceX, forceY, forceMag, heading, desire
 	forceAngle := float32(math.Atan2(float64(forceY), float64(forceX)))
 
 	// Calculate turn needed (angle difference)
-	angleDiff := normalizeAngleRange(forceAngle - heading)
+	angleDiff := normalizeAngle(forceAngle - heading)
 	turn := angleDiff / math.Pi // Normalize to [-1, 1]
 
 	// Clamp turn rate
@@ -233,26 +233,9 @@ func (p *Pathfinder) forceToTurnThrust(forceX, forceY, forceMag, heading, desire
 	}
 }
 
-// normalizeAngleRange wraps an angle to [-pi, pi].
-func normalizeAngleRange(angle float32) float32 {
-	for angle > math.Pi {
-		angle -= 2 * math.Pi
-	}
-	for angle < -math.Pi {
-		angle += 2 * math.Pi
-	}
-	return angle
-}
-
 // NavigateSimple is a simplified navigation for when no terrain avoidance is needed.
 func (p *Pathfinder) NavigateSimple(desireAngle, desireDistance float32) PathfindingResult {
-	turn := desireAngle / math.Pi
-	if turn > 1.0 {
-		turn = 1.0
-	} else if turn < -1.0 {
-		turn = -1.0
-	}
-
+	turn := clampFloat(desireAngle/math.Pi, -1.0, 1.0)
 	return PathfindingResult{
 		Turn:   turn,
 		Thrust: desireDistance,

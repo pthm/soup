@@ -8,6 +8,18 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
+// Energy system constants
+const (
+	photoMaxOffset    = 0.80  // Photosynthesis can offset max 80% of base drain
+	photoRate         = 0.10  // Energy per light per photosynthetic weight
+	massScaleExponent = 0.70  // Mass factor for movement cost (cells^0.7)
+	movementCostBase  = 1.50  // Base multiplier for thrust cost
+	armorDragPenalty  = 0.40  // 40% more movement cost at full armor
+	baseEnergyPerCell = 50.0  // Base energy capacity per cell
+	storageBonus      = 30.0  // Bonus energy per cell at full storage
+	baseEnergy        = 100.0 // Minimum energy capacity
+)
+
 // EnergySystem handles organism energy updates.
 // All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type EnergySystem struct {
@@ -58,46 +70,40 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		org.MaxSpeed = baseSpeed
 
 		// Fauna photosynthesis: organisms with photosynthetic cells can offset energy drain
-		// This allows evolution of mixed strategies (photosynthetic fauna)
 		if caps.PhotoWeight > 0 && s.shadowMap != nil {
 			light := s.shadowMap.SampleLight(pos.X, pos.Y)
-			photoEnergy := float32(0.1) * light * caps.PhotoWeight
-			// Cap photosynthesis at 80% of base drain (can't fully sustain on light alone)
-			maxOffset := energyDrain * 0.8
+			photoEnergy := photoRate * light * caps.PhotoWeight
+			// Cap photosynthesis (can't fully sustain on light alone)
+			maxOffset := energyDrain * photoMaxOffset
 			if photoEnergy > maxOffset {
 				photoEnergy = maxOffset
 			}
 			energyDrain -= photoEnergy
 		}
 
-		// Movement cost: active thrust × drag coefficient × mass factor × armor penalty
-		// Larger organisms pay MORE to move - hunting is expensive for apex predators
-		// Using cells^0.7 instead of sqrt (cells^0.5) for steeper scaling
-		// 3-cell: 2.2x, 10-cell: 5.0x, 25-cell: 9.5x (vs sqrt: 1.7x, 3.2x, 5.0x)
-		// Armor adds drag penalty: 40% more movement cost at full armor
-		massFactor := float32(math.Pow(float64(cells.Count), 0.7))
-		armorPenalty := float32(1.0) + caps.StructuralArmor*0.4
-		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * 1.5 * massFactor * armorPenalty
+		// Movement cost: active thrust x drag x mass factor x armor penalty
+		// Larger organisms pay more to move - hunting is expensive for apex predators
+		massFactor := float32(math.Pow(float64(cells.Count), massScaleExponent))
+		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
+		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * movementCostBase * massFactor * armorPen
 		energyDrain += thrustCost
-		org.ActiveThrust = 0 // Reset for next tick
+		org.ActiveThrust = 0
 
 		org.Energy -= energyDrain
-		org.Energy = float32(math.Min(float64(org.Energy), float64(org.MaxEnergy)))
+		if org.Energy > org.MaxEnergy {
+			org.Energy = org.MaxEnergy
+		}
 
-		// Death from starvation
 		if org.Energy <= 0 {
 			org.Dead = true
 		}
 
-		// Breeding cooldown
 		if org.BreedingCooldown > 0 {
 			org.BreedingCooldown--
 		}
 
 		// Update max energy based on cell count and storage capacity
-		// Storage cells provide bonus energy capacity (30 per cell at full storage)
-		baseMax := float32(100) + float32(cells.Count)*50
-		storageBonus := caps.StorageCapacity * float32(cells.Count) * 30
-		org.MaxEnergy = baseMax + storageBonus
+		cellCountF := float32(cellCount)
+		org.MaxEnergy = baseEnergy + cellCountF*baseEnergyPerCell + caps.StorageCapacity*cellCountF*storageBonus
 	}
 }

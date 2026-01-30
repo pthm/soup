@@ -6,6 +6,9 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
+// Cell decomposition rate per tick after max age is exceeded.
+const cellDecompositionRate = 0.002
+
 // CellSystem handles cell aging and decomposition.
 type CellSystem struct {
 	filter ecs.Filter2[components.Organism, components.CellBuffer]
@@ -32,7 +35,7 @@ func (s *CellSystem) Update(w *ecs.World) {
 
 			// Start decomposing when old
 			if cell.Age > cell.MaxAge {
-				cell.Decomposition += 0.002
+				cell.Decomposition += cellDecompositionRate
 				if cell.Decomposition >= 1 {
 					cell.Alive = false
 				}

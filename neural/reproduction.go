@@ -12,6 +12,14 @@ import (
 	"github.com/yaricom/goNEAT/v4/neat/network"
 )
 
+// Mutation constants
+const (
+	perturbProb        = 0.9  // Probability of perturbing vs replacing weights
+	maxConnectionWeight = 8.0  // Maximum absolute connection weight
+	maxLinkAttempts    = 20   // Maximum attempts to find a new connection
+	initialInnovNum    = 1000 // Starting innovation number to avoid conflicts
+)
+
 // GenomeIDGenerator generates unique genome IDs.
 type GenomeIDGenerator struct {
 	nextID       int
@@ -22,7 +30,7 @@ type GenomeIDGenerator struct {
 func NewGenomeIDGenerator() *GenomeIDGenerator {
 	return &GenomeIDGenerator{
 		nextID:       1,
-		nextInnovNum: 1000, // Start high to avoid conflicts with initial genomes
+		nextInnovNum: initialInnovNum,
 	}
 }
 
@@ -173,7 +181,7 @@ func copyNode(node *network.NNode) *network.NNode {
 
 func mutateWeights(genome *genetics.Genome, power float64) {
 	for _, gene := range genome.Genes {
-		if rand.Float64() < 0.9 {
+		if rand.Float64() < perturbProb {
 			// Perturb weight
 			gene.Link.ConnectionWeight += (rand.Float64()*2 - 1) * power
 		} else {
@@ -181,13 +189,20 @@ func mutateWeights(genome *genetics.Genome, power float64) {
 			gene.Link.ConnectionWeight = rand.Float64()*4 - 2
 		}
 
-		// Clamp weights
-		if gene.Link.ConnectionWeight > 8 {
-			gene.Link.ConnectionWeight = 8
-		} else if gene.Link.ConnectionWeight < -8 {
-			gene.Link.ConnectionWeight = -8
-		}
+		// Clamp weights to valid range
+		gene.Link.ConnectionWeight = clampWeight(gene.Link.ConnectionWeight)
 	}
+}
+
+// clampWeight clamps a connection weight to the valid range.
+func clampWeight(w float64) float64 {
+	if w > maxConnectionWeight {
+		return maxConnectionWeight
+	}
+	if w < -maxConnectionWeight {
+		return -maxConnectionWeight
+	}
+	return w
 }
 
 func addNode(genome *genetics.Genome, idGen *GenomeIDGenerator, activators []neatmath.NodeActivationType) bool {
@@ -278,15 +293,15 @@ func addLink(genome *genetics.Genome, idGen *GenomeIDGenerator) bool {
 		return false
 	}
 
-	// Build existing connections map
-	existing := make(map[string]bool)
+	// Build existing connections map using integer key for efficiency
+	existing := make(map[int64]bool)
 	for _, gene := range genome.Genes {
-		key := fmt.Sprintf("%d->%d", gene.Link.InNode.Id, gene.Link.OutNode.Id)
+		key := connectionKey(gene.Link.InNode.Id, gene.Link.OutNode.Id)
 		existing[key] = true
 	}
 
-	// Try to find a new connection (max 20 attempts)
-	for attempt := 0; attempt < 20; attempt++ {
+	// Try to find a new connection
+	for attempt := 0; attempt < maxLinkAttempts; attempt++ {
 		source := sources[rand.Intn(len(sources))]
 		target := targets[rand.Intn(len(targets))]
 
@@ -296,8 +311,7 @@ func addLink(genome *genetics.Genome, idGen *GenomeIDGenerator) bool {
 		}
 
 		// Skip if connection exists
-		key := fmt.Sprintf("%d->%d", source.Id, target.Id)
-		if existing[key] {
+		if existing[connectionKey(source.Id, target.Id)] {
 			continue
 		}
 
@@ -316,6 +330,11 @@ func addLink(genome *genetics.Genome, idGen *GenomeIDGenerator) bool {
 	}
 
 	return false
+}
+
+// connectionKey creates a unique key for a connection between two nodes.
+func connectionKey(inID, outID int) int64 {
+	return int64(inID)<<32 | int64(outID)
 }
 
 func toggleEnable(genome *genetics.Genome) {

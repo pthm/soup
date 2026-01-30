@@ -58,24 +58,20 @@ func (sg *SpatialGrid) Update(floraPos, faunaPos []components.Position) {
 }
 
 func (sg *SpatialGrid) worldToGrid(x, y float32) (int, int) {
-	gx := int(x / sg.cellWidth)
-	gy := int(y / sg.cellHeight)
-
-	// Clamp to grid bounds
-	if gx < 0 {
-		gx = 0
-	}
-	if gx >= spatialGridSize {
-		gx = spatialGridSize - 1
-	}
-	if gy < 0 {
-		gy = 0
-	}
-	if gy >= spatialGridSize {
-		gy = spatialGridSize - 1
-	}
-
+	gx := clampInt(int(x/sg.cellWidth), 0, spatialGridSize-1)
+	gy := clampInt(int(y/sg.cellHeight), 0, spatialGridSize-1)
 	return gx, gy
+}
+
+// clampInt clamps an integer to [minVal, maxVal].
+func clampInt(v, minVal, maxVal int) int {
+	if v < minVal {
+		return minVal
+	}
+	if v > maxVal {
+		return maxVal
+	}
+	return v
 }
 
 // GetNearbyFauna returns indices of fauna within radius of position.
@@ -89,24 +85,10 @@ func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 
 	cx, cy := sg.worldToGrid(x, y)
 
-	minX := cx - cellRadius
-	maxX := cx + cellRadius
-	minY := cy - cellRadius
-	maxY := cy + cellRadius
-
-	// Clamp to grid bounds
-	if minX < 0 {
-		minX = 0
-	}
-	if maxX >= spatialGridSize {
-		maxX = spatialGridSize - 1
-	}
-	if minY < 0 {
-		minY = 0
-	}
-	if maxY >= spatialGridSize {
-		maxY = spatialGridSize - 1
-	}
+	minX := clampInt(cx-cellRadius, 0, spatialGridSize-1)
+	maxX := clampInt(cx+cellRadius, 0, spatialGridSize-1)
+	minY := clampInt(cy-cellRadius, 0, spatialGridSize-1)
+	maxY := clampInt(cy+cellRadius, 0, spatialGridSize-1)
 
 	// Use pre-allocated buffer, reset to zero length
 	var result *[]int

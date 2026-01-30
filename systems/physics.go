@@ -9,6 +9,18 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
+// Physics constants
+const (
+	deadMaxSpeed          = float32(0.5)  // Maximum drift speed for dead organisms
+	deadFriction          = float32(0.96) // Velocity dampening for dead organisms
+	aliveFrictionMin      = float32(0.96) // Base friction for alive organisms
+	aliveFrictionRange    = float32(0.03) // Additional friction from streamlining (0 to this)
+	wallFriction          = float32(0.8)  // Velocity multiplier on wall contact
+	bounceCoeff           = float32(0.3)  // Velocity multiplier when bouncing off top/bottom
+	fallbackCircleScale   = float32(3)    // Multiplier for cellSize when OBB unavailable
+	headingUpdateMinVelSq = float32(0.01) // Minimum velocity squared to update heading
+)
+
 // PhysicsSystem updates entity positions based on velocity.
 // All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type PhysicsSystem struct {
@@ -48,7 +60,7 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		// Dead organisms drift slowly with reduced max speed
 		maxSpeed := org.MaxSpeed
 		if org.Dead {
-			maxSpeed = 0.5 // Slow drift for corpses
+			maxSpeed = deadMaxSpeed
 		}
 
 		// Limit velocity
@@ -81,7 +93,7 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 				}
 			} else {
 				// Fallback to circle collision for organisms without OBB
-				radius := org.CellSize * 3
+				radius := org.CellSize * fallbackCircleScale
 				collides = s.terrain.CheckCircleCollision(pos.X, pos.Y, radius)
 				if collides {
 					openX, openY, normalX, normalY := s.terrain.FindNearestOpen(pos.X, pos.Y, radius)
@@ -99,24 +111,24 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 					vel.Y -= dot * ny
 				}
 				// Apply friction from wall contact
-				vel.X *= 0.8
-				vel.Y *= 0.8
+				vel.X *= wallFriction
+				vel.Y *= wallFriction
 			}
 		}
 
 		// Shape-based friction: streamlined organisms coast further
-		baseFriction := float32(0.98)
+		baseFriction := aliveFrictionMin
 		if org.Dead {
-			baseFriction = 0.96
+			baseFriction = deadFriction
 		} else {
 			// Streamlined organisms coast further (higher friction = less slowdown)
-			baseFriction = 0.96 + org.ShapeMetrics.Streamlining*0.03 // 0.96 to 0.99
+			baseFriction = aliveFrictionMin + org.ShapeMetrics.Streamlining*aliveFrictionRange
 		}
 		vel.X *= baseFriction
 		vel.Y *= baseFriction
 
 		// Update heading (not for dead)
-		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > 0.01 {
+		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > headingUpdateMinVelSq {
 			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
 		}
 
@@ -129,14 +141,14 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		}
 
 		// Vertical bounds (no wrap - top and bottom are walls)
-		cellRadius := org.CellSize * float32(3)
+		cellRadius := org.CellSize * fallbackCircleScale
 		if pos.Y < cellRadius {
 			pos.Y = cellRadius
-			vel.Y *= -0.3 // Bounce slightly
+			vel.Y *= -bounceCoeff // Bounce slightly
 		}
 		if pos.Y > s.bounds.Height-cellRadius {
 			pos.Y = s.bounds.Height - cellRadius
-			vel.Y *= -0.3 // Bounce slightly
+			vel.Y *= -bounceCoeff // Bounce slightly
 		}
 	}
 }

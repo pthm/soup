@@ -1,7 +1,6 @@
 package systems
 
 import (
-	"math"
 	"math/rand"
 
 	"github.com/mlange-42/ark/ecs"
@@ -180,31 +179,28 @@ func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.
 	return true
 }
 
+// Mate compatibility constants
+const (
+	mateProximitySq          = MateProximity * MateProximity // Squared for faster comparison
+	minAvgReproModeForSexual = float32(0.3)                  // Minimum average reproductive mode
+)
+
 // isCompatibleForSexual checks if two organisms can mate sexually.
 // No longer requires opposite genders - any two willing organisms can mate.
 func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
-	// Both must be eligible (already checked) and have reproductive capability
+	// Both must have reproductive capability
 	if a.caps.ReproductiveWeight <= 0 || b.caps.ReproductiveWeight <= 0 {
 		return false
 	}
 
-	// Must be within proximity
-	dx := a.pos.X - b.pos.X
-	dy := a.pos.Y - b.pos.Y
-	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-	if dist > MateProximity {
+	// Must be within proximity (use squared distance to avoid sqrt)
+	if distanceSq(a.pos.X, a.pos.Y, b.pos.X, b.pos.Y) > mateProximitySq {
 		return false
 	}
 
 	// Both should prefer sexual reproduction (or at least be willing)
-	// Use the average of their reproductive modes as compatibility
 	avgReproMode := (a.caps.ReproductiveMode() + b.caps.ReproductiveMode()) / 2
-	if avgReproMode < 0.3 {
-		// Both lean heavily asexual, unlikely to mate
-		return false
-	}
-
-	return true
+	return avgReproMode >= minAvgReproModeForSexual
 }
 
 // breedSexual performs sexual reproduction between two organisms.

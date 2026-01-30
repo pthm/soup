@@ -129,22 +129,12 @@ func (s *FeedingSystem) Update() {
 		entity := faunaQuery2.Entity()
 		pos, _, org, cells := faunaQuery2.Get()
 
-		if org.Dead {
+		if org.Dead || org.EatIntent < 0.5 {
 			continue
 		}
 
-		// All ECS organisms are fauna (flora are in FloraSystem)
-
-		// Check eat intent from brain (>0.5 means try to eat)
-		if org.EatIntent < 0.5 {
-			continue
-		}
-
-		// Compute this organism's capabilities
 		myCaps := cells.ComputeCapabilities()
-		myDigestive := myCaps.DigestiveSpectrum()
 
-		// Get species ID for kin avoidance
 		mySpeciesID := 0
 		if s.neuralMap.Has(entity) {
 			if ng := s.neuralMap.Get(entity); ng != nil {
@@ -152,8 +142,7 @@ func (s *FeedingSystem) Update() {
 			}
 		}
 
-		// Try to feed on the best available target
-		s.tryFeed(pos, org, cells, myCaps, myDigestive, mySpeciesID, targets)
+		s.tryFeed(pos, org, myCaps, myCaps.DigestiveSpectrum(), mySpeciesID, targets)
 	}
 }
 
@@ -161,13 +150,13 @@ func (s *FeedingSystem) Update() {
 func (s *FeedingSystem) tryFeed(
 	pos *components.Position,
 	org *components.Organism,
-	cells *components.CellBuffer,
 	myCaps components.Capabilities,
 	myDigestive float32,
 	mySpeciesID int,
 	targets []entityData,
 ) {
-	feedDistSq := float32(feedingDistance * feedingDistance)
+	const feedDistSq = feedingDistance * feedingDistance
+	const kinAvoidanceProb = 0.70 // Probability of avoiding hunting own species
 
 	var bestTarget *entityData
 	var bestPenetration float32
@@ -181,40 +170,31 @@ func (s *FeedingSystem) tryFeed(
 			continue
 		}
 
-		// Calculate distance
-		dx := pos.X - target.pos.X
-		dy := pos.Y - target.pos.Y
-		distSq := dx*dx + dy*dy
-
-		if distSq > feedDistSq {
+		// Check distance
+		dSq := distanceSq(pos.X, pos.Y, target.pos.X, target.pos.Y)
+		if dSq > feedDistSq {
 			continue
 		}
 
 		// Calculate capability match
-		targetComposition := target.caps.Composition()
-		targetArmor := target.caps.StructuralArmor
+		edibility := neural.Edibility(myDigestive, target.caps.Composition())
+		penetration := neural.Penetration(edibility, target.caps.StructuralArmor)
 
-		edibility := neural.Edibility(myDigestive, targetComposition)
-		penetration := neural.Penetration(edibility, targetArmor)
-
-		// Can't feed if penetration is 0
 		if penetration <= 0 {
 			continue
 		}
 
-		// For living fauna targets, apply kin avoidance
-		if !target.isFlora && !target.org.Dead && mySpeciesID > 0 && target.speciesID == mySpeciesID {
-			// 70% chance to avoid hunting your own species
-			if rand.Float32() < 0.70 {
-				continue
-			}
+		// Kin avoidance: avoid hunting your own species
+		isKin := !target.isFlora && !target.org.Dead && mySpeciesID > 0 && target.speciesID == mySpeciesID
+		if isKin && rand.Float32() < kinAvoidanceProb {
+			continue
 		}
 
 		// Prefer targets with higher penetration, then closer distance
-		if penetration > bestPenetration || (penetration == bestPenetration && distSq < bestDistSq) {
+		if penetration > bestPenetration || (penetration == bestPenetration && dSq < bestDistSq) {
 			bestTarget = target
 			bestPenetration = penetration
-			bestDistSq = distSq
+			bestDistSq = dSq
 		}
 	}
 
@@ -222,14 +202,12 @@ func (s *FeedingSystem) tryFeed(
 		return
 	}
 
-	// Execute feeding
-	s.executeFeed(org, cells, myCaps, bestTarget, bestPenetration)
+	s.executeFeed(org, myCaps, bestTarget, bestPenetration)
 }
 
 // executeFeed performs the actual energy transfer.
 func (s *FeedingSystem) executeFeed(
 	predOrg *components.Organism,
-	_ *components.CellBuffer, // predCells - not used in current implementation
 	predCaps components.Capabilities,
 	target *entityData,
 	penetration float32,

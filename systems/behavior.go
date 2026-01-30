@@ -10,6 +10,31 @@ import (
 	"github.com/pthm-cable/soup/neural"
 )
 
+// Behavior system constants
+const (
+	// Flow field parameters
+	flowScale      = 0.003  // Spatial scale for flow field noise
+	flowTimeScale  = 0.0001 // Temporal scale for flow field evolution
+	flowStrength   = 0.4    // Base flow field strength
+	flowDriftY     = 0.05   // Constant downward drift
+	flowSideEffect = 0.02   // Amplitude of side-to-side drift
+
+	// Dead organism physics
+	deadFlowMultiplier = 1.5   // Dead organisms affected more by flow
+	deadSinkRate       = 0.02  // Downward drift rate for dead organisms
+
+	// Thrust and turning
+	thrustScale       = 0.1  // Thrust force multiplier
+	turnScale         = 0.15 // Base turn rate multiplier
+	defaultTurnScale  = 0.15 // Turn scale when no cells
+	actuatorThrustMul = 0.5  // Actuator thrust contribution
+
+	// Capability thresholds
+	minSensorGain    = float32(0.1)
+	minActuatorGain  = float32(0.1)
+	capabilityScale  = 4.0 // Denominator for capability scaling
+)
+
 // BehaviorSystem handles organism steering behaviors using direct neural control.
 type BehaviorSystem struct {
 	filter      ecs.Filter3[components.Position, components.Velocity, components.Organism]
@@ -55,9 +80,9 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Dead organisms only get flow field influence
 		if org.Dead {
 			flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
-			vel.X += flowX * 1.5
-			vel.Y += flowY * 1.5
-			vel.Y += 0.02 // Slight downward drift (sinking)
+			vel.X += flowX * deadFlowMultiplier
+			vel.Y += flowY * deadFlowMultiplier
+			vel.Y += deadSinkRate // Slight downward drift (sinking)
 			continue
 		}
 
@@ -113,23 +138,15 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Actuator positions and strengths determine how Turn/Thrust translate to movement
 		thrust, torque := calculateActuatorForces(cells, org.Heading, navResult.Thrust, navResult.Turn)
 
-		// Apply torque to heading
-		org.Heading += torque
-
-		// Normalize heading to [0, 2*Pi]
-		for org.Heading < 0 {
-			org.Heading += 2 * math.Pi
-		}
-		for org.Heading >= 2*math.Pi {
-			org.Heading -= 2 * math.Pi
-		}
+		// Apply torque to heading and normalize to [0, 2*Pi]
+		org.Heading = normalizeHeading(org.Heading + torque)
 
 		// Calculate effective max speed based on actuator capability
 		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, cells)
 
 		// Apply thrust in heading direction
-		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * 0.1
-		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * 0.1
+		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * thrustScale
+		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * thrustScale
 
 		// Apply flow field (already computed for pathfinding)
 		vel.X += thrustX + flowX
@@ -384,21 +401,17 @@ func (s *BehaviorSystem) buildEntityList(
 }
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
-	const flowScale = 0.003
-	const timeScale = 0.0001
-	const baseStrength = 0.4
-
-	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*timeScale)
-	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*timeScale)
+	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*flowTimeScale)
+	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*flowTimeScale)
 
 	flowAngle := noiseX * math.Pi * 2
 	flowMagnitude := (noiseY + 1) * 0.5
-	flowX := float32(math.Cos(flowAngle) * flowMagnitude * baseStrength)
-	flowY := float32(math.Sin(flowAngle) * flowMagnitude * baseStrength)
+	flowX := float32(math.Cos(flowAngle) * flowMagnitude * flowStrength)
+	flowY := float32(math.Sin(flowAngle) * flowMagnitude * flowStrength)
 
-	// Add downward drift
-	flowY += 0.05
-	flowX += float32(math.Sin(float64(s.tick)*0.0002)) * 0.02
+	// Add downward drift and side-to-side motion
+	flowY += flowDriftY
+	flowX += float32(math.Sin(float64(s.tick)*flowTimeScale*2)) * flowSideEffect
 
 	// All ECS organisms are fauna (flora are in FloraSystem)
 
@@ -420,11 +433,10 @@ func getTotalSensorGain(cells *components.CellBuffer) float32 {
 	}
 	var total float32
 	for i := uint8(0); i < cells.Count; i++ {
-		cell := &cells.Cells[i]
-		total += cell.GetSensorStrength()
+		total += cells.Cells[i].GetSensorStrength()
 	}
-	if total < 0.1 {
-		return 0.1 // Minimum sensor capability
+	if total < minSensorGain {
+		return minSensorGain
 	}
 	return total
 }
@@ -449,7 +461,7 @@ func getSensorCount(cells *components.CellBuffer) int {
 func getEffectivePerceptionRadius(baseRadius float32, cells *components.CellBuffer) float32 {
 	totalGain := getTotalSensorGain(cells)
 	// Scale: 0.5x (no sensors) to 1.5x (4+ sensor gain)
-	scale := float32(0.5 + math.Min(1.0, float64(totalGain)/4.0))
+	scale := float32(0.5 + math.Min(1.0, float64(totalGain)/capabilityScale))
 	return baseRadius * scale
 }
 
@@ -462,11 +474,10 @@ func getTotalActuatorStrength(cells *components.CellBuffer) float32 {
 	}
 	var total float32
 	for i := uint8(0); i < cells.Count; i++ {
-		cell := &cells.Cells[i]
-		total += cell.GetActuatorStrength()
+		total += cells.Cells[i].GetActuatorStrength()
 	}
-	if total < 0.1 {
-		return 0.1 // Minimum actuator capability
+	if total < minActuatorGain {
+		return minActuatorGain
 	}
 	return total
 }
@@ -496,7 +507,7 @@ func calculateActuatorForces(
 ) (thrust float32, torque float32) {
 	if cells == nil {
 		// No cell data - use direct control
-		return thrustOutput, turnOutput * 0.15
+		return thrustOutput, turnOutput * defaultTurnScale
 	}
 
 	var totalStrength float32
@@ -529,15 +540,15 @@ func calculateActuatorForces(
 		weightedTorque += turnContribution
 	}
 
-	if totalStrength < 0.1 {
-		totalStrength = 0.1
+	if totalStrength < minActuatorGain {
+		totalStrength = minActuatorGain
 	}
 
 	// Forward thrust proportional to total actuator strength
-	thrust = thrustOutput * totalStrength * 0.5
+	thrust = thrustOutput * totalStrength * actuatorThrustMul
 
 	// Torque for turning (normalized to prevent runaway with many actuators)
-	torque = weightedTorque / totalStrength * 0.15
+	torque = weightedTorque / totalStrength * turnScale
 
 	return thrust, torque
 }
@@ -547,6 +558,6 @@ func calculateActuatorForces(
 func getEffectiveMaxSpeed(baseSpeed float32, cells *components.CellBuffer) float32 {
 	totalStrength := getTotalActuatorStrength(cells)
 	// Scale: 0.5x (minimal actuators) to 1.5x (4+ actuator strength)
-	scale := float32(0.5 + math.Min(1.0, float64(totalStrength)/4.0))
+	scale := float32(0.5 + math.Min(1.0, float64(totalStrength)/capabilityScale))
 	return baseSpeed * scale
 }

@@ -239,7 +239,7 @@ func (g *Game) updateGrowth() {
 type gridPos struct{ x, y int8 }
 
 // tryGrow attempts to grow a new cell on an organism.
-func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, cells *components.CellBuffer) {
+func (g *Game) tryGrow(_ *components.Position, org *components.Organism, cells *components.CellBuffer) {
 	if cells.Count >= 32 || org.Energy < 30 {
 		return
 	}
@@ -296,9 +296,6 @@ func (g *Game) tryGrow(orgPos *components.Position, org *components.Organism, ce
 	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
 
 	org.Energy -= 30
-
-	// Suppress unused variable warning
-	_ = orgPos
 }
 
 // cleanupDead removes dead organisms and updates fitness tracking.
@@ -311,7 +308,7 @@ func (g *Game) cleanupDead() {
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
-		_, _, org, cells := query.Get()
+		_, _, org, _ := query.Get()
 
 		if org.Dead {
 			// On first death tick, remove from species and record fitness
@@ -344,9 +341,6 @@ func (g *Game) cleanupDead() {
 				}
 			}
 		}
-
-		// Suppress unused variable warning
-		_ = cells
 	}
 
 	// Remove dead entities

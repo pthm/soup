@@ -47,49 +47,55 @@ type CollisionOBB struct {
 // Note: Diet and other capabilities are now derived from cells, not stored as traits.
 // All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type Organism struct {
-	Energy float32
-	MaxEnergy         float32
-	CellSize          float32
-	MaxSpeed          float32
-	MaxForce          float32
-	PerceptionRadius  float32
-	Dead              bool
-	Heading           float32
-	GrowthTimer       int32
-	GrowthInterval    int32
-	SporeTimer        int32
-	SporeInterval     int32
-	BreedingCooldown  int32
-	AllocationMode    AllocationMode
-	TargetCells       uint8        // Desired cell count based on conditions
-	DeadTime          int32        // Ticks since death (for decomposition/removal)
-	ShapeMetrics      ShapeMetrics // Physical shape characteristics
-	ActiveThrust      float32      // Thrust magnitude this tick (for energy cost)
-	OBB               CollisionOBB // Collision bounding box computed from cells
+	// Core state
+	Energy           float32
+	MaxEnergy        float32
+	CellSize         float32
+	MaxSpeed         float32
+	MaxForce         float32
+	PerceptionRadius float32
+	Dead             bool
+	Heading          float32
 
-	// Brain outputs (Phase 5: intent-based)
-	DesireAngle    float32 // Brain output: -π to +π, where to go relative to heading
+	// Timers
+	GrowthTimer      int32
+	GrowthInterval   int32
+	SporeTimer       int32
+	SporeInterval    int32
+	BreedingCooldown int32
+
+	// Allocation and shape
+	AllocationMode AllocationMode
+	TargetCells    uint8        // Desired cell count based on conditions
+	DeadTime       int32        // Ticks since death (for decomposition/removal)
+	ShapeMetrics   ShapeMetrics // Physical shape characteristics
+	ActiveThrust   float32      // Thrust magnitude this tick (for energy cost)
+	OBB            CollisionOBB // Collision bounding box computed from cells
+
+	// Brain outputs (intent-based)
+	DesireAngle    float32 // Brain output: -pi to +pi, where to go relative to heading
 	DesireDistance float32 // Brain output: 0-1, movement urgency
 	EatIntent      float32 // Brain output: 0-1, >0.5 means try to eat
 	GrowIntent     float32 // Brain output: 0-1, allocate energy to growth
 	BreedIntent    float32 // Brain output: 0-1, >0.5 means try to reproduce
-	GlowIntent     float32 // Brain output: 0-1, bioluminescence intensity (Phase 5b)
+	GlowIntent     float32 // Brain output: 0-1, bioluminescence intensity
 
-	// Derived motor outputs (computed by pathfinding layer in Phase 5)
+	// Derived motor outputs (computed by pathfinding layer)
 	TurnOutput   float32 // -1 to +1, current turn output
 	ThrustOutput float32 // 0 to 1, current thrust output
 
-	// Bioluminescence state (Phase 5b)
-	EmittedLight float32 // Current light emission (GlowIntent × BioluminescentCap)
+	// Bioluminescence state
+	EmittedLight float32 // Current light emission (GlowIntent x BioluminescentCap)
 }
 
 // Cell represents a single cell within an organism.
 // Cell function and behavior are determined by PrimaryType/SecondaryType from CPPN.
 type Cell struct {
-	GridX int8
-	GridY int8
-	Age   int32
-	MaxAge int32
+	// Position and state
+	GridX         int8
+	GridY         int8
+	Age           int32
+	MaxAge        int32
 	Alive         bool
 	Decomposition float32
 
@@ -99,15 +105,13 @@ type Cell struct {
 	PrimaryStrength   float32         // Effective primary strength
 	SecondaryStrength float32         // Effective secondary strength
 
-	// Digestive spectrum (for digestive cells)
+	// Cell specialization (from CPPN)
 	DigestiveSpectrum float32 // 0=herbivore, 1=carnivore
+	ReproductiveMode  float32 // 0=asexual, 0.5=mixed, 1=sexual
 
 	// Modifiers
 	StructuralArmor float32 // 0-1, damage reduction (adds drag)
 	StorageCapacity float32 // 0-1, max energy bonus (adds metabolism)
-
-	// Reproduction spectrum (from CPPN)
-	ReproductiveMode float32 // 0=asexual, 0.5=mixed, 1=sexual
 }
 
 // GetSensorStrength returns the effective sensor capability of this cell.
