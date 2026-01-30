@@ -71,9 +71,11 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 
 			// Check if OBB is valid (has non-zero half-extents)
 			if org.OBB.HalfWidth > 0 && org.OBB.HalfHeight > 0 {
-				collides = s.terrain.CheckOBBCollision(pos.X, pos.Y, org.Heading, &org.OBB)
+				// Add π/2 so OBB aligns with visual cell rotation (Y-forward in grid space)
+				visualHeading := org.Heading + math.Pi/2
+				collides = s.terrain.CheckOBBCollision(pos.X, pos.Y, visualHeading, &org.OBB)
 				if collides {
-					openX, openY, normalX, normalY := s.terrain.FindNearestOpenOBB(pos.X, pos.Y, org.Heading, &org.OBB)
+					openX, openY, normalX, normalY := s.terrain.FindNearestOpenOBB(pos.X, pos.Y, visualHeading, &org.OBB)
 					pos.X, pos.Y = openX, openY
 					nx, ny = normalX, normalY
 				}

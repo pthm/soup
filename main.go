@@ -882,8 +882,10 @@ func (g *Game) drawPerceptionCones() {
 
 	// Cone colors: Food (green), Threat (red), Friend (blue)
 	// Draw as transparent arcs
+	// Add π/2 to align with visual orientation (Y-forward in grid space)
+	visualHeading := org.Heading + float32(math.Pi/2)
 	for i := 0; i < 4; i++ {
-		baseAngle := org.Heading + float32(i)*float32(math.Pi/2)
+		baseAngle := visualHeading + float32(i)*float32(math.Pi/2)
 
 		// Draw cone outline
 		startAngle := baseAngle - coneAngle/2
@@ -969,14 +971,15 @@ func (g *Game) drawPathfindingOverlay() {
 	org := orgMap.Get(g.selectedEntity)
 	vel := velMap.Get(g.selectedEntity)
 
-	// Draw desire vector (where brain wants to go)
+	// Draw desire vector (where brain wants to go in world space)
+	// DesireAngle is relative to physical heading (what brain sees as forward)
 	desireLen := float32(50) * org.DesireDistance
 	desireAngle := org.Heading + org.DesireAngle
 	desireX := pos.X + desireLen*float32(math.Cos(float64(desireAngle)))
 	desireY := pos.Y + desireLen*float32(math.Sin(float64(desireAngle)))
 	rl.DrawLine(int32(pos.X), int32(pos.Y), int32(desireX), int32(desireY), rl.Color{R: 255, G: 255, B: 255, A: 200})
 
-	// Draw actual velocity vector
+	// Draw actual velocity vector (true physical movement)
 	velLen := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
 	if velLen > 0.1 {
 		scale := float32(30) / velLen
@@ -985,10 +988,11 @@ func (g *Game) drawPathfindingOverlay() {
 		rl.DrawLine(int32(pos.X), int32(pos.Y), int32(actualX), int32(actualY), rl.Color{R: 100, G: 255, B: 100, A: 200})
 	}
 
-	// Draw heading indicator
+	// Draw heading indicator (visual forward direction)
+	visualHeading := org.Heading + float32(math.Pi/2)
 	headingLen := float32(25)
-	headingX := pos.X + headingLen*float32(math.Cos(float64(org.Heading)))
-	headingY := pos.Y + headingLen*float32(math.Sin(float64(org.Heading)))
+	headingX := pos.X + headingLen*float32(math.Cos(float64(visualHeading)))
+	headingY := pos.Y + headingLen*float32(math.Sin(float64(visualHeading)))
 	rl.DrawLine(int32(pos.X), int32(pos.Y), int32(headingX), int32(headingY), rl.Color{R: 255, G: 200, B: 100, A: 150})
 }
 
@@ -1002,9 +1006,10 @@ func (g *Game) drawCollisionBoxes() {
 		}
 
 		// Draw OBB as rotated rectangle
+		// Add π/2 to match visual cell rotation
 		obb := &org.OBB
-		cos := float32(math.Cos(float64(org.Heading)))
-		sin := float32(math.Sin(float64(org.Heading)))
+		cos := float32(math.Cos(float64(org.Heading) + math.Pi/2))
+		sin := float32(math.Sin(float64(org.Heading) + math.Pi/2))
 
 		// Calculate corner offsets
 		hw, hh := obb.HalfWidth, obb.HalfHeight
@@ -1900,10 +1905,11 @@ func (g *Game) drawSelectionIndicator() {
 				continue
 			}
 			// Rotate cell position by organism heading
+			// Add π/2 so Y-axis (forward in grid space) aligns with movement direction
 			localX := float32(cell.GridX) * org.CellSize
 			localY := float32(cell.GridY) * org.CellSize
-			cosH := float32(math.Cos(float64(org.Heading)))
-			sinH := float32(math.Sin(float64(org.Heading)))
+			cosH := float32(math.Cos(float64(org.Heading) + math.Pi/2))
+			sinH := float32(math.Sin(float64(org.Heading) + math.Pi/2))
 			rotatedX := localX*cosH - localY*sinH
 			rotatedY := localX*sinH + localY*cosH
 			cellX := pos.X + rotatedX
@@ -2063,8 +2069,9 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 	}
 
 	// Pre-compute rotation for cell positions
-	cosH := float32(math.Cos(float64(org.Heading)))
-	sinH := float32(math.Sin(float64(org.Heading)))
+	// Add π/2 so Y-axis (forward in grid space) aligns with movement direction
+	cosH := float32(math.Cos(float64(org.Heading) + math.Pi/2))
+	sinH := float32(math.Sin(float64(org.Heading) + math.Pi/2))
 
 	// Draw each cell
 	for i := uint8(0); i < cells.Count; i++ {
@@ -2101,7 +2108,8 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		cellColor.B = uint8(float32(cellColor.B) * light)
 
 		// Draw cell with rotation matching organism heading
-		rotationDeg := org.Heading * 180 / math.Pi
+		// Add 90° so cells align with movement direction
+		rotationDeg := org.Heading*180/math.Pi + 90
 		rl.DrawRectanglePro(
 			rl.Rectangle{X: cellX, Y: cellY, Width: org.CellSize, Height: org.CellSize},
 			rl.Vector2{X: org.CellSize / 2, Y: org.CellSize / 2}, // rotate around cell center
