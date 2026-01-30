@@ -649,16 +649,16 @@ func (g *Game) createNeuralOrganismConstrained(x, y float32, energy float32, neu
 	// (Flora are now managed by FloraSystem and don't have neural brains)
 	entity := g.faunaMapper.NewEntity(pos, vel, org, cells, &components.Fauna{})
 
-	// Add neural components
-	g.neuralGenomeMap.Add(entity, neuralGenome)
-	g.brainMap.Add(entity, brain)
-
-	// Register with species manager
+	// Assign species BEFORE adding to map (map stores copy, not pointer)
 	if neuralGenome.BrainGenome != nil && g.speciesManager != nil {
 		speciesID := g.speciesManager.AssignSpecies(neuralGenome.BrainGenome)
 		neuralGenome.SpeciesID = speciesID
 		g.speciesManager.AddMember(speciesID, int(entity.ID()))
 	}
+
+	// Add neural components (after species is set)
+	g.neuralGenomeMap.Add(entity, neuralGenome)
+	g.brainMap.Add(entity, brain)
 
 	return entity
 }
@@ -1390,7 +1390,7 @@ func (g *Game) logNeuralStats() {
 			}
 
 			entity := query2.Entity()
-			pos, _, org, cells := query2.Get()
+			pos, vel, org, cells := query2.Get()
 
 			if org.Dead || !g.neuralGenomeMap.Has(entity) {
 				continue
@@ -1401,12 +1401,25 @@ func (g *Game) logNeuralStats() {
 				continue
 			}
 
-			nodes := len(neuralGenome.BrainGenome.Nodes)
-			genes := len(neuralGenome.BrainGenome.Genes)
+			// Calculate speed from velocity
+			speed := float32(0)
+			if vel != nil {
+				speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+			}
 
-			logf("║   Entity %d @ (%.0f,%.0f): species=%d, gen=%d, cells=%d, energy=%.0f/%.0f, nodes=%d, genes=%d",
-				entity.ID(), pos.X, pos.Y, neuralGenome.SpeciesID, neuralGenome.Generation,
-				cells.Count, org.Energy, org.MaxEnergy, nodes, genes)
+			// Mode name for readability
+			modeName := "SURVIVE"
+			switch org.AllocationMode {
+			case components.ModeGrow:
+				modeName = "GROW"
+			case components.ModeBreed:
+				modeName = "BREED"
+			}
+
+			logf("║   Entity %d @ (%.0f,%.0f) v=(%.1f,%.1f) spd=%.1f mode=%s: species=%d, gen=%d, cells=%d, energy=%.0f/%.0f",
+				entity.ID(), pos.X, pos.Y, vel.X, vel.Y, speed, modeName,
+				neuralGenome.SpeciesID, neuralGenome.Generation,
+				cells.Count, org.Energy, org.MaxEnergy)
 			count++
 		}
 	}

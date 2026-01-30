@@ -49,6 +49,12 @@ func (s *CellSystem) Update(w *ecs.World) {
 		// Recalculate shape metrics if cells were removed
 		if cellsRemoved {
 			org.ShapeMetrics = CalculateShapeMetrics(cells)
+			org.OBB = ComputeCollisionOBB(cells, org.CellSize)
+		}
+
+		// Organism dies if it loses all cells
+		if cells.Count == 0 && !org.Dead {
+			org.Dead = true
 		}
 	}
 }

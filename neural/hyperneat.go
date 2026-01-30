@@ -143,8 +143,8 @@ type HyperNEATBrain struct {
 }
 
 // SimplifiedHyperNEATBrain creates a brain that maps the standard inputs
-// to 6 outputs, but uses CPPN-queried weights based on sensor/actuator geometry.
-// This is a simpler approach that maintains compatibility with existing systems.
+// to 6 outputs through a hidden layer, using CPPN-queried weights based on
+// sensor/actuator geometry. The hidden layer enables more complex behaviors.
 func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResult) (*BrainController, error) {
 	// Build CPPN network
 	cppnNet, err := cppnGenome.Genesis(cppnGenome.Id)
@@ -153,26 +153,38 @@ func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResu
 	}
 
 	substrate := BuildSubstrateFromMorphology(morph)
+	numHidden := len(substrate.HiddenNodes)
 
-	// Create standard brain structure (BrainInputs inputs, BrainOutputs outputs)
-	nodes := make([]*network.NNode, 0, BrainInputs+BrainOutputs)
+	// Create brain structure: inputs + hidden + outputs
+	// Node IDs: 1..BrainInputs (inputs), BrainInputs+1..+numHidden (hidden),
+	//           BrainInputs+numHidden+1..+BrainOutputs (outputs)
+	totalNodes := BrainInputs + numHidden + BrainOutputs
+	nodes := make([]*network.NNode, 0, totalNodes)
 
-	// Input nodes
+	// Input nodes (IDs 1 to BrainInputs)
 	for i := 1; i <= BrainInputs; i++ {
 		node := network.NewNNode(i, network.InputNeuron)
 		node.ActivationType = neatmath.LinearActivation
 		nodes = append(nodes, node)
 	}
 
-	// Output nodes
-	for i := 1; i <= BrainOutputs; i++ {
-		node := network.NewNNode(BrainInputs+i, network.OutputNeuron)
+	// Hidden nodes (IDs BrainInputs+1 to BrainInputs+numHidden)
+	hiddenStartID := BrainInputs + 1
+	for i := 0; i < numHidden; i++ {
+		node := network.NewNNode(hiddenStartID+i, network.HiddenNeuron)
+		node.ActivationType = neatmath.TanhActivation
+		nodes = append(nodes, node)
+	}
+
+	// Output nodes (IDs BrainInputs+numHidden+1 to BrainInputs+numHidden+BrainOutputs)
+	outputStartID := BrainInputs + numHidden + 1
+	for i := 0; i < BrainOutputs; i++ {
+		node := network.NewNNode(outputStartID+i, network.OutputNeuron)
 		node.ActivationType = neatmath.SigmoidSteepenedActivation
 		nodes = append(nodes, node)
 	}
 
-	// Query CPPN for connection weights
-	// Use sensor centroid for input-side position, output positions for output-side
+	// Calculate sensor centroid for body-dependent positioning
 	var sensorCentroidX, sensorCentroidY float64
 	if len(substrate.SensorNodes) > 0 {
 		for _, s := range substrate.SensorNodes {
@@ -186,33 +198,34 @@ func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResu
 	genes := make([]*genetics.Gene, 0)
 	innovNum := int64(1)
 
-	// Create connections with CPPN-queried weights
-	for i := 0; i < BrainInputs; i++ {
-		// Map input index to a position (spread inputs across top of substrate)
+	// Helper to get input node position
+	getInputPos := func(i int) (x, y float64) {
 		inputX := float64(i)/float64(BrainInputs-1)*2 - 1 // [-1, 1]
 		inputY := 1.0                                      // Top of substrate
-
 		// Blend with sensor centroid for body-dependent positioning
-		blendedX := inputX*0.5 + sensorCentroidX*0.5
-		blendedY := inputY*0.5 + sensorCentroidY*0.5
+		return inputX*0.5 + sensorCentroidX*0.5, inputY*0.5 + sensorCentroidY*0.5
+	}
 
-		for j := 0; j < BrainOutputs; j++ {
-			outputNode := substrate.OutputNodes[j]
+	// Create input -> hidden connections
+	for i := 0; i < BrainInputs; i++ {
+		inputX, inputY := getInputPos(i)
+
+		for h := 0; h < numHidden; h++ {
+			hiddenNode := substrate.HiddenNodes[h]
 
 			weight, expressed, err := QueryConnectionWeight(
-				cppnNet, blendedX, blendedY, outputNode.X, outputNode.Y)
+				cppnNet, inputX, inputY, hiddenNode.X, hiddenNode.Y)
 			if err != nil {
-				// Fallback to random weight
 				weight = 0.0
-				expressed = true
+				expressed = false
 			}
 
 			if expressed {
 				gene := genetics.NewGeneWithTrait(
 					nil,
-					weight*3, // Scale weight for stronger signal
+					weight*2, // Scale weight
 					nodes[i],
-					nodes[BrainInputs+j],
+					nodes[BrainInputs+h],
 					false,
 					innovNum,
 					0,
@@ -223,41 +236,155 @@ func SimplifiedHyperNEATBrain(cppnGenome *genetics.Genome, morph *MorphologyResu
 		}
 	}
 
-	// Ensure each output has at least one connection
-	// This is critical for behaviors like Eat and Mate to be expressible
+	// Create hidden -> output connections
+	for h := 0; h < numHidden; h++ {
+		hiddenNode := substrate.HiddenNodes[h]
+
+		for j := 0; j < BrainOutputs; j++ {
+			outputNode := substrate.OutputNodes[j]
+
+			weight, expressed, err := QueryConnectionWeight(
+				cppnNet, hiddenNode.X, hiddenNode.Y, outputNode.X, outputNode.Y)
+			if err != nil {
+				weight = 0.0
+				expressed = false
+			}
+
+			if expressed {
+				gene := genetics.NewGeneWithTrait(
+					nil,
+					weight*2, // Scale weight
+					nodes[BrainInputs+h],
+					nodes[outputStartID-1+j],
+					false,
+					innovNum,
+					0,
+				)
+				genes = append(genes, gene)
+			}
+			innovNum++
+		}
+	}
+
+	// Also create some direct input -> output connections for fast reflexes
+	// Query CPPN with longer distance to get potentially different weights
+	for i := 0; i < BrainInputs; i++ {
+		inputX, inputY := getInputPos(i)
+
+		for j := 0; j < BrainOutputs; j++ {
+			outputNode := substrate.OutputNodes[j]
+
+			weight, expressed, err := QueryConnectionWeight(
+				cppnNet, inputX, inputY, outputNode.X, outputNode.Y)
+			if err != nil {
+				weight = 0.0
+				expressed = false
+			}
+
+			// Direct connections are sparser - use stricter threshold
+			if expressed && math.Abs(weight) > 0.3 {
+				gene := genetics.NewGeneWithTrait(
+					nil,
+					weight*1.5, // Slightly weaker than hidden path
+					nodes[i],
+					nodes[outputStartID-1+j],
+					false,
+					innovNum,
+					0,
+				)
+				genes = append(genes, gene)
+			}
+			innovNum++
+		}
+	}
+
+	// Ensure each output has at least one connection (from hidden or input)
 	outputConnections := make([]int, BrainOutputs)
 	for _, gene := range genes {
 		for j := 0; j < BrainOutputs; j++ {
-			if gene.Link.OutNode.Id == BrainInputs+j+1 {
+			if gene.Link.OutNode.Id == outputStartID+j {
 				outputConnections[j]++
 			}
 		}
 	}
 
-	for j := 0; j < BrainOutputs; j++ {
-		if outputConnections[j] == 0 {
-			// Connect relevant inputs to this output
-			// Turn (0): connect to predator angle inputs
-			// Thrust (1): connect to food distance and energy
-			// Eat (2): connect to food distance and energy
-			// Mate (3): connect to mate distance and energy
-			var inputIdx int
-			switch j {
-			case 0: // Turn
-				inputIdx = 4 // Predator angle sin
-			case 1: // Thrust
-				inputIdx = 11 // Energy ratio
-			case 2: // Eat
-				inputIdx = 0 // Food distance
-			case 3: // Mate
-				inputIdx = 11 // Energy ratio - high energy = want to mate
+	// Ensure each hidden node has at least one input connection
+	hiddenInputs := make([]int, numHidden)
+	for _, gene := range genes {
+		for h := 0; h < numHidden; h++ {
+			if gene.Link.OutNode.Id == hiddenStartID+h {
+				hiddenInputs[h]++
+			}
+		}
+	}
+
+	// Connect unconnected hidden nodes to a relevant input
+	for h := 0; h < numHidden; h++ {
+		if hiddenInputs[h] == 0 {
+			// Connect to input based on hidden node position
+			inputIdx := int((substrate.HiddenNodes[h].X + 1) / 2 * float64(BrainInputs-1))
+			if inputIdx < 0 {
+				inputIdx = 0
+			}
+			if inputIdx >= BrainInputs {
+				inputIdx = BrainInputs - 1
 			}
 
 			gene := genetics.NewGeneWithTrait(
 				nil,
-				1.5, // Positive weight to bias toward action
+				1.0,
 				nodes[inputIdx],
-				nodes[BrainInputs+j],
+				nodes[BrainInputs+h],
+				false,
+				innovNum,
+				0,
+			)
+			genes = append(genes, gene)
+			innovNum++
+		}
+	}
+
+	// Connect unconnected outputs to hidden nodes or inputs
+	for j := 0; j < BrainOutputs; j++ {
+		if outputConnections[j] == 0 {
+			// First try to connect from a hidden node
+			hiddenIdx := j % numHidden
+			gene := genetics.NewGeneWithTrait(
+				nil,
+				1.5,
+				nodes[BrainInputs+hiddenIdx],
+				nodes[outputStartID-1+j],
+				false,
+				innovNum,
+				0,
+			)
+			genes = append(genes, gene)
+			innovNum++
+
+			// Also add a direct input connection for this output
+			var inputIdx int
+			switch j {
+			case 0: // DesireAngle
+				inputIdx = 4 // Predator angle sin
+			case 1: // DesireDistance
+				inputIdx = 0 // Food distance
+			case 2: // Eat
+				inputIdx = 0 // Food distance
+			case 3: // Grow
+				inputIdx = 11 // Energy ratio
+			case 4: // Breed
+				inputIdx = 11 // Energy ratio
+			case 5: // Glow
+				inputIdx = 8 // Light level
+			default:
+				inputIdx = 0
+			}
+
+			gene = genetics.NewGeneWithTrait(
+				nil,
+				1.0,
+				nodes[inputIdx],
+				nodes[outputStartID-1+j],
 				false,
 				innovNum,
 				0,

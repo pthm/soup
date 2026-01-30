@@ -214,15 +214,16 @@ func DefaultNEATOptions() *neat.Options {
 		MateOnlyProb:          0.2,
 		RecurOnlyProb:         0.0,
 
-		// Speciation - Lower threshold for more species diversity
-		CompatThreshold: 1.0,
+		// Speciation - Lower threshold to capture initial population diversity
+		// Initial organisms have varied CPPN weights, need sensitive threshold
+		CompatThreshold: 1.2,
 		DisjointCoeff:   1.0,
 		ExcessCoeff:     1.0,
-		MutdiffCoeff:    0.6,
+		MutdiffCoeff:    0.4, // Reduce weight difference sensitivity
 
 		// Species management
-		DropOffAge:      15,
-		SurvivalThresh:  0.2,
+		DropOffAge:      25,  // Give species more time to improve (was 15)
+		SurvivalThresh:  0.3, // Top 30% survive to reproduce (was 20%)
 		AgeSignificance: 1.0,
 
 		// Population (used as reference, actual pop managed by simulation)
