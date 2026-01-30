@@ -70,12 +70,6 @@ func (r *SystemRegistry) Register(info SystemInfo) {
 	r.byID[info.ID] = info
 }
 
-// Get returns system info by ID.
-func (r *SystemRegistry) Get(id string) (SystemInfo, bool) {
-	info, ok := r.byID[id]
-	return info, ok
-}
-
 // GetName returns the display name for a system ID.
 // Falls back to the ID itself if not found.
 func (r *SystemRegistry) GetName(id string) string {
@@ -85,40 +79,3 @@ func (r *SystemRegistry) GetName(id string) string {
 	return id
 }
 
-// All returns all registered systems.
-func (r *SystemRegistry) All() []SystemInfo {
-	return r.systems
-}
-
-// ByCategory returns systems filtered by category.
-func (r *SystemRegistry) ByCategory(category string) []SystemInfo {
-	var result []SystemInfo
-	for _, info := range r.systems {
-		if info.Category == category {
-			result = append(result, info)
-		}
-	}
-	return result
-}
-
-// Categories returns all unique categories.
-func (r *SystemRegistry) Categories() []string {
-	seen := make(map[string]bool)
-	var cats []string
-	for _, info := range r.systems {
-		if !seen[info.Category] {
-			seen[info.Category] = true
-			cats = append(cats, info.Category)
-		}
-	}
-	return cats
-}
-
-// IDs returns all system IDs in registration order.
-func (r *SystemRegistry) IDs() []string {
-	ids := make([]string, len(r.systems))
-	for i, info := range r.systems {
-		ids[i] = info.ID
-	}
-	return ids
-}

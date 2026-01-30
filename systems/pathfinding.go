@@ -233,18 +233,6 @@ func (p *Pathfinder) forceToTurnThrust(forceX, forceY, forceMag, heading, desire
 	}
 }
 
-// blendAngles blends two angles with a weight factor.
-func blendAngles(a1, a2, weight float32) float32 {
-	// Convert to unit vectors
-	x1 := float32(math.Cos(float64(a1))) * (1 - weight)
-	y1 := float32(math.Sin(float64(a1))) * (1 - weight)
-	x2 := float32(math.Cos(float64(a2))) * weight
-	y2 := float32(math.Sin(float64(a2))) * weight
-
-	// Sum and get angle
-	return float32(math.Atan2(float64(y1+y2), float64(x1+x2)))
-}
-
 // normalizeAngleRange wraps an angle to [-pi, pi].
 func normalizeAngleRange(angle float32) float32 {
 	for angle > math.Pi {
