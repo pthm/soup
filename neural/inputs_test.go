@@ -181,11 +181,6 @@ func TestDecodeOutputs(t *testing.T) {
 		t.Errorf("MateIntent: expected 0.3, got %f", outputs.MateIntent)
 	}
 
-	// Check legacy fields are computed
-	if outputs.DesireDistance < 0 || outputs.DesireDistance > 1 {
-		t.Errorf("DesireDistance out of range: %f", outputs.DesireDistance)
-	}
-
 	t.Logf("Outputs: %+v", outputs)
 }
 
@@ -219,38 +214,6 @@ func TestDefaultOutputs(t *testing.T) {
 	}
 
 	t.Logf("Default outputs: %+v", outputs)
-}
-
-func TestLocalVelocityToDesire(t *testing.T) {
-	// Forward motion
-	angle, distance := LocalVelocityToDesire(1.0, 0.0)
-	if math.Abs(float64(angle)) > 0.01 {
-		t.Errorf("forward: angle should be ~0, got %f", angle)
-	}
-	if math.Abs(float64(distance-1.0)) > 0.01 {
-		t.Errorf("forward: distance should be ~1, got %f", distance)
-	}
-
-	// Right strafe
-	angle, distance = LocalVelocityToDesire(0.0, 1.0)
-	expectedAngle := float32(math.Pi / 2)
-	if math.Abs(float64(angle-expectedAngle)) > 0.01 {
-		t.Errorf("right: angle should be ~π/2, got %f", angle)
-	}
-
-	// Left strafe
-	angle, distance = LocalVelocityToDesire(0.0, -1.0)
-	expectedAngle = float32(-math.Pi / 2)
-	if math.Abs(float64(angle-expectedAngle)) > 0.01 {
-		t.Errorf("left: angle should be ~-π/2, got %f", angle)
-	}
-
-	// Backward motion (should turn around)
-	angle, distance = LocalVelocityToDesire(-1.0, 0.0)
-	// When going backward, we turn 180 degrees
-	if math.Abs(float64(angle)) < 2.0 {
-		t.Errorf("backward: angle should be ~π or ~-π, got %f", angle)
-	}
 }
 
 func BenchmarkSensoryToInputs(b *testing.B) {

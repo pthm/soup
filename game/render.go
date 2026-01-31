@@ -31,16 +31,8 @@ func (g *Game) Draw() {
 		waterTime = time.Since(renderStart)
 	}
 
-	// Draw terrain (after water, before flow field)
-	if measureRender {
-		renderStart = time.Now()
-	}
-	if g.terrainRenderer != nil {
-		g.terrainRenderer.Draw(g.terrain, g.tick)
-	}
-	if measureRender {
-		terrainTime = time.Since(renderStart)
-	}
+	// Terrain removed - no terrain rendering
+	_ = terrainTime // Keep variable to avoid changing log format
 
 	// Draw flow field particles (on top of water and terrain)
 	if measureRender {

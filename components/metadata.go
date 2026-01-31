@@ -134,14 +134,16 @@ func GetOrganismValue(org *Organism, fieldID string) float32 {
 		return org.Heading
 	case "active_thrust":
 		return org.ActiveThrust
-	case "turn_output":
-		return org.TurnOutput
-	case "thrust_output":
-		return org.ThrustOutput
+	case "u_fwd":
+		return org.UFwd
+	case "u_up":
+		return org.UUp
+	case "attack_intent":
+		return org.AttackIntent
+	case "mate_intent":
+		return org.MateIntent
 	case "eat_intent":
 		return org.EatIntent
-	case "grow_intent":
-		return org.GrowIntent
 	case "breed_intent":
 		return org.BreedIntent
 	case "glow_intent":

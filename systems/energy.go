@@ -22,9 +22,8 @@ const (
 
 	// Movement costs - PRIMARY selective pressure
 	// These should be the main energy sink for active organisms
-	movementCostBase  = 0.0015 // Cost per unit of DesireDistance (urgency)
-	turnCostBase      = 0.0008 // Cost for turning (changing direction)
-	thrustCostBase    = 0.0020 // Cost for actual thrust/speed
+	movementCostBase  = 0.0015 // Cost per unit of desired velocity (urgency)
+	thrustCostBase    = 0.0020 // Cost for actual acceleration/thrust
 	massScaleExponent = 0.40   // Larger organisms pay more to move
 
 	// Photosynthesis - helps organisms with photo cells survive
@@ -93,13 +92,11 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
 		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
 
-		// Movement urgency cost (DesireDistance) - wanting to move fast costs energy
-		movementCost := org.DesireDistance * movementCostBase * massFactor * armorPen
+		// Movement intent cost (UFwd/UUp magnitude) - wanting to move costs energy
+		desiredSpeed := float32(math.Sqrt(float64(org.UFwd*org.UFwd + org.UUp*org.UUp)))
+		movementCost := desiredSpeed * movementCostBase * massFactor * armorPen
 
-		// Turning cost - changing direction takes energy
-		turnCost := float32(math.Abs(float64(org.TurnOutput))) * turnCostBase * massFactor
-
-		// Thrust cost - actual movement (from physics integration)
+		// Actual acceleration cost (ActiveThrust set by behavior system)
 		// High drag = more energy to move
 		thrustCost := org.ActiveThrust * thrustCostBase * massFactor * armorPen * org.ShapeMetrics.Drag
 		org.ActiveThrust = 0 // Reset for next tick
@@ -124,7 +121,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		}
 
 		// === TOTAL ENERGY DRAIN ===
-		totalDrain := baseDrain + intentCost + movementCost + turnCost + thrustCost - photoOffset
+		totalDrain := baseDrain + intentCost + movementCost + thrustCost - photoOffset
 
 		// Minimum drain (can't gain energy from just photosynthesis without feeding)
 		if totalDrain < 0.0001 {

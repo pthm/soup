@@ -48,8 +48,7 @@ func (g *Game) logPerfStats() {
 	behaviorStats := g.behavior.GetPerfStats()
 	if behaviorStats.Count > 0 {
 		Logf("  --- Behavior Subsystems (per %d organisms) ---", behaviorStats.Count)
-		totalBehaviorNs := behaviorStats.EntityListNs + behaviorStats.VisionNs +
-			behaviorStats.BrainNs + behaviorStats.PathfindingNs + behaviorStats.ActuatorNs
+		totalBehaviorNs := behaviorStats.EntityListNs + behaviorStats.VisionNs + behaviorStats.BrainNs
 
 		logSubsystem := func(name string, ns int64) {
 			dur := time.Duration(ns)
@@ -64,8 +63,6 @@ func (g *Game) logPerfStats() {
 		logSubsystem("entityList", behaviorStats.EntityListNs)
 		logSubsystem("vision", behaviorStats.VisionNs)
 		logSubsystem("brain", behaviorStats.BrainNs)
-		logSubsystem("pathfinding", behaviorStats.PathfindingNs)
-		logSubsystem("actuator", behaviorStats.ActuatorNs)
 	}
 	Logf("")
 }

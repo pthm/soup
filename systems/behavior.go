@@ -23,14 +23,8 @@ const (
 	flowSideEffect = 0.02   // Amplitude of side-to-side drift
 
 	// Dead organism physics
-	deadFlowMultiplier = 1.5   // Dead organisms affected more by flow
-	deadSinkRate       = 0.02  // Downward drift rate for dead organisms
-
-	// Thrust and turning
-	thrustScale       = 0.1  // Thrust force multiplier
-	turnScale         = 0.15 // Base turn rate multiplier
-	defaultTurnScale  = 0.15 // Turn scale when no cells
-	actuatorThrustMul = 0.5  // Actuator thrust contribution
+	deadFlowMultiplier = 1.5  // Dead organisms affected more by flow
+	deadSinkRate       = 0.02 // Downward drift rate for dead organisms
 
 	// Capability thresholds
 	minSensorGain    = float32(0.1)
@@ -47,12 +41,10 @@ const (
 
 // BehaviorPerfStats tracks subsystem timings within the behavior system.
 type BehaviorPerfStats struct {
-	EntityListNs  int64 // Time building entity lists
-	VisionNs      int64 // Time in vision scanning
-	BrainNs       int64 // Time in neural network evaluation
-	PathfindingNs int64 // Time in pathfinding
-	ActuatorNs    int64 // Time in actuator calculations
-	Count         int   // Number of organisms processed
+	EntityListNs int64 // Time building entity lists
+	VisionNs     int64 // Time in vision scanning
+	BrainNs      int64 // Time in neural network evaluation
+	Count        int   // Number of organisms processed
 }
 
 // organismTask holds data needed for parallel brain evaluation.
@@ -95,8 +87,6 @@ type BehaviorSystem struct {
 	noise       *PerlinNoise
 	tick        int32
 	shadowMap   *ShadowMap
-	terrain     *TerrainSystem
-	pathfinder  *Pathfinder  // Potential-field navigation layer
 	floraSystem *FloraSystem // Flora system for food field queries
 
 	// Parallel processing
@@ -112,7 +102,7 @@ type BehaviorSystem struct {
 }
 
 // NewBehaviorSystem creates a new behavior system.
-func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSystem) *BehaviorSystem {
+func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
 	numWorkers := runtime.NumCPU()
 	if numWorkers < 1 {
 		numWorkers = 1
@@ -124,8 +114,6 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 		neuralMap:  ecs.NewMap[components.NeuralGenome](w),
 		noise:      NewPerlinNoise(rand.Int63()),
 		shadowMap:  shadowMap,
-		terrain:    terrain,
-		pathfinder: NewPathfinder(terrain),
 		numWorkers: numWorkers,
 	}
 }
@@ -186,8 +174,6 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		org.UUp = outputs.UUp
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
-		org.DesireAngle = outputs.DesireAngle
-		org.DesireDistance = outputs.DesireDistance
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 
 		// Compute emitted light (placeholder - glow removed from brain)
@@ -199,56 +185,38 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
 		centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
-		// Use potential-field navigation to convert desire to turn/thrust
-		// Pathfinding handles terrain avoidance so brain only learns strategy
+		// Get flow field influence
 		flowX, flowY := s.getFlowFieldForce(centerX, centerY, org, bounds)
 
-		// Get collision radius from OBB if available, otherwise estimate
-		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
-
-		var pathStart time.Time
-		if s.perfEnabled {
-			pathStart = time.Now()
-		}
-		navResult := s.pathfinder.Navigate(
-			centerX, centerY,
-			org.Heading,
-			outputs.DesireAngle, outputs.DesireDistance,
-			flowX, flowY,
-			organismRadius,
-		)
-		if s.perfEnabled {
-			s.perfStats.PathfindingNs += time.Since(pathStart).Nanoseconds()
-		}
-
-		org.TurnOutput = navResult.Turn
-		org.ThrustOutput = navResult.Thrust
-
-		// Calculate actuator-driven forces
-		// Actuator positions and strengths determine how Turn/Thrust translate to movement
-		var actStart time.Time
-		if s.perfEnabled {
-			actStart = time.Now()
-		}
-		thrust, torque := calculateActuatorForces(cells, org.Heading, navResult.Thrust, navResult.Turn)
-		if s.perfEnabled {
-			s.perfStats.ActuatorNs += time.Since(actStart).Nanoseconds()
-			s.perfStats.Count++
-		}
-
-		// Apply torque to heading and normalize to [0, 2*Pi]
-		org.Heading = normalizeHeading(org.Heading + torque)
-
-		// Calculate effective max speed based on actuator capability
+		// Calculate effective max speed and acceleration based on actuator capability
 		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, cells)
+		maxAccel := getMaxAcceleration(cells, org.ShapeMetrics.Drag)
 
-		// Apply thrust in heading direction
-		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * thrustScale
-		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * thrustScale
+		// Direct velocity steering: convert local UFwd/UUp to world-space desired velocity
+		// UFwd is along heading, UUp is perpendicular (90 degrees left)
+		desiredVelX := outputs.UFwd*cosH - outputs.UUp*sinH
+		desiredVelY := outputs.UFwd*sinH + outputs.UUp*cosH
 
-		// Apply flow field (already computed for pathfinding)
-		vel.X += thrustX + flowX
-		vel.Y += thrustY + flowY
+		// Scale by max speed
+		desiredVelX *= effectiveMaxSpeed
+		desiredVelY *= effectiveMaxSpeed
+
+		// Compute acceleration toward desired velocity
+		accelX := desiredVelX - vel.X
+		accelY := desiredVelY - vel.Y
+
+		// Clamp acceleration magnitude
+		accelMag := float32(math.Sqrt(float64(accelX*accelX + accelY*accelY)))
+		if accelMag > maxAccel {
+			scale := maxAccel / accelMag
+			accelX *= scale
+			accelY *= scale
+			accelMag = maxAccel
+		}
+
+		// Apply acceleration and flow field
+		vel.X += accelX + flowX
+		vel.Y += accelY + flowY
 
 		// Clamp to effective max speed
 		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
@@ -258,8 +226,17 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			vel.Y *= scale
 		}
 
-		// Track thrust magnitude for energy cost
-		org.ActiveThrust = float32(math.Sqrt(float64(thrustX*thrustX + thrustY*thrustY)))
+		// Update heading to face velocity direction (if moving)
+		if speed > 0.1 {
+			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
+		}
+
+		// Track acceleration magnitude for energy cost
+		org.ActiveThrust = accelMag
+
+		if s.perfEnabled {
+			s.perfStats.Count++
+		}
 	}
 }
 
@@ -429,7 +406,7 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 	taskIdx := 0
 	for query2.Next() {
 		entity := query2.Entity()
-		pos, vel, org := query2.Get()
+		_, vel, org := query2.Get()
 
 		if org.Dead {
 			continue
@@ -451,8 +428,6 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		org.UUp = outputs.UUp
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
-		org.DesireAngle = outputs.DesireAngle
-		org.DesireDistance = outputs.DesireDistance
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 
 		// Compute emitted light (placeholder - glow removed from brain)
@@ -461,35 +436,37 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
 		sinH := float32(math.Sin(float64(org.Heading)))
-		centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
-		centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
-		// Pathfinding (still sequential - uses shared pathfinder state)
-		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
-		navResult := s.pathfinder.Navigate(
-			centerX, centerY,
-			org.Heading,
-			outputs.DesireAngle, outputs.DesireDistance,
-			task.flowX, task.flowY,
-			organismRadius,
-		)
-
-		org.TurnOutput = navResult.Turn
-		org.ThrustOutput = navResult.Thrust
-
-		// Calculate actuator forces
-		thrust, torque := calculateActuatorForces(task.cells, org.Heading, navResult.Thrust, navResult.Turn)
-
-		// Apply movement
-		org.Heading = normalizeHeading(org.Heading + torque)
+		// Calculate effective max speed and acceleration based on actuator capability
 		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, task.cells)
+		maxAccel := getMaxAcceleration(task.cells, org.ShapeMetrics.Drag)
 
-		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * thrustScale
-		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * thrustScale
+		// Direct velocity steering: convert local UFwd/UUp to world-space desired velocity
+		desiredVelX := outputs.UFwd*cosH - outputs.UUp*sinH
+		desiredVelY := outputs.UFwd*sinH + outputs.UUp*cosH
 
-		vel.X += thrustX + task.flowX
-		vel.Y += thrustY + task.flowY
+		// Scale by max speed
+		desiredVelX *= effectiveMaxSpeed
+		desiredVelY *= effectiveMaxSpeed
 
+		// Compute acceleration toward desired velocity
+		accelX := desiredVelX - vel.X
+		accelY := desiredVelY - vel.Y
+
+		// Clamp acceleration magnitude
+		accelMag := float32(math.Sqrt(float64(accelX*accelX + accelY*accelY)))
+		if accelMag > maxAccel {
+			scale := maxAccel / accelMag
+			accelX *= scale
+			accelY *= scale
+			accelMag = maxAccel
+		}
+
+		// Apply acceleration and flow field
+		vel.X += accelX + task.flowX
+		vel.Y += accelY + task.flowY
+
+		// Clamp to effective max speed
 		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
 		if speed > effectiveMaxSpeed {
 			scale := effectiveMaxSpeed / speed
@@ -497,7 +474,13 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 			vel.Y *= scale
 		}
 
-		org.ActiveThrust = float32(math.Sqrt(float64(thrustX*thrustX + thrustY*thrustY)))
+		// Update heading to face velocity direction (if moving)
+		if speed > 0.1 {
+			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
+		}
+
+		// Track acceleration magnitude for energy cost
+		org.ActiveThrust = accelMag
 	}
 }
 
@@ -951,56 +934,6 @@ func getActuatorCount(cells *components.CellBuffer) int {
 	return count
 }
 
-// calculateActuatorForces computes thrust and torque from actuator cell geometry.
-// Actuators at different positions contribute differently to forward thrust vs turning.
-func calculateActuatorForces(
-	cells *components.CellBuffer,
-	_ float32, // heading - unused, lateral offset is already in local space (GridY)
-	thrustOutput float32, // 0-1 from brain
-	turnOutput float32,   // -1 to +1 from brain
-) (thrust float32, torque float32) {
-	if cells == nil {
-		// No cell data - use direct control
-		return thrustOutput, turnOutput * defaultTurnScale
-	}
-
-	var totalStrength float32
-	var weightedTorque float32
-
-	for i := uint8(0); i < cells.Count; i++ {
-		cell := &cells.Cells[i]
-		strength := cell.GetActuatorStrength()
-		if strength == 0 {
-			continue
-		}
-
-		totalStrength += strength
-
-		// GridY is the lateral offset in local space
-		// Positive GridY = right side, Negative GridY = left side
-		lateralOffset := float32(cell.GridY)
-
-		// Actuators on opposite sides contribute to turning
-		// Turn output > 0 means turn right, so left actuators (negative offset) push harder
-		// Turn output < 0 means turn left, so right actuators (positive offset) push harder
-		turnContribution := -lateralOffset * turnOutput * strength
-
-		weightedTorque += turnContribution
-	}
-
-	if totalStrength < minActuatorGain {
-		totalStrength = minActuatorGain
-	}
-
-	// Forward thrust proportional to total actuator strength
-	thrust = thrustOutput * totalStrength * actuatorThrustMul
-
-	// Torque for turning (normalized to prevent runaway with many actuators)
-	torque = weightedTorque / totalStrength * turnScale
-
-	return thrust, torque
-}
-
 // getEffectiveMaxSpeed scales max speed by actuator capability.
 // More/better actuators = faster movement potential.
 func getEffectiveMaxSpeed(baseSpeed float32, cells *components.CellBuffer) float32 {
@@ -1008,6 +941,20 @@ func getEffectiveMaxSpeed(baseSpeed float32, cells *components.CellBuffer) float
 	// Scale: 0.5x (minimal actuators) to 1.5x (4+ actuator strength)
 	scale := float32(0.5 + math.Min(1.0, float64(totalStrength)/capabilityScale))
 	return baseSpeed * scale
+}
+
+// getMaxAcceleration computes max acceleration based on actuator strength and drag.
+// More actuators = faster acceleration, higher drag = slower acceleration.
+func getMaxAcceleration(cells *components.CellBuffer, drag float32) float32 {
+	totalStrength := getTotalActuatorStrength(cells)
+	// Base acceleration scaled by actuator strength
+	baseAccel := float32(0.05 + 0.15*math.Min(1.0, float64(totalStrength)/capabilityScale))
+	// Drag reduces acceleration (high drag = sluggish)
+	dragFactor := 1.0 - drag*0.5
+	if dragFactor < 0.3 {
+		dragFactor = 0.3
+	}
+	return baseAccel * dragFactor
 }
 
 // computeBodyRadius returns sqrt(cellCount) * cellSize for body length normalization.

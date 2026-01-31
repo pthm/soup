@@ -2,7 +2,6 @@ package game
 
 import (
 	"math/rand"
-	"time"
 
 	"github.com/mlange-42/ark/ecs"
 
@@ -30,10 +29,6 @@ type Game struct {
 	paused          bool
 	stepsPerFrame   int
 	perf            *PerfStats
-
-	// Terrain
-	terrain         *systems.TerrainSystem
-	terrainRenderer *renderer.TerrainRenderer
 
 	// New systems
 	shadowMap        *systems.ShadowMap
@@ -99,9 +94,6 @@ func NewGame(cfg GameConfig) *Game {
 	// Create shadow map first as other systems depend on it
 	shadowMap := systems.NewShadowMap(float32(cfg.Width), float32(cfg.Height))
 
-	// Create terrain
-	terrain := systems.NewTerrainSystem(float32(cfg.Width), float32(cfg.Height), time.Now().UnixNano())
-
 	// Neural evolution config
 	neuralConfig := neural.DefaultConfig()
 	genomeIDGen := neural.NewGenomeIDGenerator()
@@ -109,21 +101,18 @@ func NewGame(cfg GameConfig) *Game {
 	g := &Game{
 		world:    world,
 		bounds:   bounds,
-		physics:  systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
+		physics:  systems.NewPhysicsSystem(world, bounds),
 		energy:   systems.NewEnergySystem(world, shadowMap),
-		behavior: systems.NewBehaviorSystem(world, shadowMap, terrain),
-		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 3000, terrain),
+		behavior: systems.NewBehaviorSystem(world, shadowMap),
+		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 3000, nil), // No terrain
 		light:         renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
 		stepsPerFrame: 1,
 		perf:          NewPerfStats(),
 
-		// Terrain
-		terrain: terrain,
-
 		// Systems
 		shadowMap:   shadowMap,
 		feeding:     systems.NewFeedingSystem(world),
-		spores:      systems.NewSporeSystemWithTerrain(bounds, terrain),
+		spores:      systems.NewSporeSystemWithTerrain(bounds, nil), // No terrain
 		breeding:    systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
 		particles:   systems.NewParticleSystem(),
 		allocation:  systems.NewAllocationSystem(world),
@@ -152,9 +141,11 @@ func NewGame(cfg GameConfig) *Game {
 	}
 
 	// GPU compute resources (always created - headless uses hidden window)
+	// Stub distance function returns large distance (no terrain obstacles)
+	noTerrainDistance := func(x, y float32) float32 { return 1000.0 }
 	g.gpuFlowField = renderer.NewGPUFlowField(
 		float32(cfg.Width), float32(cfg.Height),
-		terrain.DistanceToSolid, // Pass terrain distance function
+		noTerrainDistance,
 	)
 	g.flowField.SetGPUSampler(g.gpuFlowField)
 
@@ -163,7 +154,6 @@ func NewGame(cfg GameConfig) *Game {
 		g.flowRenderer = renderer.NewFlowRenderer(int32(cfg.Width), int32(cfg.Height), 0.08)
 		g.waterBackground = renderer.NewWaterBackground(int32(cfg.Width), int32(cfg.Height))
 		g.sunRenderer = renderer.NewSunRenderer(int32(cfg.Width), int32(cfg.Height))
-		g.terrainRenderer = renderer.NewTerrainRenderer(int32(cfg.Width), int32(cfg.Height))
 		g.particleRenderer = renderer.NewParticleRenderer()
 
 		// UI components
@@ -175,8 +165,8 @@ func NewGame(cfg GameConfig) *Game {
 		g.uiControlsPanel = ui.NewControlsPanel(10, 100, 200)
 	}
 
-	// Create FloraSystem after other systems are initialized (needs shadowMap, terrain, flowField)
-	g.floraSystem = systems.NewFloraSystem(bounds, terrain, shadowMap, g.flowField)
+	// Create FloraSystem after other systems are initialized (needs shadowMap, flowField)
+	g.floraSystem = systems.NewFloraSystem(bounds, nil, shadowMap, g.flowField)
 
 	// Wire up FloraSystem to systems that need it
 	g.feeding.SetFloraSystem(g.floraSystem)

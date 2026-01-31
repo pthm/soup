@@ -1,9 +1,5 @@
 package neural
 
-import (
-	"math"
-)
-
 // BodyDescriptor holds normalized body capability metrics.
 // These let brains learn policies based on their body type.
 type BodyDescriptor struct {
@@ -147,19 +143,15 @@ func (s *SensoryInputs) ToInputs() []float64 {
 }
 
 // BehaviorOutputs holds the decoded outputs from the brain network.
-// Simplified to 4 outputs: movement vector + action gates.
+// 4 outputs: movement velocity vector + action gates.
 type BehaviorOutputs struct {
-	// Movement as local velocity (body-limited by pathfinding layer)
+	// Movement as local desired velocity
 	UFwd float32 // Desired forward velocity [-1,1]
 	UUp  float32 // Desired lateral velocity [-1,1]
 
 	// Action gates
 	AttackIntent float32 // Predation gate [0,1], >0.5 = attack
 	MateIntent   float32 // Mating gate [0,1], >0.5 = ready to mate
-
-	// Legacy fields for compatibility (computed from UFwd/UUp)
-	DesireAngle    float32 // Computed: angle from UFwd/UUp
-	DesireDistance float32 // Computed: magnitude from UFwd/UUp
 }
 
 // DecodeOutputs converts raw network outputs to intent values.
@@ -174,54 +166,22 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 	uFwd := float32(raw[0])*2.0 - 1.0
 	uUp := float32(raw[1])*2.0 - 1.0
 
-	// Compute legacy angle/distance from velocity
-	angle, distance := LocalVelocityToDesire(uFwd, uUp)
-
 	return BehaviorOutputs{
-		UFwd:           uFwd,
-		UUp:            uUp,
-		AttackIntent:   float32(raw[2]),
-		MateIntent:     float32(raw[3]),
-		DesireAngle:    angle,
-		DesireDistance: distance,
+		UFwd:         uFwd,
+		UUp:          uUp,
+		AttackIntent: float32(raw[2]),
+		MateIntent:   float32(raw[3]),
 	}
-}
-
-// LocalVelocityToDesire converts local velocity (uFwd, uUp) to angle and distance.
-// Used for compatibility with existing pathfinding layer.
-func LocalVelocityToDesire(uFwd, uUp float32) (angle, distance float32) {
-	if uFwd < -0.1 {
-		// Backward: turn around
-		angle = float32(math.Atan2(float64(-uUp), float64(-uFwd))) + math.Pi
-		angle = normalizeAngleInputs(angle)
-	} else {
-		angle = float32(math.Atan2(float64(uUp), float64(uFwd)))
-	}
-	distance = clampf(float32(math.Sqrt(float64(uFwd*uFwd+uUp*uUp))), 0, 1)
-	return angle, distance
-}
-
-// normalizeAngleInputs wraps angle to [-π, π].
-func normalizeAngleInputs(angle float32) float32 {
-	for angle > math.Pi {
-		angle -= 2 * math.Pi
-	}
-	for angle < -math.Pi {
-		angle += 2 * math.Pi
-	}
-	return angle
 }
 
 // DefaultOutputs returns sensible default outputs for organisms without brains
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		UFwd:           0.0,
-		UUp:            0.0,
-		AttackIntent:   0.0,
-		MateIntent:     0.0,
-		DesireAngle:    0.0,
-		DesireDistance: 0.0,
+		UFwd:         0.0,
+		UUp:          0.0,
+		AttackIntent: 0.0,
+		MateIntent:   0.0,
 	}
 }
 

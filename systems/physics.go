@@ -16,7 +16,6 @@ const (
 	aliveFrictionMin      = float32(0.96) // Base friction for alive organisms
 	aliveFrictionRange    = float32(0.03) // Additional friction from streamlining (0 to this)
 	wallFriction          = float32(0.5)  // Velocity multiplier on wall contact (strong brake)
-	bounceCoeff           = float32(0.3)  // Velocity multiplier when bouncing off top/bottom
 	fallbackCircleScale   = float32(3)    // Multiplier for cellSize when OBB unavailable
 	headingUpdateMinVelSq = float32(0.01) // Minimum velocity squared to update heading
 )
@@ -24,9 +23,8 @@ const (
 // PhysicsSystem updates entity positions based on velocity.
 // All ECS organisms are fauna - flora are managed separately by FloraSystem.
 type PhysicsSystem struct {
-	filter  ecs.Filter3[components.Position, components.Velocity, components.Organism]
-	bounds  Bounds
-	terrain *TerrainSystem
+	filter ecs.Filter3[components.Position, components.Velocity, components.Organism]
+	bounds Bounds
 }
 
 // Bounds represents the simulation bounds.
@@ -40,12 +38,11 @@ type Occluder struct {
 	Density             float32 // 0-1, how much light is blocked (1 = fully solid, 0.3 = sparse like foliage)
 }
 
-// NewPhysicsSystemWithTerrain creates a physics system with terrain collision.
-func NewPhysicsSystemWithTerrain(w *ecs.World, bounds Bounds, terrain *TerrainSystem) *PhysicsSystem {
+// NewPhysicsSystem creates a physics system.
+func NewPhysicsSystem(w *ecs.World, bounds Bounds) *PhysicsSystem {
 	return &PhysicsSystem{
-		filter:  *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
-		bounds:  bounds,
-		terrain: terrain,
+		filter: *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
+		bounds: bounds,
 	}
 }
 
@@ -75,46 +72,6 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		pos.X += vel.X
 		pos.Y += vel.Y
 
-		// Terrain collision - slide along walls instead of bouncing
-		// Use OBB collision if available, fall back to circle collision
-		if s.terrain != nil {
-			var collides bool
-			var nx, ny float32
-
-			// Check if OBB is valid (has non-zero half-extents)
-			if org.OBB.HalfWidth > 0 && org.OBB.HalfHeight > 0 {
-				// X+ is forward in local grid space, aligned with heading
-				collides = s.terrain.CheckOBBCollision(pos.X, pos.Y, org.Heading, &org.OBB)
-				if collides {
-					openX, openY, normalX, normalY := s.terrain.FindNearestOpenOBB(pos.X, pos.Y, org.Heading, &org.OBB)
-					pos.X, pos.Y = openX, openY
-					nx, ny = normalX, normalY
-				}
-			} else {
-				// Fallback to circle collision for organisms without OBB
-				radius := org.CellSize * fallbackCircleScale
-				collides = s.terrain.CheckCircleCollision(pos.X, pos.Y, radius)
-				if collides {
-					openX, openY, normalX, normalY := s.terrain.FindNearestOpen(pos.X, pos.Y, radius)
-					pos.X, pos.Y = openX, openY
-					nx, ny = normalX, normalY
-				}
-			}
-
-			if collides {
-				// Project velocity onto wall (slide along it)
-				// Remove the component going into the wall
-				dot := vel.X*nx + vel.Y*ny
-				if dot < 0 { // Only if moving into wall
-					vel.X -= dot * nx
-					vel.Y -= dot * ny
-				}
-				// Apply friction from wall contact
-				vel.X *= wallFriction
-				vel.Y *= wallFriction
-			}
-		}
-
 		// Shape-based friction: low drag organisms coast further
 		baseFriction := aliveFrictionMin
 		if org.Dead {
@@ -128,7 +85,8 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		vel.X *= baseFriction
 		vel.Y *= baseFriction
 
-		// Update heading (not for dead)
+		// Update heading (not for dead) - NOTE: behavior system now handles this
+		// Keep as fallback for organisms without brain control
 		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > headingUpdateMinVelSq {
 			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
 		}
