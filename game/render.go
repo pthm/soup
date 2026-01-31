@@ -113,49 +113,51 @@ func (g *Game) Draw() {
 
 // drawOrganism draws a single organism with its cells.
 func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *components.Organism, cells *components.CellBuffer) {
-	var r, gr, b uint8
-
-	// Compute capabilities for color
-	caps := cells.ComputeCapabilities()
-
-	// Use species color if enabled and organism has neural genome
-	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
-		neuralGenome := g.neuralGenomeMap.Get(entity)
-		if neuralGenome != nil && neuralGenome.SpeciesID > 0 {
-			speciesColor := g.speciesManager.GetSpeciesColor(neuralGenome.SpeciesID)
-			r, gr, b = speciesColor.R, speciesColor.G, speciesColor.B
-		} else {
-			r, gr, b = neural.GetCapabilityColor(caps.DigestiveSpectrum())
-		}
-	} else {
-		r, gr, b = neural.GetCapabilityColor(caps.DigestiveSpectrum())
-	}
-
-	baseColor := rl.Color{R: r, G: gr, B: b, A: 255}
-
-	// Adjust for death/low energy
-	if org.Dead {
-		baseColor.R = baseColor.R / 2
-		baseColor.G = baseColor.G / 2
-		baseColor.B = baseColor.B / 2
-	} else if org.Energy < 30 {
-		// Dim when low energy
-		factor := org.Energy / 30
-		baseColor.R = uint8(float32(baseColor.R) * (0.5 + 0.5*factor))
-		baseColor.G = uint8(float32(baseColor.G) * (0.5 + 0.5*factor))
-		baseColor.B = uint8(float32(baseColor.B) * (0.5 + 0.5*factor))
-	}
-
 	// Pre-compute rotation for cell positions
 	// X+ is forward in local grid space, aligned with heading
 	cosH := float32(math.Cos(float64(org.Heading)))
 	sinH := float32(math.Sin(float64(org.Heading)))
+	rotationDeg := org.Heading * 180 / math.Pi
 
-	// Draw each cell
+	// Pre-compute energy/death modifiers
+	var colorMod float32 = 1.0
+	if org.Dead {
+		colorMod = 0.5
+	} else if org.Energy < 30 {
+		colorMod = 0.5 + 0.5*(org.Energy/30)
+	}
+
+	// Check if using species color override (single color for whole organism)
+	var useSpeciesColor bool
+	var speciesR, speciesG, speciesB uint8
+	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
+		neuralGenome := g.neuralGenomeMap.Get(entity)
+		if neuralGenome != nil && neuralGenome.SpeciesID > 0 {
+			speciesColor := g.speciesManager.GetSpeciesColor(neuralGenome.SpeciesID)
+			speciesR, speciesG, speciesB = speciesColor.R, speciesColor.G, speciesColor.B
+			useSpeciesColor = true
+		}
+	}
+
+	// Draw each cell with its own color based on cell type
 	for i := uint8(0); i < cells.Count; i++ {
 		cell := &cells.Cells[i]
 		if !cell.Alive {
 			continue
+		}
+
+		// Get color: species override or per-cell-type
+		var r, gr, b uint8
+		if useSpeciesColor {
+			r, gr, b = speciesR, speciesG, speciesB
+		} else {
+			r, gr, b = cell.PrimaryType.Color()
+		}
+		cellColor := rl.Color{
+			R: uint8(float32(r) * colorMod),
+			G: uint8(float32(gr) * colorMod),
+			B: uint8(float32(b) * colorMod),
+			A: 255,
 		}
 
 		// Local grid position
@@ -171,12 +173,11 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		cellY := pos.Y + rotatedY
 
 		// Draw cell with rotation matching organism heading
-		rotationDeg := org.Heading * 180 / math.Pi
 		rl.DrawRectanglePro(
 			rl.Rectangle{X: cellX, Y: cellY, Width: org.CellSize, Height: org.CellSize},
 			rl.Vector2{X: org.CellSize / 2, Y: org.CellSize / 2}, // rotate around cell center
 			rotationDeg,
-			baseColor,
+			cellColor,
 		)
 	}
 }
