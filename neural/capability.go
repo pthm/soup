@@ -9,6 +9,13 @@ const (
 	CompositionEpsilon = 1e-6 // Avoid division by zero in composition calculation
 	DefaultBiteSize    = 0.05 // Fraction of target energy per bite
 	FeedingEfficiency  = 0.8  // Energy transfer efficiency when feeding
+
+	// CompatK is the power law exponent for nutrition rewards.
+	// Higher values create sharper dietary niches:
+	// - k=1: linear (current), generalists viable
+	// - k=2: quadratic, specialists favored
+	// - k=3-4: strong specialization pressure
+	CompatK = 3.0
 )
 
 // OrganismCapabilities holds the computed capability values for an organism.
@@ -40,6 +47,16 @@ func Edibility(eaterDigestiveSpectrum, targetComposition float32) float32 {
 // Returns 0-1 where higher means can feed more effectively.
 func Penetration(edibility, targetArmor float32) float32 {
 	return clamp01(edibility - targetArmor)
+}
+
+// NutritionMultiplier applies compat^k power law to penetration for reward calculation.
+// This creates sharper dietary niches - specialists get much better nutrition returns.
+// Used for actual energy rewards, not for determining if feeding is possible.
+func NutritionMultiplier(penetration float32) float32 {
+	if penetration <= 0 {
+		return 0
+	}
+	return float32(math.Pow(float64(penetration), CompatK))
 }
 
 // ThreatLevel calculates how threatening another organism is to us.

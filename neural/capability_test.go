@@ -103,3 +103,38 @@ func TestThreatLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestNutritionMultiplier(t *testing.T) {
+	tests := []struct {
+		name        string
+		penetration float32
+		expected    float32
+	}{
+		// With CompatK=3, the power law creates sharp niches
+		{"zero penetration", 0.0, 0.0},
+		{"full penetration", 1.0, 1.0},            // 1^3 = 1
+		{"half penetration", 0.5, 0.125},          // 0.5^3 = 0.125
+		{"high penetration", 0.9, 0.729},          // 0.9^3 = 0.729
+		{"low penetration", 0.3, 0.027},           // 0.3^3 = 0.027
+		{"negative penetration", -0.5, 0.0},       // Clamped to 0
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NutritionMultiplier(tt.penetration)
+			if math.Abs(float64(got-tt.expected)) > 0.01 {
+				t.Errorf("NutritionMultiplier(%.2f) = %.4f, want %.4f",
+					tt.penetration, got, tt.expected)
+			}
+		})
+	}
+
+	// Verify the power law creates sharper niches than linear
+	// A specialist (penetration=1.0) vs generalist (penetration=0.5)
+	specialist := NutritionMultiplier(1.0)
+	generalist := NutritionMultiplier(0.5)
+	ratio := specialist / generalist
+	if ratio < 5 {
+		t.Errorf("Power law should strongly favor specialists: ratio=%.2f, expected >5", ratio)
+	}
+}

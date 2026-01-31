@@ -20,6 +20,11 @@ const (
 
 	// Attack parameters (predation requires explicit AttackIntent from brain)
 	attackIntentThreshold = 0.5 // Brain output threshold for attacking
+
+	// Predator interference parameters
+	crowdPenaltyStart    = 2   // Number of attackers before penalty applies
+	crowdPenaltyPerExtra = 0.2 // Penalty per additional attacker beyond threshold
+	maxCrowdPenalty      = 0.7 // Maximum penalty (30% minimum reward)
 )
 
 // biteSizeMultiplier returns how much food an organism can consume per tick.
@@ -108,6 +113,16 @@ type entityData struct {
 	floraRef    FloraRef // Reference to lightweight flora (only valid if isFlora=true)
 }
 
+// pendingAttack represents an attack that will be resolved with interference rules.
+type pendingAttack struct {
+	predIdx     int                    // Index of predator in fauna arrays
+	predOrg     *components.Organism   // Predator organism
+	predCaps    components.Capabilities // Predator capabilities
+	targetIdx   int                    // Index of target in fauna arrays
+	target      *entityData            // Target data
+	penetration float32                // Penetration value for this attack
+}
+
 // Update processes feeding for all fauna using capability matching.
 // Uses spatial grid for O(1) neighbor lookups when available.
 func (s *FeedingSystem) Update() {
@@ -122,6 +137,7 @@ func (s *FeedingSystem) Update() {
 }
 
 // updateWithSpatialGrid uses spatial queries for efficient neighbor lookup.
+// Uses two-pass approach for predation to implement interference rules.
 func (s *FeedingSystem) updateWithSpatialGrid() {
 	// Pre-collect fauna data for spatial lookups
 	var faunaPos []components.Position
@@ -147,7 +163,10 @@ func (s *FeedingSystem) updateWithSpatialGrid() {
 		faunaSpecies = append(faunaSpecies, speciesID)
 	}
 
-	// Process each fauna's feeding with spatial lookup
+	// Collect pending attacks for interference resolution
+	var pendingAttacks []pendingAttack
+
+	// Pass 1: Process herbivory (immediate) and collect predation attacks (deferred)
 	for i := range faunaOrgs {
 		org := faunaOrgs[i]
 
@@ -166,13 +185,18 @@ func (s *FeedingSystem) updateWithSpatialGrid() {
 		mySpeciesID := faunaSpecies[i]
 		myDigestive := myCaps.DigestiveSpectrum()
 
-		s.tryFeedSpatial(pos, org, myCaps, myDigestive, mySpeciesID, i, faunaPos, faunaOrgs, faunaCells, faunaSpecies)
+		// Collect attacks (predation deferred for interference rules)
+		attacks := s.collectFeedingSpatial(pos, org, myCaps, myDigestive, mySpeciesID, i, faunaPos, faunaOrgs, faunaCells, faunaSpecies)
+		pendingAttacks = append(pendingAttacks, attacks...)
 	}
+
+	// Pass 2: Resolve predation attacks with interference rules
+	s.resolveAttacksWithInterference(pendingAttacks)
 }
 
-// tryFeedSpatial finds and eats nearby targets using spatial grid.
-// Herbivory is implicit (near flora + herbivore diet), predation requires AttackIntent.
-func (s *FeedingSystem) tryFeedSpatial(
+// collectFeedingSpatial finds nearby targets using spatial grid.
+// Executes herbivory immediately, returns pending attacks for interference resolution.
+func (s *FeedingSystem) collectFeedingSpatial(
 	pos *components.Position,
 	org *components.Organism,
 	myCaps components.Capabilities,
@@ -183,7 +207,7 @@ func (s *FeedingSystem) tryFeedSpatial(
 	faunaOrgs []*components.Organism,
 	faunaCells []*components.CellBuffer,
 	faunaSpecies []int,
-) {
+) []pendingAttack {
 	const feedDistSq = feedingDistance * feedingDistance
 	const kinAvoidanceProb = 0.92 // High kin avoidance to reduce cannibalism
 
@@ -199,6 +223,7 @@ func (s *FeedingSystem) tryFeedSpatial(
 	var bestFaunaPenetration float32
 	var bestFloraDistSq float32 = feedDistSq + 1
 	var bestFaunaDistSq float32
+	var bestFaunaIdx int
 
 	// Determine attack range for predation
 	atkRange := attackRange(myCaps, org.CellSize)
@@ -284,26 +309,117 @@ func (s *FeedingSystem) tryFeedSpatial(
 				}
 				bestFaunaPenetration = penetration
 				bestFaunaDistSq = dSq
+				bestFaunaIdx = idx
 			}
 		}
 	}
 
-	// Execute feeding actions
-	// Flora feeding (herbivory) - implicit, no attack cost
+	// Execute flora feeding immediately (herbivory - no interference)
 	if bestFloraTarget != nil {
 		s.executeFeed(org, myCaps, bestFloraTarget, bestFloraPenetration)
 	}
 
-	// Fauna feeding (predation) - explicit, with attack cost and cooldown
+	// Return pending attack for interference resolution (predation)
+	var attacks []pendingAttack
 	if bestFaunaTarget != nil {
-		// Apply attack cost
+		// Check if predator has enough energy for attack cost
 		cost := attackCost(myCaps)
 		if org.Energy > cost {
-			org.Energy -= cost
-			org.AttackCooldown = neural.AttackCooldown
+			attacks = append(attacks, pendingAttack{
+				predIdx:     myIdx,
+				predOrg:     org,
+				predCaps:    myCaps,
+				targetIdx:   bestFaunaIdx,
+				target:      bestFaunaTarget,
+				penetration: bestFaunaPenetration,
+			})
+		}
+	}
 
-			// Execute attack with body-scaled damage
-			s.executeAttack(org, myCaps, bestFaunaTarget, bestFaunaPenetration)
+	return attacks
+}
+
+// resolveAttacksWithInterference processes all attacks with crowd penalty.
+// Multiple predators attacking the same target share rewards and suffer penalties.
+func (s *FeedingSystem) resolveAttacksWithInterference(attacks []pendingAttack) {
+	if len(attacks) == 0 {
+		return
+	}
+
+	// Group attacks by target
+	attacksByTarget := make(map[int][]pendingAttack)
+	for _, atk := range attacks {
+		attacksByTarget[atk.targetIdx] = append(attacksByTarget[atk.targetIdx], atk)
+	}
+
+	// Process each target's attackers
+	for _, targetAttacks := range attacksByTarget {
+		if len(targetAttacks) == 0 {
+			continue
+		}
+
+		target := targetAttacks[0].target
+		if target.org.Dead {
+			continue
+		}
+
+		numAttackers := len(targetAttacks)
+
+		// Calculate crowd penalty
+		crowdPenalty := float32(0.0)
+		if numAttackers > crowdPenaltyStart {
+			extraAttackers := numAttackers - crowdPenaltyStart
+			crowdPenalty = float32(extraAttackers) * crowdPenaltyPerExtra
+			if crowdPenalty > maxCrowdPenalty {
+				crowdPenalty = maxCrowdPenalty
+			}
+		}
+		crowdMultiplier := 1.0 - crowdPenalty
+
+		// Calculate total damage from all attackers
+		totalDamage := float32(0.0)
+		for _, atk := range targetAttacks {
+			damage := attackDamage(atk.predCaps) * atk.penetration * target.org.MaxEnergy
+			totalDamage += damage
+		}
+
+		// Cap total damage at target's energy
+		if totalDamage > target.org.Energy {
+			totalDamage = target.org.Energy
+		}
+
+		// Distribute rewards proportionally to each attacker's contribution
+		for _, atk := range targetAttacks {
+			// Apply attack cost and cooldown
+			cost := attackCost(atk.predCaps)
+			atk.predOrg.Energy -= cost
+			atk.predOrg.AttackCooldown = neural.AttackCooldown
+
+			// Calculate this attacker's share of damage
+			attackerDamage := attackDamage(atk.predCaps) * atk.penetration * target.org.MaxEnergy
+			damageShare := attackerDamage / totalDamage
+			actualDamage := totalDamage * damageShare / float32(numAttackers)
+
+			// Apply compat^k power law for nutrition
+			nutritionMult := neural.NutritionMultiplier(atk.penetration)
+
+			// Transfer energy with crowd penalty and split
+			reward := actualDamage * nutritionMult * feedEfficiency * crowdMultiplier
+			atk.predOrg.Energy += reward
+		}
+
+		// Apply total damage to target
+		target.org.Energy -= totalDamage
+
+		// Signal to target that it's being attacked
+		damageIntensity := totalDamage / target.org.MaxEnergy
+		if damageIntensity > target.org.BeingEaten {
+			target.org.BeingEaten = damageIntensity
+		}
+
+		// Kill target if energy depleted
+		if target.org.Energy <= 0 {
+			target.org.Dead = true
 		}
 	}
 }
@@ -448,6 +564,7 @@ func (s *FeedingSystem) tryFeed(
 }
 
 // executeFeed performs the actual energy transfer for herbivory.
+// Uses compat^k power law for nutrition rewards to create sharper dietary niches.
 func (s *FeedingSystem) executeFeed(
 	predOrg *components.Organism,
 	predCaps components.Capabilities,
@@ -460,9 +577,12 @@ func (s *FeedingSystem) executeFeed(
 	// Base bite is fraction of target's current energy
 	baseBite := target.org.Energy * baseBiteSize * biteMultiplier
 
-	// Penetration affects how much we can actually extract
-	// Higher penetration = more efficient feeding
-	effectiveBite := baseBite * penetration * feedEfficiency
+	// Apply compat^k power law for nutrition efficiency
+	// This creates sharper dietary niches - specialists get much better returns
+	nutritionMult := neural.NutritionMultiplier(penetration)
+
+	// Effective bite uses power-law nutrition multiplier
+	effectiveBite := baseBite * nutritionMult * feedEfficiency
 
 	// Can only eat what target has
 	if effectiveBite > target.org.Energy {
@@ -495,13 +615,14 @@ func (s *FeedingSystem) executeFeed(
 }
 
 // executeAttack performs predation with body-scaled damage.
+// Uses compat^k power law for nutrition rewards to create sharper dietary niches.
 func (s *FeedingSystem) executeAttack(
 	predOrg *components.Organism,
 	predCaps components.Capabilities,
 	target *entityData,
 	penetration float32,
 ) {
-	// Body-scaled damage
+	// Body-scaled damage (penetration affects how much damage we deal)
 	damage := attackDamage(predCaps) * penetration * target.org.MaxEnergy
 
 	// Can only take what target has
@@ -509,8 +630,12 @@ func (s *FeedingSystem) executeAttack(
 		damage = target.org.Energy
 	}
 
-	// Transfer energy with efficiency
-	predOrg.Energy += damage * feedEfficiency
+	// Apply compat^k power law for nutrition efficiency
+	// Specialists get much better energy returns from prey
+	nutritionMult := neural.NutritionMultiplier(penetration)
+
+	// Transfer energy with power-law nutrition bonus
+	predOrg.Energy += damage * nutritionMult * feedEfficiency
 	target.org.Energy -= damage
 
 	// Signal to target that it's being attacked

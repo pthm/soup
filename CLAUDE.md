@@ -95,6 +95,17 @@ Death occurs when energy <= 0.
 - Body-scaled range, damage, and cost
 - Attack cooldown (30 ticks)
 
+**Diet Compatibility** (`compat^k` power law):
+- Nutrition rewards use `penetration^3` (CompatK=3.0)
+- Creates sharper dietary niches: specialists get 8x better returns than generalists
+- Penetration = Edibility - Armor (linear), then cubed for rewards
+
+**Predator Interference**:
+- Multiple attackers on same target share rewards
+- Crowd penalty: 20% reduction per extra attacker beyond 2
+- Maximum 70% penalty (30% minimum reward)
+- Prevents swarm exploits while allowing pack hunting
+
 ### Mating Mechanics
 
 - Requires MateIntent > 0.5 from brain
