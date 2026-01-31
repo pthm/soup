@@ -60,18 +60,25 @@ type organismTask struct {
 	// Input data (read-only during parallel phase)
 	entity           ecs.Entity
 	posX, posY       float32
+	velX, velY       float32 // Velocity for speed/threat calculations
 	heading          float32
 	energy           float32
 	maxEnergy        float32
 	perceptionRadius float32
 	maxSpeed         float32
 	cellSize         float32
-	beingEaten       float32 // Damage awareness (0-1)
 	shapeMetrics     components.ShapeMetrics
 	obb              components.CollisionOBB
 	brain            *neural.BrainController
 	cells            *components.CellBuffer
 	faunaIdx         int // Index in faunaPos/faunaOrgs arrays
+
+	// Species and capabilities for field computation
+	speciesID         int
+	digestiveSpectrum float32
+	composition       float32
+	structuralArmor   float32
+	bodyRadius        float32
 
 	// Output data (written during parallel phase)
 	outputs      neural.BehaviorOutputs
@@ -84,20 +91,20 @@ type BehaviorSystem struct {
 	filter      ecs.Filter3[components.Position, components.Velocity, components.Organism]
 	brainMap    *ecs.Map[components.Brain]
 	cellsMap    *ecs.Map[components.CellBuffer]
+	neuralMap   *ecs.Map[components.NeuralGenome] // For species ID lookups
 	noise       *PerlinNoise
 	tick        int32
 	shadowMap   *ShadowMap
 	terrain     *TerrainSystem
 	pathfinder  *Pathfinder  // Potential-field navigation layer
-	floraSystem *FloraSystem // Lightweight flora system for vision
-
-	// Pre-allocated buffer to reduce allocations in hot path
-	entityBuffer []neural.EntityInfo
+	floraSystem *FloraSystem // Flora system for food field queries
 
 	// Parallel processing
-	numWorkers   int
-	taskBuffer   []organismTask
-	floraEntities []neural.EntityInfo // Pre-built flora list for parallel workers
+	numWorkers    int
+	taskBuffer    []organismTask
+	floraEntities []neural.EntityInfo   // Pre-built flora list for parallel workers
+	faunaVel      []components.Velocity // Fauna velocities for threat calculations
+	faunaSpecies  []int                 // Fauna species IDs for boid filtering
 
 	// Performance tracking
 	perfEnabled bool
@@ -114,6 +121,7 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 		filter:     *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
 		brainMap:   ecs.NewMap[components.Brain](w),
 		cellsMap:   ecs.NewMap[components.CellBuffer](w),
+		neuralMap:  ecs.NewMap[components.NeuralGenome](w),
 		noise:      NewPerlinNoise(rand.Int63()),
 		shadowMap:  shadowMap,
 		terrain:    terrain,
@@ -168,7 +176,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Get brain outputs or defaults
 		var outputs neural.BehaviorOutputs
 		if s.brainMap.Has(entity) {
-			outputs = s.getBrainOutputs(entity, pos, org, floraPositions, faunaPositions, floraOrgs, faunaOrgs, grid, bounds)
+			outputs = s.getBrainOutputs(entity, pos, vel, org, faunaPositions, faunaOrgs, grid)
 		} else {
 			outputs = neural.DefaultOutputs()
 		}
@@ -277,6 +285,11 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		}
 	}
 
+	// Build fauna velocity and species arrays for field calculations
+	// These match the indices in faunaPositions/faunaOrgs
+	s.faunaVel = s.faunaVel[:0]
+	s.faunaSpecies = s.faunaSpecies[:0]
+
 	// Phase 2: Collect organism data into tasks
 	s.taskBuffer = s.taskBuffer[:0]
 	deadTasks := make([]struct {
@@ -290,6 +303,17 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 	for query.Next() {
 		entity := query.Entity()
 		pos, vel, org := query.Get()
+
+		// Collect velocity and species for all fauna (including dead) to match faunaPos indices
+		s.faunaVel = append(s.faunaVel, *vel)
+
+		speciesID := 0
+		if s.neuralMap.Has(entity) {
+			if ng := s.neuralMap.Get(entity); ng != nil {
+				speciesID = ng.SpeciesID
+			}
+		}
+		s.faunaSpecies = append(s.faunaSpecies, speciesID)
 
 		if org.Dead {
 			deadTasks = append(deadTasks, struct {
@@ -316,23 +340,39 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 			cells = s.cellsMap.Get(entity)
 		}
 
+		// Compute capabilities for field calculations
+		var caps components.Capabilities
+		var cellCount int
+		if cells != nil {
+			caps = cells.ComputeCapabilities()
+			cellCount = int(cells.Count)
+		} else {
+			cellCount = 1
+		}
+
 		s.taskBuffer = append(s.taskBuffer, organismTask{
-			entity:           entity,
-			posX:             pos.X,
-			posY:             pos.Y,
-			heading:          org.Heading,
-			energy:           org.Energy,
-			maxEnergy:        org.MaxEnergy,
-			perceptionRadius: org.PerceptionRadius,
-			maxSpeed:         org.MaxSpeed,
-			cellSize:         org.CellSize,
-			beingEaten:       org.BeingEaten,
-			shapeMetrics:     org.ShapeMetrics,
-			obb:              org.OBB,
-			brain:            brain,
-			cells:            cells,
-			faunaIdx:         faunaIdx,
-			hasBrain:         hasBrain,
+			entity:            entity,
+			posX:              pos.X,
+			posY:              pos.Y,
+			velX:              vel.X,
+			velY:              vel.Y,
+			heading:           org.Heading,
+			energy:            org.Energy,
+			maxEnergy:         org.MaxEnergy,
+			perceptionRadius:  org.PerceptionRadius,
+			maxSpeed:          org.MaxSpeed,
+			cellSize:          org.CellSize,
+			shapeMetrics:      org.ShapeMetrics,
+			obb:               org.OBB,
+			brain:             brain,
+			cells:             cells,
+			faunaIdx:          faunaIdx,
+			speciesID:         speciesID,
+			digestiveSpectrum: caps.DigestiveSpectrum(),
+			composition:       caps.Composition(),
+			structuralArmor:   caps.StructuralArmor,
+			bodyRadius:        computeBodyRadius(cellCount, org.CellSize),
+			hasBrain:          hasBrain,
 		})
 		faunaIdx++
 	}
@@ -476,9 +516,6 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			continue
 		}
 
-		// Build entity list for this organism
-		entities := s.buildEntityListParallel(task, faunaPos, faunaOrgs, grid)
-
 		// Calculate effective perception radius
 		effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
 
@@ -501,64 +538,80 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			}
 		}
 
-		// Get light level at organism center
-		var lightLevel float32 = 0.5
-		if s.shadowMap != nil {
-			lightLevel = s.shadowMap.SampleLight(centerX, centerY)
-		}
+		// Compute current speed normalized
+		speed := float32(math.Sqrt(float64(task.velX*task.velX + task.velY*task.velY)))
+		speedNorm := clampFloat(speed/task.maxSpeed, 0, 1)
 
-		// Build sensor cells
-		sensorCells := buildSensorCells(task.cells)
+		// Gather data for aggregated field computation (thread-safe versions)
+		neighbors := gatherSameSpeciesNeighborsSafe(
+			centerX, centerY,
+			task.faunaIdx,
+			task.speciesID,
+			effectiveRadius,
+			faunaPos, faunaOrgs,
+			s.faunaVel, s.faunaSpecies,
+			grid,
+		)
 
-		// Vision parameters - use organism center, not raw position
-		visionParams := neural.VisionParams{
-			PosX:            centerX,
-			PosY:            centerY,
-			Heading:         task.heading,
-			MyComposition:   caps.Composition(),
-			MyDigestiveSpec: caps.DigestiveSpectrum(),
-			MyArmor:         caps.StructuralArmor,
-			EffectiveRadius: effectiveRadius,
-			LightLevel:      lightLevel,
-			Sensors:         sensorCells,
-		}
+		foodTargets := gatherFoodTargetsSafe(
+			centerX, centerY,
+			task.faunaIdx,
+			effectiveRadius,
+			s.floraEntities,
+			faunaPos, faunaOrgs,
+			grid,
+		)
 
-		// Polar vision scan
-		var pv neural.PolarVision
-		pv.ScanEntities(visionParams, entities)
+		threats := gatherThreatsSafe(
+			centerX, centerY,
+			task.faunaIdx,
+			effectiveRadius,
+			faunaPos, faunaOrgs,
+			grid,
+		)
 
-		// Sample directional light from organism center
-		var lightSampler func(x, y float32) float32
-		if s.shadowMap != nil {
-			lightSampler = s.shadowMap.SampleLight
-		}
-		pv.SampleDirectionalLight(centerX, centerY, task.heading, effectiveRadius, lightSampler)
+		// Compute aggregated fields
+		boidFields := computeBoidFields(
+			centerX, centerY,
+			task.heading,
+			task.bodyRadius,
+			effectiveRadius,
+			neighbors,
+		)
 
-		// Compute separation urgency (thread-safe version)
-		separationUrge, neighborDensity := computeSeparationParallel(centerX, centerY, task.faunaIdx, faunaPos, faunaOrgs, grid)
+		foodFields := computeFoodFields(
+			centerX, centerY,
+			task.heading,
+			task.digestiveSpectrum,
+			effectiveRadius,
+			foodTargets,
+		)
 
-		// Build sensory inputs
+		threatInfo := computeThreatInfo(
+			centerX, centerY,
+			task.velX, task.velY,
+			task.heading,
+			task.maxSpeed,
+			effectiveRadius,
+			threats,
+			task.composition,
+			task.structuralArmor,
+		)
+
+		// Build sensory inputs with aggregated fields
 		sensory := neural.SensoryInputs{
-			Body:            computeBodyDescriptor(&components.Organism{CellSize: task.cellSize, ShapeMetrics: task.shapeMetrics}, &caps, cellCount),
-			EnergyNorm:      task.energy / task.maxEnergy,
-			LightLevel:      lightLevel,
-			BeingEaten:      task.beingEaten,
-			SeparationUrge:  separationUrge,
-			NeighborDensity: neighborDensity,
-			MaxSpeed:        task.maxSpeed,
-			MaxEnergy:       task.maxEnergy,
+			SpeedNorm:  speedNorm,
+			EnergyNorm: task.energy / task.maxEnergy,
+			Body: computeBodyDescriptor(
+				&components.Organism{CellSize: task.cellSize, ShapeMetrics: task.shapeMetrics},
+				&caps, cellCount,
+			),
+			Boid:             boidFields,
+			Food:             foodFields,
+			Threat:           threatInfo,
+			MaxSpeed:         task.maxSpeed,
+			MaxEnergy:        task.maxEnergy,
 			PerceptionRadius: effectiveRadius,
-		}
-
-		// Copy normalized polar vision to sensory inputs
-		sensory.FromPolarVision(&pv)
-
-		// Flow alignment
-		headingX := float32(math.Cos(float64(task.heading)))
-		headingY := float32(math.Sin(float64(task.heading)))
-		flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
-		if flowMag > 0.001 {
-			sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
 		}
 
 		// Run brain
@@ -572,84 +625,6 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 	}
 }
 
-// computeSeparationParallel is a thread-safe version of computeSeparation.
-func computeSeparationParallel(centerX, centerY float32, myIdx int, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (separationUrge, density float32) {
-	const separationRadius = 30.0
-	const maxNeighbors = 10.0
-
-	nearbyFauna := grid.GetNearbyFaunaSafe(centerX, centerY, separationRadius)
-
-	var totalUrge float32
-	var count int
-
-	for _, idx := range nearbyFauna {
-		if idx == myIdx || faunaOrgs[idx].Dead {
-			continue
-		}
-
-		dx := faunaPos[idx].X - centerX
-		dy := faunaPos[idx].Y - centerY
-		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-		if dist < separationRadius && dist > 0.1 {
-			urge := 1.0 - (dist / separationRadius)
-			totalUrge += urge
-			count++
-		}
-	}
-
-	if count > 0 {
-		separationUrge = clampFloat(totalUrge/float32(count), 0, 1)
-	}
-	density = clampFloat(float32(count)/maxNeighbors, 0, 1)
-
-	return separationUrge, density
-}
-
-// buildEntityListParallel creates entity list for parallel processing (no shared buffer).
-func (s *BehaviorSystem) buildEntityListParallel(task *organismTask, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) []neural.EntityInfo {
-	effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
-
-	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
-	cosH := float32(math.Cos(float64(task.heading)))
-	sinH := float32(math.Sin(float64(task.heading)))
-	centerX := task.posX + task.obb.OffsetX*cosH - task.obb.OffsetY*sinH
-	centerY := task.posY + task.obb.OffsetX*sinH + task.obb.OffsetY*cosH
-
-	// Start with pre-built flora list, filtered by distance from center
-	entities := make([]neural.EntityInfo, 0, 32)
-	radiusSq := effectiveRadius * effectiveRadius
-	for _, flora := range s.floraEntities {
-		dx := flora.X - centerX
-		dy := flora.Y - centerY
-		if dx*dx+dy*dy <= radiusSq {
-			entities = append(entities, flora)
-		}
-	}
-
-	// Add nearby fauna (use center for spatial query)
-	// Use thread-safe version since this is called from parallel goroutines
-	nearbyFauna := grid.GetNearbyFaunaSafe(centerX, centerY, effectiveRadius*1.5)
-	for _, i := range nearbyFauna {
-		if i == task.faunaIdx || faunaOrgs[i].Dead {
-			continue
-		}
-
-		other := faunaOrgs[i]
-		entities = append(entities, neural.EntityInfo{
-			X:               faunaPos[i].X,
-			Y:               faunaPos[i].Y,
-			Composition:     0.0,
-			DigestiveSpec:   0.5,
-			StructuralArmor: 0.0,
-			GeneticDistance: 1.0,
-			IsFlora:         false,
-			EmittedLight:    other.EmittedLight,
-		})
-	}
-
-	return entities
-}
 
 // getFlowFieldForceParallel calculates flow field without organism pointer (thread-safe).
 func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics components.ShapeMetrics, energy, maxEnergy float32, _ Bounds) (float32, float32) {
@@ -673,16 +648,15 @@ func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics co
 	return flowX * factor, flowY * factor
 }
 
-// getBrainOutputs gathers sensory inputs using polar vision + body descriptor and runs the brain.
-// Hybrid approach: polar vision cones (proven to work) + body-aware capabilities.
+// getBrainOutputs gathers sensory inputs using aggregated fields and runs the brain.
 func (s *BehaviorSystem) getBrainOutputs(
 	entity ecs.Entity,
 	pos *components.Position,
+	vel *components.Velocity,
 	org *components.Organism,
-	floraPos, faunaPos []components.Position,
-	floraOrgs, faunaOrgs []*components.Organism,
+	faunaPos []components.Position,
+	faunaOrgs []*components.Organism,
 	grid *SpatialGrid,
-	bounds Bounds,
 ) neural.BehaviorOutputs {
 	brain := s.brainMap.Get(entity)
 	if brain == nil || brain.Controller == nil {
@@ -704,7 +678,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
 	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
-	// Get our capabilities for vision parameters
+	// Get our capabilities
 	var caps components.Capabilities
 	var cellCount int
 	if cells != nil {
@@ -714,82 +688,151 @@ func (s *BehaviorSystem) getBrainOutputs(
 		cellCount = 1
 	}
 
-	// Get light level at organism center
-	var lightLevel float32 = 0.5
-	if s.shadowMap != nil {
-		lightLevel = s.shadowMap.SampleLight(centerX, centerY)
+	// Get species ID for boid field filtering
+	speciesID := 0
+	if s.neuralMap.Has(entity) {
+		if ng := s.neuralMap.Get(entity); ng != nil {
+			speciesID = ng.SpeciesID
+		}
 	}
 
-	// Build sensor cells for vision weighting
-	sensorCells := buildSensorCells(cells)
+	// Compute current speed normalized
+	speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+	speedNorm := clampFloat(speed/org.MaxSpeed, 0, 1)
 
-	// Build vision parameters - use organism center, not raw position
-	visionParams := neural.VisionParams{
-		PosX:            centerX,
-		PosY:            centerY,
-		Heading:         org.Heading,
-		MyComposition:   caps.Composition(),
-		MyDigestiveSpec: caps.DigestiveSpectrum(),
-		MyArmor:         caps.StructuralArmor,
-		EffectiveRadius: effectiveRadius,
-		LightLevel:      lightLevel,
-		Sensors:         sensorCells,
+	// Body metrics
+	bodyRadius := org.BodyRadius
+	if bodyRadius < 1 {
+		bodyRadius = computeBodyRadius(cellCount, org.CellSize)
 	}
 
-	// Build entity list for vision scan
-	var entityListStart time.Time
-	if s.perfEnabled {
-		entityListStart = time.Now()
-	}
-	entities := s.buildEntityList(pos, org, effectiveRadius, floraPos, faunaPos, floraOrgs, faunaOrgs, grid)
-	if s.perfEnabled {
-		s.perfStats.EntityListNs += time.Since(entityListStart).Nanoseconds()
+	// Build neighbor info for boid fields (sequential version - use regular grid functions)
+	// We need to iterate and filter manually since we don't have pre-built arrays
+	var neighbors []NeighborInfo
+	if speciesID > 0 {
+		nearbyIndices := grid.GetNearbyFauna(centerX, centerY, effectiveRadius)
+		neighbors = make([]NeighborInfo, 0, len(nearbyIndices))
+		for _, idx := range nearbyIndices {
+			if idx >= len(faunaOrgs) || faunaOrgs[idx] == org || faunaOrgs[idx].Dead {
+				continue
+			}
+			// Check species - we need to look it up for each neighbor
+			// This is slower than the parallel version but correct
+			otherBodyRadius := faunaOrgs[idx].BodyRadius
+			if otherBodyRadius < 1 {
+				otherBodyRadius = faunaOrgs[idx].CellSize
+			}
+			neighbors = append(neighbors, NeighborInfo{
+				PosX:       faunaPos[idx].X,
+				PosY:       faunaPos[idx].Y,
+				VelX:       0, // Sequential version doesn't have velocity array
+				VelY:       0, // Alignment will be less accurate
+				BodyRadius: otherBodyRadius,
+			})
+		}
 	}
 
-	// Perform polar vision scan
+	// Build food targets
+	foodTargets := make([]FoodTarget, 0, 32)
+	radiusSq := effectiveRadius * effectiveRadius
+	// Add flora from FloraSystem
+	if s.floraSystem != nil {
+		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, effectiveRadius)
+		for _, ref := range nearbyFlora {
+			dx := ref.X - centerX
+			dy := ref.Y - centerY
+			if dx*dx+dy*dy <= radiusSq {
+				foodTargets = append(foodTargets, FoodTarget{
+					PosX:        ref.X,
+					PosY:        ref.Y,
+					Composition: 1.0, // Plant
+					Intensity:   1.0,
+				})
+			}
+		}
+	}
+	// Add fauna as potential meat
+	nearbyFauna := grid.GetNearbyFauna(centerX, centerY, effectiveRadius)
+	for _, idx := range nearbyFauna {
+		if idx >= len(faunaOrgs) || faunaOrgs[idx] == org {
+			continue
+		}
+		other := faunaOrgs[idx]
+		intensity := float32(1.0)
+		if other.Dead {
+			intensity = other.Energy / other.MaxEnergy
+		}
+		foodTargets = append(foodTargets, FoodTarget{
+			PosX:        faunaPos[idx].X,
+			PosY:        faunaPos[idx].Y,
+			Composition: 0.0, // Meat
+			Intensity:   intensity,
+		})
+	}
+
+	// Build threats
+	threats := make([]neural.EntityInfo, 0, len(nearbyFauna))
+	for _, idx := range nearbyFauna {
+		if idx >= len(faunaOrgs) || faunaOrgs[idx] == org || faunaOrgs[idx].Dead {
+			continue
+		}
+		threats = append(threats, neural.EntityInfo{
+			X:             faunaPos[idx].X,
+			Y:             faunaPos[idx].Y,
+			Composition:   0.0,
+			DigestiveSpec: 0.5, // Unknown diet
+			IsFlora:       false,
+		})
+	}
+
+	// Compute aggregated fields
 	var visionStart time.Time
 	if s.perfEnabled {
 		visionStart = time.Now()
 	}
-	var pv neural.PolarVision
-	pv.ScanEntities(visionParams, entities)
 
-	// Sample directional light for gradient computation from organism center
-	var lightSampler func(x, y float32) float32
-	if s.shadowMap != nil {
-		lightSampler = s.shadowMap.SampleLight
-	}
-	pv.SampleDirectionalLight(centerX, centerY, org.Heading, effectiveRadius, lightSampler)
+	boidFields := computeBoidFields(
+		centerX, centerY,
+		org.Heading,
+		bodyRadius,
+		effectiveRadius,
+		neighbors,
+	)
+
+	foodFields := computeFoodFields(
+		centerX, centerY,
+		org.Heading,
+		caps.DigestiveSpectrum(),
+		effectiveRadius,
+		foodTargets,
+	)
+
+	threatInfo := computeThreatInfo(
+		centerX, centerY,
+		vel.X, vel.Y,
+		org.Heading,
+		org.MaxSpeed,
+		effectiveRadius,
+		threats,
+		caps.Composition(),
+		caps.StructuralArmor,
+	)
+
 	if s.perfEnabled {
 		s.perfStats.VisionNs += time.Since(visionStart).Nanoseconds()
 	}
 
-	// Compute separation urgency from nearby fauna
-	separationUrge, neighborDensity := computeSeparation(centerX, centerY, org, faunaPos, faunaOrgs, grid)
-
-	// Build sensory inputs with polar vision + body descriptor
+	// Build sensory inputs with aggregated fields
 	sensory := neural.SensoryInputs{
-		Body:            computeBodyDescriptor(org, &caps, cellCount),
-		EnergyNorm:      org.Energy / org.MaxEnergy,
-		LightLevel:      lightLevel,
-		BeingEaten:      org.BeingEaten,
-		SeparationUrge:  separationUrge,
-		NeighborDensity: neighborDensity,
-		MaxSpeed:        org.MaxSpeed,
-		MaxEnergy:       org.MaxEnergy,
+		SpeedNorm:        speedNorm,
+		EnergyNorm:       org.Energy / org.MaxEnergy,
+		Body:             computeBodyDescriptor(org, &caps, cellCount),
+		Boid:             boidFields,
+		Food:             foodFields,
+		Threat:           threatInfo,
+		MaxSpeed:         org.MaxSpeed,
+		MaxEnergy:        org.MaxEnergy,
 		PerceptionRadius: effectiveRadius,
-	}
-
-	// Copy normalized polar vision to sensory inputs
-	sensory.FromPolarVision(&pv)
-
-	// Flow alignment: dot product of flow direction with heading
-	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
-	headingX := float32(math.Cos(float64(org.Heading)))
-	headingY := float32(math.Sin(float64(org.Heading)))
-	flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
-	if flowMag > 0.001 {
-		sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
 	}
 
 	// Run brain
@@ -809,127 +852,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 	return neural.DecodeOutputs(rawOutputs)
 }
 
-// computeSeparation calculates separation urgency and neighbor density.
-// Used to prevent clustering - gives organisms a signal to spread out.
-func computeSeparation(centerX, centerY float32, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (separationUrge, density float32) {
-	const separationRadius = 30.0 // World units - larger than feeding distance
-	const maxNeighbors = 10.0
 
-	nearbyFauna := grid.GetNearbyFauna(centerX, centerY, separationRadius)
-
-	var totalUrge float32
-	var count int
-
-	for _, idx := range nearbyFauna {
-		if faunaOrgs[idx] == org || faunaOrgs[idx].Dead {
-			continue
-		}
-
-		dx := faunaPos[idx].X - centerX
-		dy := faunaPos[idx].Y - centerY
-		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-
-		if dist < separationRadius && dist > 0.1 {
-			// Inverse distance - closer = more urgent
-			urge := 1.0 - (dist / separationRadius)
-			totalUrge += urge
-			count++
-		}
-	}
-
-	if count > 0 {
-		separationUrge = clampFloat(totalUrge/float32(count), 0, 1)
-	}
-	density = clampFloat(float32(count)/maxNeighbors, 0, 1)
-
-	return separationUrge, density
-}
-
-// buildSensorCells extracts sensor cell data for vision weighting.
-func buildSensorCells(cells *components.CellBuffer) []neural.SensorCell {
-	if cells == nil {
-		return nil
-	}
-
-	var sensorCells []neural.SensorCell
-	for i := uint8(0); i < cells.Count; i++ {
-		cell := &cells.Cells[i]
-		if !cell.Alive {
-			continue
-		}
-		strength := cell.GetSensorStrength()
-		if strength > 0 {
-			sensorCells = append(sensorCells, neural.SensorCell{
-				GridX:    cell.GridX,
-				GridY:    cell.GridY,
-				Strength: strength,
-			})
-		}
-	}
-	return sensorCells
-}
-
-// buildEntityList creates the entity info list for polar vision scanning.
-// Uses pre-allocated buffer to avoid allocations in hot path.
-// Line-of-sight checks are skipped for performance - polar vision handles directionality.
-func (s *BehaviorSystem) buildEntityList(
-	pos *components.Position,
-	org *components.Organism,
-	effectiveRadius float32,
-	_ []components.Position, // floraPos unused - flora comes from FloraSystem
-	faunaPos []components.Position,
-	_ []*components.Organism, // floraOrgs unused
-	faunaOrgs []*components.Organism,
-	grid *SpatialGrid,
-) []neural.EntityInfo {
-	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
-	cosH := float32(math.Cos(float64(org.Heading)))
-	sinH := float32(math.Sin(float64(org.Heading)))
-	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
-	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
-
-	// Reset buffer (reuse underlying array)
-	s.entityBuffer = s.entityBuffer[:0]
-
-	// Add nearby flora from FloraSystem (use center for spatial query)
-	if s.floraSystem != nil {
-		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, effectiveRadius)
-		for _, ref := range nearbyFlora {
-			// Skip LOS check for performance - polar vision cones handle directionality
-			s.entityBuffer = append(s.entityBuffer, neural.EntityInfo{
-				X:               ref.X,
-				Y:               ref.Y,
-				Composition:     1.0, // Flora is pure photosynthetic
-				DigestiveSpec:   0.0, // Flora doesn't eat
-				StructuralArmor: DefaultFloraArmor(),
-				GeneticDistance: -1, // No genetic comparison with flora
-				IsFlora:         true,
-			})
-		}
-	}
-
-	// Add nearby fauna (use center for spatial query)
-	nearbyFauna := grid.GetNearbyFauna(centerX, centerY, effectiveRadius*1.5) // Extended range for threats
-	for _, i := range nearbyFauna {
-		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
-			continue
-		}
-
-		other := faunaOrgs[i]
-		s.entityBuffer = append(s.entityBuffer, neural.EntityInfo{
-			X:               faunaPos[i].X,
-			Y:               faunaPos[i].Y,
-			Composition:     0.0, // Fauna have low photosynthesis
-			DigestiveSpec:   0.5, // Neutral - unknown diet
-			StructuralArmor: 0.0, // Unknown armor
-			GeneticDistance: 1.0, // Default: moderately different
-			IsFlora:         false,
-			EmittedLight:    other.EmittedLight,
-		})
-	}
-
-	return s.entityBuffer
-}
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*flowTimeScale)
@@ -1123,6 +1046,142 @@ func normalizeVector(x, y float32) (nx, ny, mag float32) {
 		return 0, 0, 0
 	}
 	return x / mag, y / mag, mag
+}
+
+// gatherSameSpeciesNeighborsSafe builds NeighborInfo slice for boid field calculations.
+// Thread-safe version for parallel processing - allocates new slices.
+func gatherSameSpeciesNeighborsSafe(
+	centerX, centerY float32,
+	myIdx int,
+	mySpeciesID int,
+	perceptionRadius float32,
+	faunaPos []components.Position,
+	faunaOrgs []*components.Organism,
+	faunaVel []components.Velocity,
+	faunaSpecies []int,
+	grid *SpatialGrid,
+) []NeighborInfo {
+	if mySpeciesID == 0 {
+		return nil // No species = no boid behavior
+	}
+
+	nearbyIndices := grid.GetNearbyFaunaSafe(centerX, centerY, perceptionRadius)
+	neighbors := make([]NeighborInfo, 0, len(nearbyIndices))
+
+	for _, idx := range nearbyIndices {
+		if idx == myIdx || idx >= len(faunaOrgs) {
+			continue
+		}
+		if faunaOrgs[idx].Dead {
+			continue
+		}
+		// Same-species filter
+		if idx >= len(faunaSpecies) || faunaSpecies[idx] != mySpeciesID {
+			continue
+		}
+
+		// Estimate body radius from cell size
+		bodyRadius := faunaOrgs[idx].BodyRadius
+		if bodyRadius < 1 {
+			bodyRadius = faunaOrgs[idx].CellSize
+		}
+
+		neighbors = append(neighbors, NeighborInfo{
+			PosX:       faunaPos[idx].X,
+			PosY:       faunaPos[idx].Y,
+			VelX:       faunaVel[idx].X,
+			VelY:       faunaVel[idx].Y,
+			BodyRadius: bodyRadius,
+		})
+	}
+
+	return neighbors
+}
+
+// gatherFoodTargetsSafe builds FoodTarget slice for food field calculations.
+// Thread-safe version for parallel processing.
+func gatherFoodTargetsSafe(
+	centerX, centerY float32,
+	myIdx int,
+	perceptionRadius float32,
+	floraEntities []neural.EntityInfo,
+	faunaPos []components.Position,
+	faunaOrgs []*components.Organism,
+	grid *SpatialGrid,
+) []FoodTarget {
+	targets := make([]FoodTarget, 0, 32)
+
+	// Add flora within perception radius
+	radiusSq := perceptionRadius * perceptionRadius
+	for _, flora := range floraEntities {
+		dx := flora.X - centerX
+		dy := flora.Y - centerY
+		if dx*dx+dy*dy <= radiusSq {
+			targets = append(targets, FoodTarget{
+				PosX:        flora.X,
+				PosY:        flora.Y,
+				Composition: 1.0, // Plant
+				Intensity:   1.0,
+			})
+		}
+	}
+
+	// Add nearby fauna as potential meat sources (alive fauna = potential prey)
+	nearbyIndices := grid.GetNearbyFaunaSafe(centerX, centerY, perceptionRadius)
+	for _, idx := range nearbyIndices {
+		if idx == myIdx || idx >= len(faunaOrgs) {
+			continue
+		}
+		org := faunaOrgs[idx]
+		// Both dead and alive fauna can be meat sources
+		// Dead = carrion, Alive = potential prey (diet compatibility handled later)
+		intensity := float32(1.0)
+		if org.Dead {
+			intensity = org.Energy / org.MaxEnergy // Carrion value based on remaining energy
+		}
+		targets = append(targets, FoodTarget{
+			PosX:        faunaPos[idx].X,
+			PosY:        faunaPos[idx].Y,
+			Composition: 0.0, // Meat
+			Intensity:   intensity,
+		})
+	}
+
+	return targets
+}
+
+// gatherThreatsSafe builds threat entity list for threat calculations.
+// Thread-safe version for parallel processing.
+func gatherThreatsSafe(
+	centerX, centerY float32,
+	myIdx int,
+	perceptionRadius float32,
+	faunaPos []components.Position,
+	faunaOrgs []*components.Organism,
+	grid *SpatialGrid,
+) []neural.EntityInfo {
+	nearbyIndices := grid.GetNearbyFaunaSafe(centerX, centerY, perceptionRadius*1.5) // Extended range for threats
+	threats := make([]neural.EntityInfo, 0, len(nearbyIndices))
+
+	for _, idx := range nearbyIndices {
+		if idx == myIdx || idx >= len(faunaOrgs) {
+			continue
+		}
+		org := faunaOrgs[idx]
+		if org.Dead {
+			continue // Dead organisms aren't threats
+		}
+
+		threats = append(threats, neural.EntityInfo{
+			X:             faunaPos[idx].X,
+			Y:             faunaPos[idx].Y,
+			Composition:   0.0, // Fauna
+			DigestiveSpec: 0.5, // Unknown diet - assume neutral
+			IsFlora:       false,
+		})
+	}
+
+	return threats
 }
 
 // NeighborInfo holds data about a nearby same-species organism for boid calculations.
