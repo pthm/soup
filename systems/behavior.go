@@ -169,11 +169,24 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		}
 
 		// Store brain outputs
-		org.UFwd = outputs.UFwd
-		org.UUp = outputs.UUp
+		org.UTurn = outputs.UTurn
+		org.UThrottle = outputs.UThrottle
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
+
+		// HEADING-AS-STATE: Integrate heading from turn rate
+		// Turn rate is scaled by morphology - asymmetric actuators affect turning
+		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, cells)
+		org.Heading += outputs.UTurn * effectiveTurnRate
+
+		// Normalize heading to [-π, π]
+		for org.Heading > math.Pi {
+			org.Heading -= 2 * math.Pi
+		}
+		for org.Heading < -math.Pi {
+			org.Heading += 2 * math.Pi
+		}
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
@@ -188,14 +201,11 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, cells)
 		maxAccel := getMaxAcceleration(cells, org.ShapeMetrics.Drag)
 
-		// Direct velocity steering: convert local UFwd/UUp to world-space desired velocity
-		// UFwd is along heading, UUp is perpendicular (90 degrees left)
-		desiredVelX := outputs.UFwd*cosH - outputs.UUp*sinH
-		desiredVelY := outputs.UFwd*sinH + outputs.UUp*cosH
-
-		// Scale by max speed
-		desiredVelX *= effectiveMaxSpeed
-		desiredVelY *= effectiveMaxSpeed
+		// HEADING-AS-STATE: Desired velocity is along heading, scaled by throttle
+		// Throttle effectiveness is scaled by morphology - rear actuators provide better thrust
+		effectiveThrottle := getEffectiveThrust(outputs.UThrottle, cells)
+		desiredVelX := cosH * effectiveThrottle * effectiveMaxSpeed
+		desiredVelY := sinH * effectiveThrottle * effectiveMaxSpeed
 
 		// Compute acceleration toward desired velocity
 		accelX := desiredVelX - vel.X
@@ -222,10 +232,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			vel.Y *= scale
 		}
 
-		// Update heading to face velocity direction (if moving)
-		if speed > 0.1 {
-			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
-		}
+		// Heading is now controlled by brain, not derived from velocity
 
 		// Track acceleration magnitude for energy cost
 		org.ActiveThrust = accelMag
@@ -420,14 +427,26 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 
 		// Apply brain outputs
 		outputs := task.outputs
-		org.UFwd = outputs.UFwd
-		org.UUp = outputs.UUp
+		org.UTurn = outputs.UTurn
+		org.UThrottle = outputs.UThrottle
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 		org.LastInputs = task.lastInputs     // Store for debugging
 
-		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+		// HEADING-AS-STATE: Integrate heading from turn rate
+		// Turn rate is scaled by morphology - asymmetric actuators affect turning
+		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, task.cells)
+		org.Heading += outputs.UTurn * effectiveTurnRate
+
+		// Normalize heading to [-π, π]
+		for org.Heading > math.Pi {
+			org.Heading -= 2 * math.Pi
+		}
+		for org.Heading < -math.Pi {
+			org.Heading += 2 * math.Pi
+		}
+
 		cosH := float32(math.Cos(float64(org.Heading)))
 		sinH := float32(math.Sin(float64(org.Heading)))
 
@@ -435,13 +454,11 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, task.cells)
 		maxAccel := getMaxAcceleration(task.cells, org.ShapeMetrics.Drag)
 
-		// Direct velocity steering: convert local UFwd/UUp to world-space desired velocity
-		desiredVelX := outputs.UFwd*cosH - outputs.UUp*sinH
-		desiredVelY := outputs.UFwd*sinH + outputs.UUp*cosH
-
-		// Scale by max speed
-		desiredVelX *= effectiveMaxSpeed
-		desiredVelY *= effectiveMaxSpeed
+		// HEADING-AS-STATE: Desired velocity is along heading, scaled by throttle
+		// Throttle effectiveness is scaled by morphology - rear actuators provide better thrust
+		effectiveThrottle := getEffectiveThrust(outputs.UThrottle, task.cells)
+		desiredVelX := cosH * effectiveThrottle * effectiveMaxSpeed
+		desiredVelY := sinH * effectiveThrottle * effectiveMaxSpeed
 
 		// Compute acceleration toward desired velocity
 		accelX := desiredVelX - vel.X
@@ -468,10 +485,7 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 			vel.Y *= scale
 		}
 
-		// Update heading to face velocity direction (if moving)
-		if speed > 0.1 {
-			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
-		}
+		// Heading is now controlled by brain, not derived from velocity
 
 		// Track acceleration magnitude for energy cost
 		org.ActiveThrust = accelMag
@@ -961,6 +975,84 @@ func getMaxAcceleration(cells *components.CellBuffer, drag float32) float32 {
 		dragFactor = 0.3
 	}
 	return baseAccel * dragFactor
+}
+
+// Morphology-based movement constants
+const (
+	turnBiasScale   = 0.5 // How much turn bias affects turn rate (0.5 = ±50% at max bias)
+	thrustBiasScale = 0.4 // How much thrust bias affects forward speed (0.4 = ±40% at max bias)
+)
+
+// getEffectiveTurnRate computes the turn rate scaled by morphology.
+// Actuators on one side make turning toward that side easier.
+// Returns: baseTurnRate * morphologyMultiplier
+func getEffectiveTurnRate(baseTurnRate float32, uTurn float32, cells *components.CellBuffer) float32 {
+	if cells == nil {
+		return baseTurnRate
+	}
+
+	metrics := cells.ComputeActuatorMetrics()
+	if metrics.TotalStrength < 0.1 {
+		return baseTurnRate * 0.5 // Minimal turning without actuators
+	}
+
+	// Normalize turn bias by total strength
+	normalizedBias := metrics.TurnBias / metrics.TotalStrength
+
+	// Turn bias > 0 means more right-side actuators = better left turn (positive uTurn)
+	// Turn bias < 0 means more left-side actuators = better right turn (negative uTurn)
+	// When uTurn matches the bias sign, we get a boost; opposite sign gets penalty
+	biasEffect := normalizedBias * uTurn * turnBiasScale
+
+	// Base effectiveness from total actuator strength
+	baseEffect := float32(0.5 + 0.5*math.Min(1.0, float64(metrics.TotalStrength)/capabilityScale))
+
+	// Combine: base effectiveness + directional bonus/penalty
+	// Clamp to [0.3, 1.5] to prevent extreme values
+	multiplier := baseEffect + biasEffect
+	if multiplier < 0.3 {
+		multiplier = 0.3
+	}
+	if multiplier > 1.5 {
+		multiplier = 1.5
+	}
+
+	return baseTurnRate * multiplier
+}
+
+// getEffectiveThrust computes thrust effectiveness based on actuator placement.
+// Rear actuators provide better forward thrust.
+// Returns: baseThrottle * morphologyMultiplier
+func getEffectiveThrust(baseThrottle float32, cells *components.CellBuffer) float32 {
+	if cells == nil || baseThrottle <= 0 {
+		return baseThrottle
+	}
+
+	metrics := cells.ComputeActuatorMetrics()
+	if metrics.TotalStrength < 0.1 {
+		return baseThrottle * 0.3 // Minimal thrust without actuators
+	}
+
+	// Normalize thrust bias by total strength
+	// Positive = more rear actuators = better forward thrust
+	normalizedBias := metrics.ThrustBias / metrics.TotalStrength
+
+	// Base effectiveness from total actuator strength
+	baseEffect := float32(0.5 + 0.5*math.Min(1.0, float64(metrics.TotalStrength)/capabilityScale))
+
+	// Thrust bonus for rear-heavy actuator placement
+	thrustBonus := normalizedBias * thrustBiasScale
+
+	// Combine and clamp to [0.3, 1.4]
+	multiplier := baseEffect + thrustBonus
+	if multiplier < 0.3 {
+		multiplier = 0.3
+	}
+	if multiplier > 1.4 {
+		multiplier = 1.4
+	}
+
+	return baseThrottle * multiplier
 }
 
 // computeBodyRadius returns sqrt(cellCount) * cellSize for body length normalization.

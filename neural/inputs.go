@@ -143,11 +143,11 @@ func (s *SensoryInputs) ToInputs() []float64 {
 }
 
 // BehaviorOutputs holds the decoded outputs from the brain network.
-// 4 outputs: movement velocity vector + action gates.
+// 4 outputs: heading control + throttle + action gates.
 type BehaviorOutputs struct {
-	// Movement as local desired velocity
-	UFwd float32 // Desired forward velocity [-1,1]
-	UUp  float32 // Desired lateral velocity [-1,1]
+	// Heading-as-state control (eliminates velocity-heading feedback loop)
+	UTurn     float32 // Turn rate [-1,1], scaled by TurnRateMax
+	UThrottle float32 // Forward throttle [0,1], 0=stop, 1=max speed
 
 	// Action gates
 	AttackIntent float32 // Predation gate [0,1], >0.5 = attack
@@ -156,19 +156,20 @@ type BehaviorOutputs struct {
 
 // DecodeOutputs converts raw network outputs to intent values.
 // Raw outputs are in [0, 1] range from sigmoid activation.
-// Layout: [UFwd, UUp, AttackIntent, MateIntent]
+// Layout: [UTurn, UThrottle, AttackIntent, MateIntent]
 func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
 		return DefaultOutputs()
 	}
 
-	// Convert sigmoid [0,1] to [-1,1] for velocity outputs
-	uFwd := float32(raw[0])*2.0 - 1.0
-	uUp := float32(raw[1])*2.0 - 1.0
+	// Convert sigmoid [0,1] to [-1,1] for turn rate
+	uTurn := float32(raw[0])*2.0 - 1.0
+	// Throttle stays in [0,1] - forward only, no reverse
+	uThrottle := float32(raw[1])
 
 	return BehaviorOutputs{
-		UFwd:         uFwd,
-		UUp:          uUp,
+		UTurn:        uTurn,
+		UThrottle:    uThrottle,
 		AttackIntent: float32(raw[2]),
 		MateIntent:   float32(raw[3]),
 	}
@@ -178,8 +179,8 @@ func DecodeOutputs(raw []float64) BehaviorOutputs {
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		UFwd:         0.0,
-		UUp:          0.0,
+		UTurn:        0.0,
+		UThrottle:    0.0,
 		AttackIntent: 0.0,
 		MateIntent:   0.0,
 	}

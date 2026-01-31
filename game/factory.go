@@ -48,7 +48,7 @@ func (g *Game) createNeuralOrganism(x, y float32, energy float32, neuralGenome *
 	org := &components.Organism{
 		Energy:           energy,
 		MaxEnergy:        maxEnergy,
-		CellSize:         5,
+		CellSize:         4,
 		MaxSpeed:         1.5,
 		MaxForce:         0.1,
 		PerceptionRadius: 60,

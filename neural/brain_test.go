@@ -216,8 +216,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected brain outputs %d, got %d", BrainOutputs, cfg.Brain.Outputs)
 	}
 
-	if cfg.CPPN.MaxCells != 16 {
-		t.Errorf("expected max cells 16, got %d", cfg.CPPN.MaxCells)
+	if cfg.CPPN.MaxCells != 24 {
+		t.Errorf("expected max cells 24, got %d", cfg.CPPN.MaxCells)
 	}
 
 	t.Logf("Config: brain=%dx%d, cppn grid=%d, max cells=%d",

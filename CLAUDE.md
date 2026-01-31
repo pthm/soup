@@ -43,7 +43,7 @@ for query.Next() {
 
 **Brain** (queried every tick via `BrainController.Think()`):
 - Inputs (26): self (2) + body descriptor (6) + boid fields (9) + food fields (6) + threat (2) + bias (1)
-- Outputs (4): UFwd, UUp, AttackIntent, MateIntent
+- Outputs (4): UTurn, UThrottle, AttackIntent, MateIntent
 
 **Input Structure (26 inputs)**:
 | Index | Name | Range | Description |
@@ -58,10 +58,27 @@ for query.Next() {
 **Output Structure (4 outputs)**:
 | Index | Name | Range | Description |
 |-------|------|-------|-------------|
-| 0 | UFwd | [-1,1] | Desired forward velocity |
-| 1 | UUp | [-1,1] | Desired lateral velocity |
+| 0 | UTurn | [-1,1] | Turn rate (heading-as-state) |
+| 1 | UThrottle | [0,1] | Forward throttle (no reverse) |
 | 2 | AttackIntent | [0,1] | Predation gate (>0.5 = attack) |
 | 3 | MateIntent | [0,1] | Mating gate (>0.5 = ready) |
+
+**Heading-as-State Model**:
+- Heading is brain-controlled state, not derived from velocity
+- `heading += UTurn * TurnRateMax` (TurnRateMax = 0.15 rad/tick)
+- Desired velocity = `(cos(heading), sin(heading)) * UThrottle * maxSpeed`
+- Eliminates velocity-heading feedback loop that caused jittering
+
+**Morphology-Based Movement**:
+- Actuator placement affects turning and thrust effectiveness
+- **Turn effectiveness**: Asymmetric actuators favor one turn direction
+  - Left-side actuators (GridY > 0) → better right turns
+  - Right-side actuators (GridY < 0) → better left turns
+  - ±50% turn rate bonus/penalty at maximum asymmetry
+- **Thrust effectiveness**: Rear actuators provide better forward thrust
+  - Rear actuators (GridX < 0) → up to +40% thrust bonus
+  - Front actuators (GridX > 0) → reduced thrust
+- Fish-like body plans (rear actuators) naturally swim faster forward
 
 ### Cell Types
 
@@ -78,7 +95,7 @@ for query.Next() {
 ### Energy Model
 
 Brain outputs drive energy costs:
-- **Movement**: UFwd + UUp magnitude + ActiveThrust (main pressure)
+- **Movement**: UThrottle² + ActiveThrust + jitter penalty (main pressure)
 - **Attack**: Body-scaled cost when AttackIntent > 0.5
 - **Base**: ~0.0005/cell/tick (photosynthesis can offset up to 95%)
 

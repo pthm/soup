@@ -28,7 +28,11 @@ func (g *Game) findOrganismAtMouse() *HoveredOrganism {
 	for query.Next() {
 		pos, _, org, cells := query.Get()
 
-		// Calculate organism bounds
+		// Pre-compute rotation for heading
+		cosH := float32(math.Cos(float64(org.Heading)))
+		sinH := float32(math.Sin(float64(org.Heading)))
+
+		// Calculate organism bounds in world space (rotated by heading)
 		minX, minY := pos.X, pos.Y
 		maxX, maxY := pos.X, pos.Y
 
@@ -37,8 +41,12 @@ func (g *Game) findOrganismAtMouse() *HoveredOrganism {
 			if !cell.Alive {
 				continue
 			}
-			cellX := pos.X + float32(cell.GridX)*org.CellSize
-			cellY := pos.Y + float32(cell.GridY)*org.CellSize
+			// Local cell position
+			localX := float32(cell.GridX) * org.CellSize
+			localY := float32(cell.GridY) * org.CellSize
+			// Rotate by heading to get world position
+			cellX := pos.X + localX*cosH - localY*sinH
+			cellY := pos.Y + localX*sinH + localY*cosH
 			if cellX < minX {
 				minX = cellX
 			}
@@ -90,7 +98,11 @@ func (g *Game) findOrganismAtClick() (ecs.Entity, bool) {
 		entity := query.Entity()
 		pos, _, org, cells := query.Get()
 
-		// Calculate organism bounds
+		// Pre-compute rotation for heading
+		cosH := float32(math.Cos(float64(org.Heading)))
+		sinH := float32(math.Sin(float64(org.Heading)))
+
+		// Calculate organism bounds in world space (rotated by heading)
 		minX, minY := pos.X, pos.Y
 		maxX, maxY := pos.X, pos.Y
 
@@ -99,8 +111,12 @@ func (g *Game) findOrganismAtClick() (ecs.Entity, bool) {
 			if !cell.Alive {
 				continue
 			}
-			cellX := pos.X + float32(cell.GridX)*org.CellSize
-			cellY := pos.Y + float32(cell.GridY)*org.CellSize
+			// Local cell position
+			localX := float32(cell.GridX) * org.CellSize
+			localY := float32(cell.GridY) * org.CellSize
+			// Rotate by heading to get world position
+			cellX := pos.X + localX*cosH - localY*sinH
+			cellY := pos.Y + localX*sinH + localY*cosH
 			if cellX < minX {
 				minX = cellX
 			}

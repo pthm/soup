@@ -70,15 +70,15 @@ type Organism struct {
 	// Body geometry (computed from cells at birth)
 	BodyRadius float32 // sqrt(cellCount) * cellSize
 
-	// Brain outputs (direct velocity control)
-	UFwd         float32 // Brain output: -1 to +1, desired forward velocity
-	UUp          float32 // Brain output: -1 to +1, desired lateral velocity
+	// Brain outputs (heading-as-state control)
+	UTurn        float32 // Brain output: -1 to +1, turn rate
+	UThrottle    float32 // Brain output: 0 to 1, forward throttle
 	AttackIntent float32 // Brain output: 0-1, >0.5 means attack
 	MateIntent   float32 // Brain output: 0-1, >0.5 means ready to mate
 
 	// Previous outputs for jitter detection (energy cost)
-	PrevUFwd float32
-	PrevUUp  float32
+	PrevUTurn     float32
+	PrevUThrottle float32
 
 	// Last brain inputs (for debugging/inspection)
 	LastInputs [26]float32 // Last sensory inputs fed to brain
@@ -285,6 +285,55 @@ func (cb *CellBuffer) ComputeCapabilities() Capabilities {
 	}
 
 	return caps
+}
+
+// ActuatorMetrics holds position-weighted actuator statistics for movement.
+// These determine how morphology affects turning and thrust effectiveness.
+type ActuatorMetrics struct {
+	// ThrustBias: How much actuator strength is at the rear vs front.
+	// Positive = more rear thrust (forward propulsion), Negative = more front (braking).
+	// Range roughly [-1, 1] when normalized by TotalStrength.
+	ThrustBias float32
+
+	// TurnBias: Asymmetry between left and right actuators.
+	// Positive = more right-side actuators (better at turning left).
+	// Negative = more left-side actuators (better at turning right).
+	// Range roughly [-1, 1] when normalized.
+	TurnBias float32
+
+	// TotalStrength: Sum of all actuator strengths (for normalization).
+	TotalStrength float32
+}
+
+// ComputeActuatorMetrics calculates position-weighted actuator statistics.
+// Used to determine how body shape affects turning and thrust.
+func (cb *CellBuffer) ComputeActuatorMetrics() ActuatorMetrics {
+	var metrics ActuatorMetrics
+
+	for i := uint8(0); i < cb.Count; i++ {
+		cell := &cb.Cells[i]
+		if !cell.Alive {
+			continue
+		}
+
+		strength := cell.GetFunctionStrength(neural.CellTypeActuator)
+		if strength <= 0 {
+			continue
+		}
+
+		metrics.TotalStrength += strength
+
+		// GridX: positive = front, negative = rear
+		// Rear actuators provide forward thrust
+		metrics.ThrustBias -= float32(cell.GridX) * strength
+
+		// GridY: positive = left, negative = right
+		// Right-side actuators (GridY < 0) help turn left (positive turn)
+		// Left-side actuators (GridY > 0) help turn right (negative turn)
+		metrics.TurnBias -= float32(cell.GridY) * strength
+	}
+
+	return metrics
 }
 
 // HasMouth returns true if any alive cell has mouth capability.

@@ -26,6 +26,12 @@ const (
 	floraFlowForce = float32(0.04) // How strongly flora responds to flow
 	floraMaxSpeed  = float32(0.5)  // Maximum flora velocity
 	floraDrag      = float32(0.97) // Velocity damping per tick
+
+	// Fauna collision parameters
+	floraCollisionRadius  = float32(8.0)  // Base collision distance
+	floraPushForce        = float32(0.4)  // Force multiplier for pushing flora
+	floraSpeedThreshold   = float32(0.8)  // Below this speed, no push occurs
+	floraPushMaxSpeed     = float32(2.0)  // Flora max speed after being pushed
 )
 
 // Flora represents a floating flora organism in the water column.
@@ -346,4 +352,82 @@ func (fs *FloraSystem) TotalEnergy() float32 {
 // DefaultFloraArmor returns the default armor value for flora.
 func DefaultFloraArmor() float32 {
 	return floraDefaultArmor
+}
+
+// FaunaCollider holds position and velocity data for fauna collision checks.
+type FaunaCollider struct {
+	X, Y       float32
+	VelX, VelY float32
+	Radius     float32
+}
+
+// ApplyFaunaCollisions pushes flora away from fast-moving fauna.
+// This encourages organisms to approach flora slowly to feed.
+func (fs *FloraSystem) ApplyFaunaCollisions(fauna []FaunaCollider) {
+	for i := range fs.Flora {
+		f := &fs.Flora[i]
+		if f.Dead {
+			continue
+		}
+
+		for j := range fauna {
+			fc := &fauna[j]
+
+			// Calculate distance (with toroidal wrapping)
+			dx := f.X - fc.X
+			dy := f.Y - fc.Y
+
+			// Handle toroidal wrapping - check if shorter path is across boundary
+			if dx > fs.bounds.Width/2 {
+				dx -= fs.bounds.Width
+			} else if dx < -fs.bounds.Width/2 {
+				dx += fs.bounds.Width
+			}
+			if dy > fs.bounds.Height/2 {
+				dy -= fs.bounds.Height
+			} else if dy < -fs.bounds.Height/2 {
+				dy += fs.bounds.Height
+			}
+
+			distSq := dx*dx + dy*dy
+			collisionDist := floraCollisionRadius + f.Size + fc.Radius
+			if distSq >= collisionDist*collisionDist {
+				continue
+			}
+
+			// Calculate fauna speed
+			faunaSpeed := float32(math.Sqrt(float64(fc.VelX*fc.VelX + fc.VelY*fc.VelY)))
+
+			// Only push if fauna is moving above threshold
+			if faunaSpeed <= floraSpeedThreshold {
+				continue
+			}
+
+			// Push flora away - stronger push for faster movement
+			dist := float32(math.Sqrt(float64(distSq)))
+			if dist < 0.1 {
+				dist = 0.1 // Avoid division by zero
+			}
+
+			// Normalized direction away from fauna
+			normalX := dx / dist
+			normalY := dy / dist
+
+			// Push strength scales with speed above threshold
+			excessSpeed := faunaSpeed - floraSpeedThreshold
+			pushStrength := excessSpeed * floraPushForce
+
+			// Apply push: away from fauna center + inherit some of fauna's momentum
+			f.VelX += normalX*pushStrength + fc.VelX*0.15
+			f.VelY += normalY*pushStrength + fc.VelY*0.15
+
+			// Limit flora speed after push
+			floraSpeed := float32(math.Sqrt(float64(f.VelX*f.VelX + f.VelY*f.VelY)))
+			if floraSpeed > floraPushMaxSpeed {
+				scale := floraPushMaxSpeed / floraSpeed
+				f.VelX *= scale
+				f.VelY *= scale
+			}
+		}
+	}
 }

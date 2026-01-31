@@ -2,8 +2,8 @@ package game
 
 // Screen dimensions
 const (
-	ScreenWidth  = 1280
-	ScreenHeight = 800
+	ScreenWidth  = 1600
+	ScreenHeight = 1000
 )
 
 // Note: Fauna growth has been removed. Organisms are born with their cells from CPPN.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
+	"github.com/pthm-cable/soup/systems"
 )
 
 // Update handles input and runs the simulation for graphics mode.
@@ -133,6 +134,13 @@ func (g *Game) runSimulationStep() {
 	// Run systems (parallel brain evaluation)
 	measure("behavior", func() { g.behavior.UpdateParallel(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
 	measure("physics", func() { g.physics.Update(g.world) })
+
+	// Apply flora-fauna collisions (fast organisms push flora away)
+	measure("floraCollision", func() {
+		colliders := g.collectFaunaColliders()
+		g.floraSystem.ApplyFaunaCollisions(colliders)
+	})
+
 	measure("feeding", func() { g.feeding.Update() })
 	measure("floraSystem", func() {
 		g.floraSystem.UpdateParallel(g.tick, func(x, y float32) {
@@ -281,4 +289,33 @@ func (g *Game) collectOrganisms() ([]*components.Organism, []*components.Organis
 
 	// Return nil for floraOrgs since flora are now managed by FloraSystem
 	return nil, faunaOrgs
+}
+
+// collectFaunaColliders collects position/velocity/size data for flora collision.
+func (g *Game) collectFaunaColliders() []systems.FaunaCollider {
+	var colliders []systems.FaunaCollider
+	velMap := ecs.NewMap[components.Velocity](g.world)
+
+	query := g.faunaFilter.Query()
+	for query.Next() {
+		pos, org, _ := query.Get()
+		if org.Dead {
+			continue
+		}
+
+		// Get velocity from the velocity component
+		entity := query.Entity()
+		if velMap.Has(entity) {
+			vel := velMap.Get(entity)
+			colliders = append(colliders, systems.FaunaCollider{
+				X:      pos.X,
+				Y:      pos.Y,
+				VelX:   vel.X,
+				VelY:   vel.Y,
+				Radius: org.BodyRadius,
+			})
+		}
+	}
+
+	return colliders
 }

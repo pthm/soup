@@ -150,13 +150,11 @@ func (g *Game) drawPathfindingOverlay() {
 	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
 	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
-	// Draw desire vector (where brain wants to go in world space)
-	// UFwd/UUp are local velocities: convert to world space
-	desireScale := float32(40)
-	worldDesireX := org.UFwd*cosH - org.UUp*sinH
-	worldDesireY := org.UFwd*sinH + org.UUp*cosH
-	desireX := centerX + worldDesireX*desireScale
-	desireY := centerY + worldDesireY*desireScale
+	// Draw throttle vector (heading direction scaled by throttle)
+	// Heading-as-state: desired velocity is along heading, scaled by throttle
+	throttleScale := float32(40) * org.UThrottle
+	desireX := centerX + cosH*throttleScale
+	desireY := centerY + sinH*throttleScale
 	rl.DrawLine(int32(centerX), int32(centerY), int32(desireX), int32(desireY), rl.Color{R: 255, G: 255, B: 255, A: 200})
 
 	// Draw actual velocity vector (true physical movement)

@@ -153,22 +153,22 @@ func TestSensoryInputsNormalization(t *testing.T) {
 }
 
 func TestDecodeOutputs(t *testing.T) {
-	// Test new 4-output structure: [UFwd, UUp, AttackIntent, MateIntent]
+	// Test 4-output structure: [UTurn, UThrottle, AttackIntent, MateIntent]
 	// Raw outputs are in [0, 1] range from sigmoid
-	raw := []float64{0.75, 0.25, 0.8, 0.3}
+	raw := []float64{0.75, 0.8, 0.8, 0.3}
 
 	outputs := DecodeOutputs(raw)
 
-	// UFwd: 0.75 sigmoid -> (0.75 * 2 - 1) = 0.5
-	expectedUFwd := float32(0.75*2.0 - 1.0) // 0.5
-	if math.Abs(float64(outputs.UFwd-expectedUFwd)) > 0.01 {
-		t.Errorf("UFwd: expected %f, got %f", expectedUFwd, outputs.UFwd)
+	// UTurn: 0.75 sigmoid -> (0.75 * 2 - 1) = 0.5
+	expectedUTurn := float32(0.75*2.0 - 1.0) // 0.5
+	if math.Abs(float64(outputs.UTurn-expectedUTurn)) > 0.01 {
+		t.Errorf("UTurn: expected %f, got %f", expectedUTurn, outputs.UTurn)
 	}
 
-	// UUp: 0.25 sigmoid -> (0.25 * 2 - 1) = -0.5
-	expectedUUp := float32(0.25*2.0 - 1.0) // -0.5
-	if math.Abs(float64(outputs.UUp-expectedUUp)) > 0.01 {
-		t.Errorf("UUp: expected %f, got %f", expectedUUp, outputs.UUp)
+	// UThrottle: 0.8 raw (stays in [0,1])
+	expectedUThrottle := float32(0.8)
+	if math.Abs(float64(outputs.UThrottle-expectedUThrottle)) > 0.01 {
+		t.Errorf("UThrottle: expected %f, got %f", expectedUThrottle, outputs.UThrottle)
 	}
 
 	// AttackIntent: 0.8 raw
@@ -191,7 +191,7 @@ func TestDecodeOutputsShortInput(t *testing.T) {
 	outputs := DecodeOutputs(raw)
 	defaults := DefaultOutputs()
 
-	if outputs.UFwd != defaults.UFwd {
+	if outputs.UTurn != defaults.UTurn {
 		t.Errorf("short input should return defaults")
 	}
 }
@@ -200,11 +200,11 @@ func TestDefaultOutputs(t *testing.T) {
 	outputs := DefaultOutputs()
 
 	// All outputs should be 0 for defaults
-	if outputs.UFwd != 0 {
-		t.Errorf("default UFwd should be 0, got %f", outputs.UFwd)
+	if outputs.UTurn != 0 {
+		t.Errorf("default UTurn should be 0, got %f", outputs.UTurn)
 	}
-	if outputs.UUp != 0 {
-		t.Errorf("default UUp should be 0, got %f", outputs.UUp)
+	if outputs.UThrottle != 0 {
+		t.Errorf("default UThrottle should be 0, got %f", outputs.UThrottle)
 	}
 	if outputs.AttackIntent != 0 {
 		t.Errorf("default AttackIntent should be 0, got %f", outputs.AttackIntent)

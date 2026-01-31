@@ -9,7 +9,7 @@ import (
 )
 
 // MorphGridSize is the size of the grid used to query the CPPN.
-const MorphGridSize = 8
+const MorphGridSize = 10
 
 // CellSpec describes a single cell's position and properties.
 type CellSpec struct {

@@ -72,8 +72,8 @@ func ShapeMetricsFieldDescriptors() []FieldDescriptor {
 // Field IDs must match cases in GetOrganismValue().
 func BrainOutputFieldDescriptors() []FieldDescriptor {
 	return []FieldDescriptor{
-		{ID: "u_fwd", Label: "Fwd Vel", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "movement"},
-		{ID: "u_up", Label: "Lat Vel", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "movement"},
+		{ID: "u_turn", Label: "Turn", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "movement"},
+		{ID: "u_throttle", Label: "Throttle", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "movement"},
 		{ID: "attack_intent", Label: "Attack", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "action"},
 		{ID: "mate_intent", Label: "Mate", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "action"},
 	}
@@ -128,10 +128,10 @@ func GetOrganismValue(org *Organism, fieldID string) float32 {
 		return org.Heading
 	case "active_thrust":
 		return org.ActiveThrust
-	case "u_fwd":
-		return org.UFwd
-	case "u_up":
-		return org.UUp
+	case "u_turn":
+		return org.UTurn
+	case "u_throttle":
+		return org.UThrottle
 	case "attack_intent":
 		return org.AttackIntent
 	case "mate_intent":

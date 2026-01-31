@@ -83,11 +83,9 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		vel.X *= baseFriction
 		vel.Y *= baseFriction
 
-		// Update heading (not for dead) - NOTE: behavior system now handles this
-		// Keep as fallback for organisms without brain control
-		if !org.Dead && vel.X*vel.X+vel.Y*vel.Y > headingUpdateMinVelSq {
-			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
-		}
+		// Heading is now brain-controlled state (heading-as-state model)
+		// No longer derived from velocity - this eliminates the feedback loop
+		// that caused jittering with constant UFwd/UUp outputs
 
 		// Toroidal wrap-around (all edges)
 		if pos.X < 0 {

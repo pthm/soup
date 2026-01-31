@@ -84,23 +84,22 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
 		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
 
-		// QUADRATIC movement cost: cost = speed² * base
-		// This makes full speed (1.0) 4x more expensive than half speed (0.5)
+		// QUADRATIC movement cost: cost = throttle² * base
+		// This makes full throttle (1.0) 4x more expensive than half throttle (0.5)
 		// Encourages cruising at moderate speeds, bursting only when needed
-		desiredSpeed := float32(math.Sqrt(float64(org.UFwd*org.UFwd + org.UUp*org.UUp)))
-		speedSquared := desiredSpeed * desiredSpeed
-		movementCost := speedSquared * movementCostBase * massFactor * armorPen
+		throttleSquared := org.UThrottle * org.UThrottle
+		movementCost := throttleSquared * movementCostBase * massFactor * armorPen
 
-		// JITTER PENALTY: penalize rapid direction changes
-		// Discourages oscillating between +1/-1, rewards smooth trajectories
-		deltaFwd := org.UFwd - org.PrevUFwd
-		deltaUp := org.UUp - org.PrevUUp
-		directionChange := float32(math.Sqrt(float64(deltaFwd*deltaFwd + deltaUp*deltaUp)))
-		jitterCost := directionChange * jitterCostBase * massFactor
+		// JITTER PENALTY: penalize rapid turn/throttle changes
+		// Discourages oscillating, rewards smooth trajectories
+		deltaTurn := org.UTurn - org.PrevUTurn
+		deltaThrottle := org.UThrottle - org.PrevUThrottle
+		controlChange := float32(math.Sqrt(float64(deltaTurn*deltaTurn + deltaThrottle*deltaThrottle)))
+		jitterCost := controlChange * jitterCostBase * massFactor
 
 		// Store current outputs for next tick's jitter calculation
-		org.PrevUFwd = org.UFwd
-		org.PrevUUp = org.UUp
+		org.PrevUTurn = org.UTurn
+		org.PrevUThrottle = org.UThrottle
 
 		// Actual acceleration cost (ActiveThrust set by behavior system)
 		// High drag = more energy to move

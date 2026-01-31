@@ -59,8 +59,8 @@ func BrainInputDescriptors() []IODescriptor {
 // Order matches the indices used in DecodeOutputs().
 func BrainOutputDescriptors() []IODescriptor {
 	return []IODescriptor{
-		{ID: "u_fwd", Label: "U Fwd", Description: "Desired forward velocity", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
-		{ID: "u_up", Label: "U Up", Description: "Desired lateral velocity", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
+		{ID: "u_turn", Label: "Turn", Description: "Turn rate (heading control)", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
+		{ID: "u_throttle", Label: "Throttle", Description: "Forward throttle (0=stop, 1=max)", Min: 0, Max: 1, Group: "movement"},
 		{ID: "attack_intent", Label: "Attack", Description: "Predation gate (>0.5=attack)", Min: 0, Max: 1, Group: "action"},
 		{ID: "mate_intent", Label: "Mate", Description: "Mating gate (>0.5=ready)", Min: 0, Max: 1, Group: "action"},
 	}

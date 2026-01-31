@@ -9,8 +9,13 @@ import (
 const BrainInputs = 26
 
 // BrainOutputs is the number of outputs from the brain network.
-// Layout: UFwd, UUp, AttackIntent, MateIntent
+// Layout: UTurn, UThrottle, AttackIntent, MateIntent
 const BrainOutputs = 4
+
+// Movement control parameters
+const (
+	TurnRateMax = 0.15 // Maximum turn rate in radians per tick (~8.6 degrees)
+)
 
 // Body descriptor normalization constants
 const (
@@ -189,8 +194,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		NEAT: DefaultNEATOptions(),
 		CPPN: CPPNConfig{
-			GridSize:        8,
-			MaxCells:        16,
+			GridSize:        10,
+			MaxCells:        24,
 			MinCells:        1,
 			CellThreshold:   0.3,
 			EnforceSymmetry: false,
