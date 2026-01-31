@@ -18,11 +18,15 @@ const (
 	eatIntentCost   = 0.00005 // Minimal - eating is core survival
 	breedIntentCost = 0.00010 // Minimal - breeding is core to evolution
 
-	// Movement costs - PRIMARY selective pressure
-	// These should be the main energy sink for active organisms
-	movementCostBase  = 0.0015 // Cost per unit of desired velocity (urgency)
-	thrustCostBase    = 0.0020 // Cost for actual acceleration/thrust
-	massScaleExponent = 0.40   // Larger organisms pay more to move
+	// Movement costs - PRIMARY selective pressure (NON-LINEAR)
+	// Quadratic cost curve: efficient cruising, expensive bursting
+	movementCostBase  = 0.003  // Base cost coefficient (quadratic: speed² * base)
+	thrustCostBase    = 0.003  // Cost for actual acceleration/thrust
+	massScaleExponent = 0.5    // Larger organisms pay more to move (was 0.4)
+
+	// Jitter penalty - penalizes rapid direction changes
+	// Encourages smooth movement, discourages oscillation
+	jitterCostBase = 0.002 // Cost per unit of direction change
 
 	// Energy capacity
 	baseEnergy        = 100.0 // Minimum energy capacity
@@ -75,14 +79,28 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		// Breed intent cost - reproductive readiness requires energy
 		intentCost += org.BreedIntent * breedIntentCost * cellCount
 
-		// === MOVEMENT COSTS ===
+		// === MOVEMENT COSTS (NON-LINEAR) ===
 		// Larger organisms pay exponentially more to move
 		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
 		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
 
-		// Movement intent cost (UFwd/UUp magnitude) - wanting to move costs energy
+		// QUADRATIC movement cost: cost = speed² * base
+		// This makes full speed (1.0) 4x more expensive than half speed (0.5)
+		// Encourages cruising at moderate speeds, bursting only when needed
 		desiredSpeed := float32(math.Sqrt(float64(org.UFwd*org.UFwd + org.UUp*org.UUp)))
-		movementCost := desiredSpeed * movementCostBase * massFactor * armorPen
+		speedSquared := desiredSpeed * desiredSpeed
+		movementCost := speedSquared * movementCostBase * massFactor * armorPen
+
+		// JITTER PENALTY: penalize rapid direction changes
+		// Discourages oscillating between +1/-1, rewards smooth trajectories
+		deltaFwd := org.UFwd - org.PrevUFwd
+		deltaUp := org.UUp - org.PrevUUp
+		directionChange := float32(math.Sqrt(float64(deltaFwd*deltaFwd + deltaUp*deltaUp)))
+		jitterCost := directionChange * jitterCostBase * massFactor
+
+		// Store current outputs for next tick's jitter calculation
+		org.PrevUFwd = org.UFwd
+		org.PrevUUp = org.UUp
 
 		// Actual acceleration cost (ActiveThrust set by behavior system)
 		// High drag = more energy to move
@@ -90,7 +108,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		org.ActiveThrust = 0 // Reset for next tick
 
 		// === TOTAL ENERGY DRAIN ===
-		totalDrain := baseDrain + intentCost + movementCost + thrustCost
+		totalDrain := baseDrain + intentCost + movementCost + jitterCost + thrustCost
 
 		// Minimum drain (can't gain energy from just photosynthesis without feeding)
 		if totalDrain < 0.0001 {

@@ -76,6 +76,10 @@ type Organism struct {
 	AttackIntent float32 // Brain output: 0-1, >0.5 means attack
 	MateIntent   float32 // Brain output: 0-1, >0.5 means ready to mate
 
+	// Previous outputs for jitter detection (energy cost)
+	PrevUFwd float32
+	PrevUUp  float32
+
 	// Last brain inputs (for debugging/inspection)
 	LastInputs [26]float32 // Last sensory inputs fed to brain
 
