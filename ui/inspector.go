@@ -292,6 +292,26 @@ func (ins *Inspector) drawNeuralSection(x, y int32, data InspectorData, width in
 	}
 	y += 6
 
+	// Brain inputs using descriptors from neural package
+	y = r.DrawSectionHeader(x, y, "Brain Inputs (Key)")
+
+	// Show a subset of important inputs for debugging
+	inputDescs := neural.BrainInputDescriptors()
+	keyInputIndices := []int{0, 1, 19, 22, 23} // speed, energy, plant_mag, meat_mag, threat
+	for _, idx := range keyInputIndices {
+		if idx >= len(inputDescs) {
+			continue
+		}
+		desc := inputDescs[idx]
+		value := components.GetBrainInput(data.Organism, idx)
+		if desc.IsCentered {
+			y = r.DrawCenteredBar(x, y, desc.Label, value, desc.Min, desc.Max, width)
+		} else {
+			y = r.DrawBar(x, y, desc.Label, value, width)
+		}
+	}
+	y += 6
+
 	// Brain graph
 	if ng.BrainGenome != nil {
 		y = r.DrawSectionHeader(x, y, "Network Graph")

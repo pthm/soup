@@ -69,12 +69,13 @@ func ShapeMetricsFieldDescriptors() []FieldDescriptor {
 
 // BrainOutputFieldDescriptors returns metadata for brain output fields on Organism.
 // These correspond to the runtime motor outputs stored on the organism.
+// Field IDs must match cases in GetOrganismValue().
 func BrainOutputFieldDescriptors() []FieldDescriptor {
 	return []FieldDescriptor{
-		{ID: "turn_output", Label: "Turn", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "motor"},
-		{ID: "thrust_output", Label: "Thrust", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "motor"},
-		{ID: "eat_intent", Label: "Eat", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
-		{ID: "breed_intent", Label: "Breed", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
+		{ID: "u_fwd", Label: "Fwd Vel", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "movement"},
+		{ID: "u_up", Label: "Lat Vel", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "movement"},
+		{ID: "attack_intent", Label: "Attack", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "action"},
+		{ID: "mate_intent", Label: "Mate", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "action"},
 	}
 }
 
@@ -152,4 +153,13 @@ func GetShapeMetricsValue(sm *ShapeMetrics, fieldID string) float32 {
 	default:
 		return 0
 	}
+}
+
+// GetBrainInput returns the brain input value at the given index.
+// Index must be 0-25 (matching BrainInputs = 26).
+func GetBrainInput(org *Organism, index int) float32 {
+	if index < 0 || index >= 26 {
+		return 0
+	}
+	return org.LastInputs[index]
 }

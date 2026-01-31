@@ -74,6 +74,7 @@ type organismTask struct {
 
 	// Output data (written during parallel phase)
 	outputs      neural.BehaviorOutputs
+	lastInputs   [26]float32 // Store inputs for debugging
 	flowX, flowY float32
 	hasBrain     bool
 }
@@ -424,6 +425,7 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
+		org.LastInputs = task.lastInputs     // Store for debugging
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
@@ -591,6 +593,12 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 
 		// Run brain
 		inputs := sensory.ToInputs()
+
+		// Store inputs for debugging (convert float64 to float32)
+		for i := 0; i < len(inputs) && i < 26; i++ {
+			task.lastInputs[i] = float32(inputs[i])
+		}
+
 		rawOutputs, err := task.brain.Think(inputs)
 		if err != nil {
 			task.outputs = neural.DefaultOutputs()
@@ -816,6 +824,12 @@ func (s *BehaviorSystem) getBrainOutputs(
 		brainStart = time.Now()
 	}
 	inputs := sensory.ToInputs()
+
+	// Store inputs for debugging (convert float64 to float32)
+	for i := 0; i < len(inputs) && i < 26; i++ {
+		org.LastInputs[i] = float32(inputs[i])
+	}
+
 	rawOutputs, err := brain.Controller.Think(inputs)
 	if s.perfEnabled {
 		s.perfStats.BrainNs += time.Since(brainStart).Nanoseconds()
