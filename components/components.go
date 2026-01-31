@@ -87,7 +87,7 @@ type Organism struct {
 	// Attack state
 	AttackCooldown int32  // Ticks until can attack again
 	MateProgress   int32  // Ticks in mating contact
-	MatePartnerID  uint64 // Entity ID of current mating partner
+	MatePartnerID  uint32 // Entity ID of current mating partner (0 = none)
 
 	// Damage awareness (set by feeding system, decays each tick)
 	BeingEaten float32 // 0-1, how intensely this organism is being eaten

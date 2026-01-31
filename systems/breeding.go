@@ -14,16 +14,16 @@ import (
 
 // Breeding constants
 const (
-	BreedIntentThreshold = 0.5  // Brain output threshold for breeding intent (lowered)
-	MinEnergyRatio       = 0.5  // Minimum energy ratio for reproduction (lowered from 0.7)
-	AsexualEnergyCost    = 15.0 // Energy cost for asexual reproduction (reduced)
-	SexualEnergyCost     = 12.0 // Energy cost for sexual reproduction (per parent, reduced)
-	MateProximity        = 100.0 // Maximum distance for finding mates (increased)
+	BreedIntentThreshold = 0.5  // Brain output threshold for breeding intent
+	MinEnergyRatio       = 0.5  // Minimum energy ratio for reproduction (legacy)
+	AsexualEnergyCost    = 15.0 // Energy cost for asexual reproduction
+	SexualEnergyCost     = 12.0 // Energy cost for sexual reproduction (per parent)
+	MateProximity        = 100.0 // Maximum distance for finding mates (for partner search)
 
 	// Mating handshake parameters (from neural/config.go)
-	mateContactMargin = neural.MateContactMargin // Extra margin for mating proximity
-	mateDwellTime     = neural.MateDwellTime     // Ticks required in contact to mate
-	mateEnergyRatio   = neural.MateEnergyRatio   // Minimum energy ratio for mating
+	mateContactMargin = neural.MateContactMargin // Surface-to-surface distance for contact
+	mateDwellTime     = neural.MateDwellTime     // Ticks of sustained contact required
+	mateEnergyRatio   = neural.MateEnergyRatio   // Minimum energy ratio throughout handshake
 )
 
 // BreedingSystem handles fauna reproduction (both asexual and sexual).
@@ -63,47 +63,59 @@ type breeder struct {
 	cells     *components.CellBuffer
 	caps      components.Capabilities
 	speciesID int
+	centerX   float32 // Precomputed OBB center X
+	centerY   float32 // Precomputed OBB center Y
+	radius    float32 // Precomputed body radius
 }
 
-// Update processes breeding for all eligible fauna.
-// Organisms can reproduce sexually (with a mate) or asexually (cloning with mutation)
-// based on their ReproductiveMode derived from CPPN.
+// Update processes breeding for all eligible fauna using a dwell-time handshake.
+// Sexual reproduction requires sustained proximity and intent for mateDwellTime ticks.
+// Asexual reproduction (cloning with mutation) can occur without a partner.
 func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
-	// Collect all potential breeders
-	var breeders []breeder
+	// Collect all organisms that want to mate (have intent and energy)
+	var candidates []breeder
+	// Map entity ID to index for partner lookup
+	entityToIdx := make(map[uint32]int)
 
 	query := s.filter.Query()
 	for query.Next() {
 		pos, vel, org, cells := query.Get()
+		entity := query.Entity()
 
-		// Skip dead organisms (all ECS organisms are fauna)
+		// Skip dead organisms
 		if org.Dead {
 			continue
 		}
 
-		// Check basic eligibility
-		if !s.isEligible(org, cells) {
-			continue
-		}
-
-		// Compute capabilities (includes reproductive mode)
+		// Compute capabilities
 		caps := cells.ComputeCapabilities()
 
-		// Must have reproductive capability to breed
+		// Must have reproductive capability
 		if caps.ReproductiveWeight <= 0 {
+			// Reset any stale mating state
+			org.MateProgress = 0
+			org.MatePartnerID = 0
 			continue
 		}
+
+		// Precompute center position and radius
+		cosH := float32(math.Cos(float64(org.Heading)))
+		sinH := float32(math.Sin(float64(org.Heading)))
+		centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+		centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+		radius := computeBodyRadiusBreeding(int(cells.Count), org.CellSize)
 
 		// Get species ID if neural organism
 		speciesID := 0
-		entity := query.Entity()
 		if s.neuralMap.Has(entity) {
 			if ng := s.neuralMap.Get(entity); ng != nil {
 				speciesID = ng.SpeciesID
 			}
 		}
 
-		breeders = append(breeders, breeder{
+		idx := len(candidates)
+		entityToIdx[entity.ID()] = idx
+		candidates = append(candidates, breeder{
 			entity:    entity,
 			pos:       pos,
 			vel:       vel,
@@ -111,91 +123,185 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			cells:     cells,
 			caps:      caps,
 			speciesID: speciesID,
+			centerX:   centerX,
+			centerY:   centerY,
+			radius:    radius,
 		})
 	}
 
-	// Track which organisms have bred this tick
-	bred := make(map[ecs.Entity]bool)
+	// Phase 1: Update mating progress for existing handshakes
+	for i := range candidates {
+		a := &candidates[i]
 
-	// Process each eligible breeder
-	for i := range breeders {
-		if bred[breeders[i].entity] {
+		// Skip if on cooldown
+		if a.org.BreedingCooldown > 0 {
+			a.org.MateProgress = 0
+			a.org.MatePartnerID = 0
 			continue
 		}
 
-		a := &breeders[i]
+		// Check if organism has an active handshake
+		if a.org.MatePartnerID != 0 {
+			// Verify handshake conditions still hold
+			partnerIdx, found := entityToIdx[a.org.MatePartnerID]
+			if !found {
+				// Partner no longer exists
+				a.org.MateProgress = 0
+				a.org.MatePartnerID = 0
+				continue
+			}
 
-		// Get reproductive mode (0=asexual, 0.5=mixed, 1=sexual)
+			b := &candidates[partnerIdx]
+
+			// Both must maintain intent
+			if a.org.MateIntent < BreedIntentThreshold || b.org.MateIntent < BreedIntentThreshold {
+				a.org.MateProgress = 0
+				a.org.MatePartnerID = 0
+				continue
+			}
+
+			// Both must maintain energy
+			if a.org.Energy < a.org.MaxEnergy*mateEnergyRatio ||
+				b.org.Energy < b.org.MaxEnergy*mateEnergyRatio {
+				a.org.MateProgress = 0
+				a.org.MatePartnerID = 0
+				continue
+			}
+
+			// Must remain in contact
+			surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius)
+			if surfaceDist > mateContactMargin {
+				a.org.MateProgress = 0
+				a.org.MatePartnerID = 0
+				continue
+			}
+
+			// Partner must still be pointing at us
+			if b.org.MatePartnerID != a.entity.ID() {
+				a.org.MateProgress = 0
+				a.org.MatePartnerID = 0
+				continue
+			}
+
+			// All conditions hold - increment progress
+			a.org.MateProgress++
+		}
+	}
+
+	// Phase 2: Start new handshakes for organisms without partners
+	for i := range candidates {
+		a := &candidates[i]
+
+		// Skip if already in a handshake or on cooldown
+		if a.org.MatePartnerID != 0 || a.org.BreedingCooldown > 0 {
+			continue
+		}
+
+		// Check if wants to mate sexually
+		if a.org.MateIntent < BreedIntentThreshold {
+			continue
+		}
+		if a.org.Energy < a.org.MaxEnergy*mateEnergyRatio {
+			continue
+		}
+
 		reproMode := a.caps.ReproductiveMode()
+		if reproMode < minAvgReproModeForSexual {
+			continue
+		}
 
-		// Try sexual reproduction based on reproductive mode
-		if rand.Float32() < reproMode {
-			// Look for a compatible mate
-			for j := range breeders {
-				if i == j || bred[breeders[j].entity] {
-					continue
-				}
+		// Look for a compatible partner
+		for j := range candidates {
+			if i == j {
+				continue
+			}
+			b := &candidates[j]
 
-				b := &breeders[j]
+			// Skip if partner already has a handshake or is on cooldown
+			if b.org.MatePartnerID != 0 || b.org.BreedingCooldown > 0 {
+				continue
+			}
 
-				if s.isCompatibleForSexual(a, b) {
+			// Check compatibility
+			if s.canStartHandshake(a, b) {
+				// Start mutual handshake
+				a.org.MatePartnerID = b.entity.ID()
+				a.org.MateProgress = 1
+				b.org.MatePartnerID = a.entity.ID()
+				b.org.MateProgress = 1
+				break
+			}
+		}
+	}
+
+	// Phase 3: Complete handshakes and trigger reproduction
+	bred := make(map[ecs.Entity]bool)
+
+	for i := range candidates {
+		a := &candidates[i]
+
+		if bred[a.entity] {
+			continue
+		}
+
+		// Check if handshake is complete
+		if a.org.MateProgress >= mateDwellTime && a.org.MatePartnerID != 0 {
+			partnerIdx, found := entityToIdx[a.org.MatePartnerID]
+			if found {
+				b := &candidates[partnerIdx]
+
+				// Verify partner also completed (should be symmetric)
+				if b.org.MateProgress >= mateDwellTime && b.org.MatePartnerID == a.entity.ID() {
+					// Reproduce!
 					s.breedSexual(a, b, createOrganism, createNeuralOrganism)
 					bred[a.entity] = true
 					bred[b.entity] = true
-					break
+
+					// Reset mating state (cooldown set in breedSexual)
+					a.org.MateProgress = 0
+					a.org.MatePartnerID = 0
+					b.org.MateProgress = 0
+					b.org.MatePartnerID = 0
 				}
 			}
 		}
+	}
 
-		// If not bred yet, try asexual reproduction
-		if !bred[a.entity] && rand.Float32() < (1.0-reproMode) {
+	// Phase 4: Asexual reproduction for organisms preferring it
+	for i := range candidates {
+		a := &candidates[i]
+
+		if bred[a.entity] || a.org.BreedingCooldown > 0 {
+			continue
+		}
+
+		// Must have intent and energy
+		if a.org.MateIntent < BreedIntentThreshold {
+			continue
+		}
+		if a.org.Energy < a.org.MaxEnergy*mateEnergyRatio {
+			continue
+		}
+
+		// Check reproductive mode - lower values favor asexual
+		reproMode := a.caps.ReproductiveMode()
+		if rand.Float32() < (1.0 - reproMode) {
 			s.breedAsexual(a, createOrganism, createNeuralOrganism)
 			bred[a.entity] = true
 		}
 	}
 }
 
-// isEligible checks if an organism meets basic requirements to attempt reproduction.
-// Uses MateIntent from brain output for explicit mating control.
-func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
-	// Check mate intent from brain (threshold for wanting to reproduce)
-	// This is the PRIMARY control - the brain decides when to mate
-	if org.MateIntent < BreedIntentThreshold {
-		return false
-	}
-
-	// Minimum energy to attempt reproduction (uses new constant)
-	if org.Energy < org.MaxEnergy*mateEnergyRatio {
-		return false
-	}
-
-	// Must have at least 1 cell
-	if cells.Count < 1 {
-		return false
-	}
-
-	// Cooldown must be 0
-	if org.BreedingCooldown > 0 {
-		return false
-	}
-
-	return true
+// computeSurfaceDistance returns the surface-to-surface distance between two organisms.
+func computeSurfaceDistance(ax, ay, ar, bx, by, br float32) float32 {
+	dx := bx - ax
+	dy := by - ay
+	centerDist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+	return centerDist - ar - br
 }
 
-// Mate compatibility constants
-const (
-	mateProximitySq          = MateProximity * MateProximity // Squared for faster comparison
-	minAvgReproModeForSexual = float32(0.3)                  // Minimum average reproductive mode
-)
-
-// computeBodyRadius returns sqrt(cellCount) * cellSize for mating proximity.
-func computeBodyRadiusBreeding(cellCount int, cellSize float32) float32 {
-	return float32(math.Sqrt(float64(cellCount))) * cellSize
-}
-
-// isCompatibleForSexual checks if two organisms can mate sexually.
-// Uses surface-to-surface distance based on body radii.
-func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
+// canStartHandshake checks if two organisms can begin a mating handshake.
+func (s *BreedingSystem) canStartHandshake(a, b *breeder) bool {
 	// Both must have reproductive capability
 	if a.caps.ReproductiveWeight <= 0 || b.caps.ReproductiveWeight <= 0 {
 		return false
@@ -206,26 +312,14 @@ func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
 		return false
 	}
 
-	// Calculate organism centers using OBB offset (offset is in local space, must be rotated)
-	cosHA := float32(math.Cos(float64(a.org.Heading)))
-	sinHA := float32(math.Sin(float64(a.org.Heading)))
-	centerAX := a.pos.X + a.org.OBB.OffsetX*cosHA - a.org.OBB.OffsetY*sinHA
-	centerAY := a.pos.Y + a.org.OBB.OffsetX*sinHA + a.org.OBB.OffsetY*cosHA
+	// Both must have sufficient energy
+	if a.org.Energy < a.org.MaxEnergy*mateEnergyRatio ||
+		b.org.Energy < b.org.MaxEnergy*mateEnergyRatio {
+		return false
+	}
 
-	cosHB := float32(math.Cos(float64(b.org.Heading)))
-	sinHB := float32(math.Sin(float64(b.org.Heading)))
-	centerBX := b.pos.X + b.org.OBB.OffsetX*cosHB - b.org.OBB.OffsetY*sinHB
-	centerBY := b.pos.Y + b.org.OBB.OffsetX*sinHB + b.org.OBB.OffsetY*cosHB
-
-	// Compute body radii
-	radiusA := computeBodyRadiusBreeding(int(a.cells.Count), a.org.CellSize)
-	radiusB := computeBodyRadiusBreeding(int(b.cells.Count), b.org.CellSize)
-
-	// Compute surface-to-surface distance
-	centerDist := float32(math.Sqrt(float64(distanceSq(centerAX, centerAY, centerBX, centerBY))))
-	surfaceDist := centerDist - radiusA - radiusB
-
-	// Must be within contact margin (touching or very close)
+	// Must be in contact (surface-to-surface distance)
+	surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius)
 	if surfaceDist > mateContactMargin {
 		return false
 	}
@@ -233,6 +327,16 @@ func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
 	// Both should prefer sexual reproduction (or at least be willing)
 	avgReproMode := (a.caps.ReproductiveMode() + b.caps.ReproductiveMode()) / 2
 	return avgReproMode >= minAvgReproModeForSexual
+}
+
+// Mate compatibility constants
+const (
+	minAvgReproModeForSexual = float32(0.3) // Minimum average reproductive mode for sexual breeding
+)
+
+// computeBodyRadius returns sqrt(cellCount) * cellSize for mating proximity.
+func computeBodyRadiusBreeding(cellCount int, cellSize float32) float32 {
+	return float32(math.Sqrt(float64(cellCount))) * cellSize
 }
 
 // breedSexual performs sexual reproduction between two organisms.

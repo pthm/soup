@@ -106,11 +106,17 @@ Death occurs when energy <= 0.
 - Maximum 70% penalty (30% minimum reward)
 - Prevents swarm exploits while allowing pack hunting
 
-### Mating Mechanics
+### Mating Mechanics (Dwell-Time Handshake)
 
-- Requires MateIntent > 0.5 from brain
-- Surface-to-surface proximity check using body radii
-- Contact margin of 5 world units
+Sexual reproduction requires sustained contact, not instant mating:
+
+- **Intent gate**: Both organisms must have MateIntent > 0.5
+- **Energy threshold**: Both must maintain energy > 35% throughout
+- **Contact proximity**: Surface-to-surface distance ≤ 5 world units
+- **Dwell time**: Must sustain all conditions for 60 ticks
+- **Partner locking**: Organisms track partner ID during handshake
+- **Failure reset**: If any condition fails, progress resets to zero
+- **Cooldown**: 120 ticks after successful mating (150 for asexual)
 
 ### Key Files
 
