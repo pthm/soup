@@ -141,10 +141,10 @@ func (g *Game) logWorldState() {
 
 	// Count breeding-eligible fauna
 	breedingEligible := 0
-	var modeGrow, modeBreed, modeSurvive, modeStore int
+	var modeBreed, modeSurvive, modeStore int
 	var omnivores int
 	var drifters, generalists, apex int
-	var totalStreamlining, totalDrag float32
+	var totalDrag float32
 	var shapeCount int
 	query2 := g.allOrgFilter.Query()
 	for query2.Next() {
@@ -155,8 +155,6 @@ func (g *Game) logWorldState() {
 		}
 		// Count allocation modes
 		switch org.AllocationMode {
-		case components.ModeGrow:
-			modeGrow++
 		case components.ModeBreed:
 			modeBreed++
 		case components.ModeSurvive:
@@ -184,23 +182,20 @@ func (g *Game) logWorldState() {
 			apex++
 		}
 		// Accumulate shape metrics
-		totalStreamlining += org.ShapeMetrics.Streamlining
-		totalDrag += org.ShapeMetrics.DragCoefficient
+		totalDrag += org.ShapeMetrics.Drag
 		shapeCount++
 	}
 
-	avgStreamlining := float32(0)
 	avgDrag := float32(0)
 	if shapeCount > 0 {
-		avgStreamlining = totalStreamlining / float32(shapeCount)
 		avgDrag = totalDrag / float32(shapeCount)
 	}
 
 	Logf("Breeding eligible: %d", breedingEligible)
-	Logf("Modes: Grow=%d, Breed=%d, Survive=%d, Store=%d", modeGrow, modeBreed, modeSurvive, modeStore)
+	Logf("Modes: Breed=%d, Survive=%d, Store=%d", modeBreed, modeSurvive, modeStore)
 	Logf("Omnivores: %d", omnivores)
-	Logf("Classes: Drifters=%d, Generalists=%d, Apex=%d | Shape: Streamlining=%.2f, Drag=%.2f",
-		drifters, generalists, apex, avgStreamlining, avgDrag)
+	Logf("Classes: Drifters=%d, Generalists=%d, Apex=%d | Avg Drag=%.2f",
+		drifters, generalists, apex, avgDrag)
 	Logf("")
 }
 

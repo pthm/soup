@@ -12,9 +12,8 @@ import (
 
 const (
 	feedingDistance = 8.0  // Distance to consume food
-	baseBiteSize    = 0.05 // Fraction of target energy per bite
-	feedEfficiency  = 0.8  // Energy transfer efficiency
-	floraDamageRate = 0.015 // Decomposition added to flora cell when eaten
+	baseBiteSize    = 0.08 // Fraction of target energy per bite (increased for simpler system)
+	feedEfficiency  = 0.85 // Energy transfer efficiency
 
 	// Default flora armor (flora don't have cells with armor values)
 	defaultFloraArmor = 0.1
@@ -148,7 +147,7 @@ func (s *FeedingSystem) tryFeedSpatial(
 	faunaSpecies []int,
 ) {
 	const feedDistSq = feedingDistance * feedingDistance
-	const kinAvoidanceProb = 0.70
+	const kinAvoidanceProb = 0.92 // High kin avoidance to reduce cannibalism
 
 	var bestTarget *entityData
 	var bestPenetration float32
@@ -326,7 +325,7 @@ func (s *FeedingSystem) tryFeed(
 	targets []entityData,
 ) {
 	const feedDistSq = feedingDistance * feedingDistance
-	const kinAvoidanceProb = 0.70 // Probability of avoiding hunting own species
+	const kinAvoidanceProb = 0.92 // High kin avoidance to reduce cannibalism // Probability of avoiding hunting own species
 
 	var bestTarget *entityData
 	var bestPenetration float32
@@ -405,19 +404,15 @@ func (s *FeedingSystem) executeFeed(
 		return
 	}
 
-	// Transfer energy (for fauna targets)
+	// Transfer energy (for fauna targets) - simple energy transfer, no cell damage
 	predOrg.Energy += effectiveBite
 	target.org.Energy -= effectiveBite
 
-	// Damage target cells (fauna only - flora don't have cells)
-	if target.cells != nil && target.cells.Count > 0 {
-		// Find first alive cell to damage
-		for i := uint8(0); i < target.cells.Count; i++ {
-			if target.cells.Cells[i].Alive {
-				target.cells.Cells[i].Decomposition += floraDamageRate
-				break
-			}
-		}
+	// Signal to target that it's being eaten (for brain awareness)
+	// Scale by how much damage was done relative to max energy
+	damageIntensity := effectiveBite / target.org.MaxEnergy
+	if damageIntensity > target.org.BeingEaten {
+		target.org.BeingEaten = damageIntensity
 	}
 
 	// Kill target if energy depleted

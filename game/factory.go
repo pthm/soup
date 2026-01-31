@@ -56,13 +56,11 @@ func (g *Game) createNeuralOrganism(x, y float32, energy float32, neuralGenome *
 		MaxForce:         0.1,
 		PerceptionRadius: 60,
 		Heading:          rand.Float32() * 3.14159 * 2,
-		GrowthInterval:   200,
 		SporeInterval:    400,
 		BreedingCooldown: 300,
-		TargetCells:      uint8(cellCount),
 		EatIntent:        0.5,
-		GrowIntent:       0.3,
 		BreedIntent:      0.3,
+		// Note: Growth removed - organisms born with cells from CPPN, evolution via breeding
 	}
 
 	// Create cells from morphology

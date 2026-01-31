@@ -27,11 +27,9 @@ type Velocity struct {
 }
 
 // ShapeMetrics describes the physical shape characteristics of an organism.
+// Simplified to just Drag - computed from actual frontal profile.
 type ShapeMetrics struct {
-	AspectRatio     float32 // Length/Width (higher = streamlined)
-	CrossSection    float32 // Max width perpendicular to heading
-	Streamlining    float32 // 0-1 (1 = streamlined)
-	DragCoefficient float32 // 0.3 (streamlined) to 1.0 (blunt)
+	Drag float32 // 0.2 (streamlined fish) to 1.0+ (blunt plate)
 }
 
 // CollisionOBB defines an oriented bounding box for terrain collision.
@@ -58,16 +56,13 @@ type Organism struct {
 	Heading          float32
 
 	// Timers
-	GrowthTimer      int32
-	GrowthInterval   int32
 	SporeTimer       int32
 	SporeInterval    int32
 	BreedingCooldown int32
 
 	// Allocation and shape
 	AllocationMode AllocationMode
-	TargetCells    uint8        // Desired cell count based on conditions
-	DeadTime       int32        // Ticks since death (for decomposition/removal)
+	DeadTime       int32 // Ticks since death (for removal)
 	ShapeMetrics   ShapeMetrics // Physical shape characteristics
 	ActiveThrust   float32      // Thrust magnitude this tick (for energy cost)
 	OBB            CollisionOBB // Collision bounding box computed from cells
@@ -86,22 +81,25 @@ type Organism struct {
 
 	// Bioluminescence state
 	EmittedLight float32 // Current light emission (GlowIntent x BioluminescentCap)
+
+	// Damage awareness (set by feeding system, decays each tick)
+	BeingEaten float32 // 0-1, how intensely this organism is being eaten
 }
 
 // Cell represents a single cell within an organism.
 // Cell function and behavior are determined by PrimaryType/SecondaryType from CPPN.
+// Note: Decomposition removed - feeding is pure energy transfer for simplicity.
 type Cell struct {
 	// Position and state
-	GridX         int8
-	GridY         int8
-	Age           int32
-	MaxAge        int32
-	Alive         bool
-	Decomposition float32
+	GridX  int8
+	GridY  int8
+	Age    int32
+	MaxAge int32
+	Alive  bool
 
 	// Function selection (from CPPN)
-	PrimaryType       neural.CellType // Main function
-	SecondaryType     neural.CellType // Optional secondary function (CellTypeNone if none)
+	PrimaryType   neural.CellType // Main function
+	SecondaryType neural.CellType // Optional secondary function (CellTypeNone if none)
 	PrimaryStrength   float32         // Effective primary strength
 	SecondaryStrength float32         // Effective secondary strength
 

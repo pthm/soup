@@ -15,12 +15,11 @@ import (
 
 // Game holds the complete game state.
 type Game struct {
-	world           *ecs.World
-	bounds          systems.Bounds
-	physics         *systems.PhysicsSystem
-	energy          *systems.EnergySystem
-	cells           *systems.CellSystem
-	behavior        *systems.BehaviorSystem
+	world    *ecs.World
+	bounds   systems.Bounds
+	physics  *systems.PhysicsSystem
+	energy   *systems.EnergySystem
+	behavior *systems.BehaviorSystem
 	flowField       *systems.FlowFieldSystem
 	flowRenderer    *renderer.FlowRenderer
 	gpuFlowField    *renderer.GPUFlowField // GPU-accelerated flow field
@@ -108,12 +107,11 @@ func NewGame(cfg GameConfig) *Game {
 	genomeIDGen := neural.NewGenomeIDGenerator()
 
 	g := &Game{
-		world:         world,
-		bounds:        bounds,
-		physics:       systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
-		energy:        systems.NewEnergySystem(world, shadowMap),
-		cells:         systems.NewCellSystem(world),
-		behavior:      systems.NewBehaviorSystem(world, shadowMap, terrain),
+		world:    world,
+		bounds:   bounds,
+		physics:  systems.NewPhysicsSystemWithTerrain(world, bounds, terrain),
+		energy:   systems.NewEnergySystem(world, shadowMap),
+		behavior: systems.NewBehaviorSystem(world, shadowMap, terrain),
 		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 3000, terrain),
 		light:         renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
 		stepsPerFrame: 1,
@@ -230,39 +228,39 @@ func (g *Game) Unload() {
 // seedUniverse populates the world with initial organisms.
 func (g *Game) seedUniverse() {
 	// Seed initial flora directly using FloraSystem
+	// More flora to sustain the fauna population with brain-output-driven energy costs
 	// Rooted flora on terrain and seafloor
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 120; i++ {
 		x := rand.Float32() * g.bounds.Width
 		// Place on seafloor or terrain
-		y := g.bounds.Height - 4 - rand.Float32()*20
-		g.floraSystem.AddRooted(x, y, 80+rand.Float32()*40)
+		y := g.bounds.Height - 4 - rand.Float32()*30
+		g.floraSystem.AddRooted(x, y, 100+rand.Float32()*50)
 	}
 
-	// Floating flora in water column
-	for i := 0; i < 40; i++ {
+	// Floating flora spread throughout water column
+	for i := 0; i < 80; i++ {
 		x := rand.Float32() * g.bounds.Width
-		y := rand.Float32()*g.bounds.Height*0.7 + 50
-		g.floraSystem.AddFloating(x, y, 60+rand.Float32()*40)
+		y := rand.Float32()*g.bounds.Height*0.8 + 30
+		g.floraSystem.AddFloating(x, y, 80+rand.Float32()*40)
 	}
 
-	// Also spawn some spores to demonstrate the spore system
-	for i := 0; i < 20; i++ {
+	// More spores to help flora respawn
+	for i := 0; i < 40; i++ {
 		g.spores.SpawnSpore(
 			rand.Float32()*g.bounds.Width,
-			rand.Float32()*g.bounds.Height*0.5,
-			true, // parentRooted
+			rand.Float32()*g.bounds.Height*0.6,
+			rand.Float32() > 0.5, // Mix of rooted and floating parents
 		)
 	}
 
 	// Create fauna with neural brains (CPPN morphology + evolved behavior)
-	// Diet is now derived from cell DigestiveSpectrum, not from organism traits
-	// Higher initial energy gives untrained brains more time to find food
-	for i := 0; i < 85; i++ {
+	// Higher initial energy gives untrained brains more time to learn efficient behavior
+	for i := 0; i < 70; i++ {
 		g.createInitialNeuralOrganism(
 			rand.Float32()*(g.bounds.Width-100)+50,
 			rand.Float32()*(g.bounds.Height-150)+50,
-			// CPPN determines cell capabilities
-			200,
+			// Higher starting energy for brain-output-driven costs
+			300,
 		)
 	}
 }

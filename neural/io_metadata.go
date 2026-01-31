@@ -33,13 +33,15 @@ func BrainInputDescriptors() []IODescriptor {
 		{ID: "cone_friend_back", Label: "Friend Back", Description: "Friend intensity behind", Min: 0, Max: 1, Group: "vision"},
 		{ID: "cone_friend_left", Label: "Friend Left", Description: "Friend intensity to left", Min: 0, Max: 1, Group: "vision"},
 
-		// Environment (indices 12-17)
+		// Environment (indices 12-16)
 		{ID: "energy_ratio", Label: "Energy", Description: "Current energy / max energy", Min: 0, Max: 1, Group: "internal"},
 		{ID: "light_level", Label: "Light", Description: "Ambient light level from shadowmap", Min: 0, Max: 1, Group: "environment"},
 		{ID: "flow_alignment", Label: "Flow Align", Description: "Alignment with flow field (-1=against, +1=with)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
-		{ID: "openness", Label: "Openness", Description: "Local free space (0=dense, 1=open)", Min: 0, Max: 1, Group: "environment"},
 		{ID: "light_fb", Label: "Light F/B", Description: "Light gradient front-back (>0=brighter ahead)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
 		{ID: "light_lr", Label: "Light L/R", Description: "Light gradient left-right (>0=brighter right)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
+
+		// Damage awareness (index 17)
+		{ID: "being_eaten", Label: "Attacked", Description: "Currently being eaten (0=safe, 1=heavy attack)", Min: 0, Max: 1, Group: "internal"},
 
 		// Bias (index 18)
 		{ID: "bias", Label: "Bias", Description: "Constant bias input (always 1.0)", Min: 0, Max: 1, Group: "internal"},

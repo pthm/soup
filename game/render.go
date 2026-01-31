@@ -210,10 +210,7 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		// Apply global sun intensity as additional factor
 		light *= (0.3 + g.light.Intensity*0.7) // Min 30% light even at night
 
-		// Adjust alpha for decomposition
-		alpha := uint8(255 * (1 - cell.Decomposition))
 		cellColor := baseColor
-		cellColor.A = alpha
 
 		// Apply lighting to color (darken based on shadow map)
 		cellColor.R = uint8(float32(cellColor.R) * light)

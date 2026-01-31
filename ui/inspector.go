@@ -159,12 +159,6 @@ func (ins *Inspector) drawOrganismPreview(x, y, width, height int32, data Inspec
 		r, g, b := cell.PrimaryType.Color()
 		cellColor := rl.Color{R: r, G: g, B: b, A: 255}
 
-		// Apply decomposition fade
-		if cell.Decomposition > 0 {
-			alpha := uint8(255 * (1 - cell.Decomposition))
-			cellColor.A = alpha
-		}
-
 		// Draw cell as a filled rectangle with slight gap
 		gap := cellSize * 0.1
 		rl.DrawRectangle(

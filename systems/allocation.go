@@ -36,6 +36,7 @@ func (s *AllocationSystem) getDigestiveSpectrum(cells *components.CellBuffer) fl
 }
 
 // Update evaluates allocation mode for all organisms (all are fauna).
+// Simplified: no growth mode since fauna don't grow - evolution via breeding only.
 func (s *AllocationSystem) Update(
 	floraPositions, faunaPositions []components.Position,
 	floraOrgs, faunaOrgs []*components.Organism,
@@ -50,62 +51,17 @@ func (s *AllocationSystem) Update(
 
 		energyRatio := org.Energy / org.MaxEnergy
 		digestiveSpectrum := s.getDigestiveSpectrum(cells)
-
-		foodNearby := s.hasFoodNearby(pos, org, digestiveSpectrum, floraPositions, faunaPositions, floraOrgs, faunaOrgs)
 		threatNearby := s.hasThreatNearby(pos, org, digestiveSpectrum, faunaPositions, faunaOrgs)
 
-		org.TargetCells = s.calculateTargetCells(cells, energyRatio, foodNearby)
-		org.AllocationMode = s.determineMode(org, cells, energyRatio, threatNearby)
+		org.AllocationMode = s.determineMode(org, energyRatio, threatNearby)
 	}
-}
-
-func (s *AllocationSystem) calculateTargetCells(cells *components.CellBuffer, energyRatio float32, foodNearby bool) uint8 {
-	// Fauna: size vs speed tradeoff
-	// Larger = more energy capacity but slower
-	// Smaller = faster but less reserves
-
-	// Use capability-based digestive spectrum
-	digestiveSpectrum := s.getDigestiveSpectrum(cells)
-
-	var baseTarget int
-	switch {
-	case digestiveSpectrum > 0.6:
-		// Carnivores: medium size for balance of speed and power
-		switch {
-		case energyRatio > 0.6 && foodNearby:
-			baseTarget = 5
-		case energyRatio > 0.4:
-			baseTarget = 4
-		default:
-			baseTarget = 3 // Stay lean when hungry
-		}
-	case digestiveSpectrum < 0.4:
-		// Herbivores: can be larger since food is plentiful
-		switch {
-		case energyRatio > 0.6:
-			baseTarget = 6
-		case energyRatio > 0.4:
-			baseTarget = 4
-		default:
-			baseTarget = 3
-		}
-	default:
-		// Omnivores (0.4-0.6): stay medium
-		baseTarget = 4
-	}
-
-	return uint8(min(baseTarget, 10))
 }
 
 func (s *AllocationSystem) determineMode(
 	org *components.Organism,
-	cells *components.CellBuffer,
 	energyRatio float32,
 	threatNearby bool,
 ) components.AllocationMode {
-	cellCount := int(cells.Count)
-	targetCells := int(org.TargetCells)
-
 	// SURVIVE mode: critical energy or under threat
 	if energyRatio < 0.2 {
 		return components.ModeSurvive
@@ -114,30 +70,13 @@ func (s *AllocationSystem) determineMode(
 		return components.ModeSurvive
 	}
 
-	// All ECS organisms are fauna and can breed
+	// BREED mode: healthy enough and not on cooldown
 	canBreed := org.BreedingCooldown == 0
-
-	// BREED mode: healthy enough and wants to breed
-	// Lower threshold (35%) to allow more breeding opportunities
-	if canBreed && cellCount >= 1 && energyRatio > 0.35 {
+	if canBreed && energyRatio > 0.35 {
 		return components.ModeBreed
 	}
 
-	// GROW mode: below target size and have energy to spare
-	if cellCount < targetCells && energyRatio > 0.35 {
-		return components.ModeGrow
-	}
-
-	// STORE mode: at target size, building reserves
-	if cellCount >= targetCells {
-		// If breeding available and energy high, switch to breed
-		if canBreed && energyRatio > 0.6 {
-			return components.ModeBreed
-		}
-		return components.ModeStore
-	}
-
-	// Default to store
+	// STORE mode: building reserves
 	return components.ModeStore
 }
 
@@ -193,23 +132,39 @@ func (s *AllocationSystem) hasFoodNearby(
 func (s *AllocationSystem) hasThreatNearby(
 	pos *components.Position,
 	org *components.Organism,
-	digestiveSpectrum float32,
+	_ float32, // digestiveSpectrum - unused now that all organisms can perceive threats
 	faunaPos []components.Position,
 	faunaOrgs []*components.Organism,
 ) bool {
-	// Carnivores don't perceive threats in allocation
-	if digestiveSpectrum > 0.5 || faunaOrgs == nil {
+	if faunaOrgs == nil {
 		return false
 	}
+	// All organisms can perceive threats from larger/hungrier neighbors
 
 	threatRadius := org.PerceptionRadius * 2.0
 	threatRadiusSq := threatRadius * threatRadius
 
+	myEnergy := org.Energy
+	myMaxEnergy := org.MaxEnergy
+
 	for i := range faunaPos {
-		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
+		other := faunaOrgs[i]
+		if other == org || other.Dead {
 			continue
 		}
-		if distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) < threatRadiusSq {
+		if distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) > threatRadiusSq {
+			continue
+		}
+
+		// Threat assessment: consider if other is significantly larger or much hungrier
+		// Be conservative - only trigger for clear threats to avoid constant fleeing
+		otherEnergyRatio := other.Energy / other.MaxEnergy
+
+		isSignificantlyLarger := other.MaxEnergy > myMaxEnergy*1.5 // 50% larger
+		isDesperatelyHungry := otherEnergyRatio < 0.3 && other.MaxEnergy > myMaxEnergy
+		isMuchStronger := other.Energy > myEnergy*2.0 // Has 2x more absolute energy
+
+		if isSignificantlyLarger || isDesperatelyHungry || isMuchStronger {
 			return true
 		}
 	}

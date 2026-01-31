@@ -13,11 +13,11 @@ import (
 
 // Breeding constants
 const (
-	BreedIntentThreshold = 0.6  // Brain output threshold for breeding intent
-	MinEnergyRatio       = 0.7  // Minimum energy ratio for reproduction
-	AsexualEnergyCost    = 20.0 // Energy cost for asexual reproduction (single parent)
-	SexualEnergyCost     = 15.0 // Energy cost for sexual reproduction (per parent)
-	MateProximity        = 80.0 // Maximum distance for finding mates
+	BreedIntentThreshold = 0.5  // Brain output threshold for breeding intent (lowered)
+	MinEnergyRatio       = 0.5  // Minimum energy ratio for reproduction (lowered from 0.7)
+	AsexualEnergyCost    = 15.0 // Energy cost for asexual reproduction (reduced)
+	SexualEnergyCost     = 12.0 // Energy cost for sexual reproduction (per parent, reduced)
+	MateProximity        = 100.0 // Maximum distance for finding mates (increased)
 )
 
 // BreedingSystem handles fauna reproduction (both asexual and sexual).
@@ -150,19 +150,17 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 }
 
 // isEligible checks if an organism meets basic requirements to attempt reproduction.
+// Brain output (BreedIntent) directly controls breeding - no allocation mode gating.
 func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
 	// Check breed intent from brain (threshold for wanting to reproduce)
+	// This is the PRIMARY control - the brain decides when to breed
 	if org.BreedIntent < BreedIntentThreshold {
 		return false
 	}
 
-	// Must be in Breed allocation mode
-	if org.AllocationMode != components.ModeBreed {
-		return false
-	}
-
-	// Energy must be above minimum ratio
-	if org.Energy < org.MaxEnergy*MinEnergyRatio {
+	// Minimum energy to attempt reproduction (can't breed at 0 energy)
+	// But this is much lower than before - let brains learn the tradeoffs
+	if org.Energy < org.MaxEnergy*0.25 {
 		return false
 	}
 

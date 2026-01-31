@@ -16,8 +16,7 @@ type SensoryInputs struct {
 
 	// Environment
 	LightLevel    float32 // 0-1 from shadowmap (ambient)
-	FlowAlignment float32 // Phase 4: dot(flow_direction, heading) [-1, 1]
-	Openness      float32 // Phase 4b: local free space (1.0 = open, 0 = dense terrain)
+	FlowAlignment float32 // dot(flow_direction, heading) [-1, 1]
 
 	// Directional light (Phase 3b)
 	// Gradients indicate where light is brighter (-1 to +1)
@@ -38,10 +37,13 @@ type SensoryInputs struct {
 	// Body awareness (actuator capability)
 	ActuatorCount    int     // Number of active actuator cells
 	TotalActuatorStr float32 // Sum of actuator strengths (affects movement)
+
+	// Damage awareness
+	BeingEaten float32 // 0-1, how intensely this organism is being attacked
 }
 
 // ToInputs converts sensory data to normalized neural network inputs.
-// Phase 4b layout: 12 cone inputs + 5 environment + 2 light gradients = 19 total
+// Layout: 12 cone inputs + 4 environment + 2 light gradients + 1 damage = 19 total
 //
 // Input mapping:
 //
@@ -50,10 +52,10 @@ type SensoryInputs struct {
 //	[8-11]  ConeFriend (front, right, back, left)
 //	[12]    Energy ratio
 //	[13]    Light level (ambient)
-//	[14]    Flow alignment (Phase 4: dot(flow, heading))
-//	[15]    Openness (Phase 4b: local free space)
-//	[16]    Light gradient front-back (Phase 3b)
-//	[17]    Light gradient left-right (Phase 3b)
+//	[14]    Flow alignment (dot(flow, heading))
+//	[15]    Light gradient front-back
+//	[16]    Light gradient left-right
+//	[17]    Being eaten (damage awareness)
 //	[18]    Bias
 func (s *SensoryInputs) ToInputs() []float64 {
 	inputs := make([]float64, BrainInputs)
@@ -83,18 +85,17 @@ func (s *SensoryInputs) ToInputs() []float64 {
 	// [13] Light level (already 0-1)
 	inputs[13] = float64(clampf(s.LightLevel, 0, 1))
 
-	// [14] Flow alignment (Phase 4) - range [-1, 1]
+	// [14] Flow alignment - range [-1, 1]
 	// Positive = flow helping (pushing in direction of heading)
 	// Negative = flow hindering (pushing against heading)
 	inputs[14] = float64(clampf(s.FlowAlignment, -1, 1))
 
-	// [15] Openness (Phase 4b) - range [0, 1]
-	// 1.0 = clear open space, 0 = dense terrain nearby
-	inputs[15] = float64(clampf(s.Openness, 0, 1))
+	// [15-16] Light gradients - range [-1, 1]
+	inputs[15] = float64(clampf(s.LightFB, -1, 1))
+	inputs[16] = float64(clampf(s.LightLR, -1, 1))
 
-	// [16-17] Light gradients (Phase 3b) - range [-1, 1]
-	inputs[16] = float64(clampf(s.LightFB, -1, 1))
-	inputs[17] = float64(clampf(s.LightLR, -1, 1))
+	// [17] Being eaten (damage awareness) - range [0, 1]
+	inputs[17] = float64(clampf(s.BeingEaten, 0, 1))
 
 	// [18] Bias (always 1.0)
 	inputs[18] = 1.0

@@ -345,14 +345,20 @@ type FitnessTracker struct {
 // CalculateFitness calculates fitness for an organism based on its state.
 // Higher is better.
 func CalculateFitness(energy, maxEnergy float32, survivalTicks int32, offspringCount int) float64 {
-	// Base fitness from energy ratio
+	// Base fitness from energy ratio (clamped to avoid 0)
 	energyRatio := float64(energy / maxEnergy)
+	if energyRatio < 0.1 {
+		energyRatio = 0.1 // Minimum to not zero out fitness
+	}
 
-	// Survival bonus with diminishing returns (early survival matters more)
-	survivalBonus := math.Log1p(float64(survivalTicks) / 500.0)
+	// Survival bonus - linear component rewards longevity
+	// Both logarithmic (early survival) and linear (sustained survival) matter
+	logSurvival := math.Log1p(float64(survivalTicks) / 500.0)
+	linearSurvival := float64(survivalTicks) / 2000.0 // Linear bonus up to ~2.5 at 5000 ticks
+	survivalBonus := logSurvival + linearSurvival*0.5
 
-	// Reproduction bonus (offspring count matters most for evolution)
-	reproBonus := 1.0 + float64(offspringCount)*0.5
+	// Reproduction bonus (reduced - survival should matter more)
+	reproBonus := 1.0 + float64(offspringCount)*0.2
 
 	return energyRatio * survivalBonus * reproBonus
 }

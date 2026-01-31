@@ -116,13 +116,15 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 			}
 		}
 
-		// Shape-based friction: streamlined organisms coast further
+		// Shape-based friction: low drag organisms coast further
 		baseFriction := aliveFrictionMin
 		if org.Dead {
 			baseFriction = deadFriction
 		} else {
-			// Streamlined organisms coast further (higher friction = less slowdown)
-			baseFriction = aliveFrictionMin + org.ShapeMetrics.Streamlining*aliveFrictionRange
+			// Low drag = coasts further (higher friction multiplier = less slowdown)
+			// Drag 0.2 (fish) -> bonus 0.8 * range, Drag 1.0 (plate) -> bonus 0 * range
+			streamlined := clampFloat(1.0-org.ShapeMetrics.Drag, 0, 1)
+			baseFriction = aliveFrictionMin + streamlined*aliveFrictionRange
 		}
 		vel.X *= baseFriction
 		vel.Y *= baseFriction

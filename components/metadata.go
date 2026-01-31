@@ -65,9 +65,7 @@ func CapabilityFieldDescriptors() []FieldDescriptor {
 // ShapeMetricsFieldDescriptors returns metadata for ShapeMetrics fields.
 func ShapeMetricsFieldDescriptors() []FieldDescriptor {
 	return []FieldDescriptor{
-		{ID: "aspect_ratio", Label: "Aspect", Format: "%.2f", Group: "shape"},
-		{ID: "streamlining", Label: "Stream", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "shape"},
-		{ID: "drag", Label: "Drag", Format: "%.2f", Min: 0.3, Max: 1.0, IsBar: true, Group: "shape"},
+		{ID: "drag", Label: "Drag", Format: "%.2f", Min: 0.2, Max: 2.0, IsBar: true, Group: "shape"},
 	}
 }
 
@@ -78,7 +76,6 @@ func BrainOutputFieldDescriptors() []FieldDescriptor {
 		{ID: "turn_output", Label: "Turn", Format: "%+.2f", Min: -1, Max: 1, IsCentered: true, IsBar: true, Group: "motor"},
 		{ID: "thrust_output", Label: "Thrust", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "motor"},
 		{ID: "eat_intent", Label: "Eat", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
-		{ID: "grow_intent", Label: "Grow", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
 		{ID: "breed_intent", Label: "Breed", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
 		{ID: "glow_intent", Label: "Glow", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
 	}
@@ -157,12 +154,8 @@ func GetOrganismValue(org *Organism, fieldID string) float32 {
 // GetShapeMetricsValue extracts a shape metrics field value by ID.
 func GetShapeMetricsValue(sm *ShapeMetrics, fieldID string) float32 {
 	switch fieldID {
-	case "aspect_ratio":
-		return sm.AspectRatio
-	case "streamlining":
-		return sm.Streamlining
 	case "drag":
-		return sm.DragCoefficient
+		return sm.Drag
 	default:
 		return 0
 	}

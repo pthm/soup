@@ -156,7 +156,6 @@ func (g *Game) runSimulationStep() {
 		})
 	})
 	measure("energy", func() { g.energy.Update(g.world) })
-	measure("cells", func() { g.cells.Update(g.world) })
 
 	// Breeding (fauna reproduction - flora don't use breeding system anymore)
 	measure("breeding", func() { g.breeding.Update(g.world, nil, g.CreateNeuralOrganismForBreeding) })
@@ -169,8 +168,8 @@ func (g *Game) runSimulationStep() {
 		})
 	})
 
-	// Growth, spore spawning, and splitting
-	measure("growth", func() { g.updateGrowth() })
+	// Death particles (fauna growth removed - evolution via breeding only)
+	measure("death_particles", func() { g.updateDeathParticles() })
 
 	// Effect particles
 	measure("particles", func() { g.particles.Update() })
@@ -201,108 +200,17 @@ func (g *Game) updateDayNightCycle() {
 	g.light.Intensity = 1.0
 }
 
-// updateGrowth handles organism growth based on neural intent.
-func (g *Game) updateGrowth() {
-	// Note: Flora are now managed by FloraSystem, not ECS
-	// Spore spawning for flora is handled in FloraSystem.Update()
-
+// updateDeathParticles emits particles for dead organisms.
+// Fauna growth has been removed - organisms are born with their cells and don't grow.
+// Evolution happens through breeding, not individual growth.
+func (g *Game) updateDeathParticles() {
 	query := g.allOrgFilter.Query()
 	for query.Next() {
-		pos, _, org, cells := query.Get()
-
+		pos, _, org, _ := query.Get()
 		if org.Dead {
-			// Emit death particles
 			g.particles.EmitDeath(pos.X, pos.Y)
-			continue
-		}
-
-		org.GrowthTimer++
-
-		// Scale growth interval by GrowIntent: high intent = faster growth
-		// Maps GrowIntent (0-1) to interval range (MaxGrowthInterval to MinGrowthInterval)
-		effectiveInterval := int32(MaxGrowthInterval) - int32(float32(MaxGrowthInterval-MinGrowthInterval)*org.GrowIntent)
-
-		// Determine if mode allows growth
-		// ModeGrow always allows, ModeStore allows if intent is very high (>= 0.8)
-		modeAllows := org.AllocationMode == components.ModeGrow
-		if org.AllocationMode == components.ModeStore && org.GrowIntent >= 0.8 {
-			modeAllows = true
-		}
-
-		// Gate conditions for growth
-		intentStrong := org.GrowIntent >= GrowIntentThreshold
-		belowTarget := cells.Count < org.TargetCells
-		hasEnergy := org.Energy > 40
-
-		canGrow := modeAllows && intentStrong && belowTarget && hasEnergy
-
-		if org.GrowthTimer >= effectiveInterval && canGrow {
-			org.GrowthTimer = 0
-			g.tryGrow(pos, org, cells)
 		}
 	}
-}
-
-type gridPos struct{ x, y int8 }
-
-// tryGrow attempts to grow a new cell on an organism.
-func (g *Game) tryGrow(_ *components.Position, org *components.Organism, cells *components.CellBuffer) {
-	if cells.Count >= 32 || org.Energy < 30 {
-		return
-	}
-
-	// Find valid growth positions
-	occupied := make(map[gridPos]bool)
-	for i := uint8(0); i < cells.Count; i++ {
-		occupied[gridPos{cells.Cells[i].GridX, cells.Cells[i].GridY}] = true
-	}
-
-	var candidates []gridPos
-	directions := []gridPos{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
-	for i := uint8(0); i < cells.Count; i++ {
-		for _, d := range directions {
-			np := gridPos{cells.Cells[i].GridX + d.x, cells.Cells[i].GridY + d.y}
-			if !occupied[np] {
-				candidates = append(candidates, np)
-			}
-		}
-	}
-
-	if len(candidates) == 0 {
-		return
-	}
-
-	// All ECS organisms are fauna (flora are in FloraSystem)
-	// Pick random growth position
-	newPos := candidates[rand.Intn(len(candidates))]
-
-	// New cells inherit properties from a random existing cell
-	// This allows the organism's morphology to grow organically
-	sourceCell := &cells.Cells[rand.Intn(int(cells.Count))]
-
-	// Add cell with inherited properties
-	cells.AddCell(components.Cell{
-		GridX:             newPos.x,
-		GridY:             newPos.y,
-		Age:               0,
-		MaxAge:            3000 + rand.Int31n(2000),
-		Alive:             true,
-		Decomposition:     0,
-		PrimaryType:       sourceCell.PrimaryType,
-		SecondaryType:     sourceCell.SecondaryType,
-		PrimaryStrength:   sourceCell.PrimaryStrength * (0.8 + rand.Float32()*0.4), // Slight variation
-		SecondaryStrength: sourceCell.SecondaryStrength * (0.8 + rand.Float32()*0.4),
-		DigestiveSpectrum: sourceCell.DigestiveSpectrum,
-		StructuralArmor:   sourceCell.StructuralArmor,
-		StorageCapacity:   sourceCell.StorageCapacity,
-		ReproductiveMode:  sourceCell.ReproductiveMode,
-	})
-
-	// Recalculate shape metrics and collision OBB after growth
-	org.ShapeMetrics = systems.CalculateShapeMetrics(cells)
-	org.OBB = systems.ComputeCollisionOBB(cells, org.CellSize)
-
-	org.Energy -= 30
 }
 
 // cleanupDead removes dead organisms and updates fitness tracking.

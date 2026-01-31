@@ -12,8 +12,7 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		ConeThreat:    [4]float32{0.1, 0.0, 0.5, 0.0},
 		ConeFriend:    [4]float32{0.4, 0.4, 0.2, 0.3},
 		LightLevel:    0.7,
-		FlowAlignment: 0.3,  // Phase 4: single flow alignment value
-		Openness:      0.85, // Phase 4b: terrain openness
+		FlowAlignment: 0.3,
 		LightFB:       0.2,
 		LightLR:       -0.1,
 		Energy:        75,
@@ -61,22 +60,17 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		t.Errorf("light level: expected 0.7, got %f", inputs[13])
 	}
 
-	// Check flow alignment [14] (Phase 4)
+	// Check flow alignment [14]
 	if math.Abs(inputs[14]-0.3) > 0.01 {
 		t.Errorf("flow alignment: expected 0.3, got %f", inputs[14])
 	}
 
-	// Check openness [15] (Phase 4b)
-	if math.Abs(inputs[15]-0.85) > 0.01 {
-		t.Errorf("openness: expected 0.85, got %f", inputs[15])
+	// Check light gradients [15-16]
+	if math.Abs(inputs[15]-0.2) > 0.01 {
+		t.Errorf("light FB: expected 0.2, got %f", inputs[15])
 	}
-
-	// Check light gradients [16-17] (Phase 3b)
-	if math.Abs(inputs[16]-0.2) > 0.01 {
-		t.Errorf("light FB: expected 0.2, got %f", inputs[16])
-	}
-	if math.Abs(inputs[17]-(-0.1)) > 0.01 {
-		t.Errorf("light LR: expected -0.1, got %f", inputs[17])
+	if math.Abs(inputs[16]-(-0.1)) > 0.01 {
+		t.Errorf("light LR: expected -0.1, got %f", inputs[16])
 	}
 
 	// Check bias [18]
@@ -257,65 +251,12 @@ func TestSensoryInputsLightGradients(t *testing.T) {
 
 	inputs := sensory.ToInputs()
 
-	// Check light gradients [16-17] (Phase 4b indices)
-	if math.Abs(inputs[16]-0.3) > 0.01 {
-		t.Errorf("light FB: expected 0.3, got %f", inputs[16])
+	// Check light gradients [15-16]
+	if math.Abs(inputs[15]-0.3) > 0.01 {
+		t.Errorf("light FB: expected 0.3, got %f", inputs[15])
 	}
-	if math.Abs(inputs[17]-(-0.5)) > 0.01 {
-		t.Errorf("light LR: expected -0.5, got %f", inputs[17])
-	}
-}
-
-// Phase 4b: Test openness input
-func TestSensoryInputsOpenness(t *testing.T) {
-	tests := []struct {
-		name     string
-		openness float32
-		want     float64
-	}{
-		{"fully open", 1.0, 1.0},
-		{"dense terrain", 0.0, 0.0},
-		{"partial openness", 0.5, 0.5},
-		{"near terrain", 0.2, 0.2},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sensory := SensoryInputs{
-				Openness:  tt.openness,
-				Energy:    50,
-				MaxEnergy: 100,
-			}
-
-			inputs := sensory.ToInputs()
-
-			// Openness is at index [15]
-			if math.Abs(inputs[15]-tt.want) > 0.01 {
-				t.Errorf("openness: expected %f, got %f", tt.want, inputs[15])
-			}
-		})
-	}
-}
-
-func TestOpennessClamping(t *testing.T) {
-	// Test that openness is clamped to [0, 1]
-	sensory := SensoryInputs{
-		Openness:  1.5, // Beyond 1.0
-		Energy:    50,
-		MaxEnergy: 100,
-	}
-
-	inputs := sensory.ToInputs()
-
-	if inputs[15] > 1.0 {
-		t.Errorf("openness not clamped: got %f", inputs[15])
-	}
-
-	sensory.Openness = -0.5 // Below 0
-	inputs = sensory.ToInputs()
-
-	if inputs[15] < 0 {
-		t.Errorf("openness not clamped: got %f", inputs[15])
+	if math.Abs(inputs[16]-(-0.5)) > 0.01 {
+		t.Errorf("light LR: expected -0.5, got %f", inputs[16])
 	}
 }
 

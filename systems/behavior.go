@@ -62,6 +62,7 @@ type organismTask struct {
 	perceptionRadius float32
 	maxSpeed         float32
 	cellSize         float32
+	beingEaten       float32 // Damage awareness (0-1)
 	shapeMetrics     components.ShapeMetrics
 	obb              components.CollisionOBB
 	brain            *neural.BrainController
@@ -319,6 +320,7 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 			perceptionRadius: org.PerceptionRadius,
 			maxSpeed:         org.MaxSpeed,
 			cellSize:         org.CellSize,
+			beingEaten:       org.BeingEaten,
 			shapeMetrics:     org.ShapeMetrics,
 			obb:              org.OBB,
 			brain:            brain,
@@ -524,6 +526,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			TotalSensorGain:  getTotalSensorGain(task.cells),
 			ActuatorCount:    getActuatorCount(task.cells),
 			TotalActuatorStr: getTotalActuatorStrength(task.cells),
+			BeingEaten:       task.beingEaten,
 		}
 
 		if task.cells != nil {
@@ -544,18 +547,6 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
 		if flowMag > 0.001 {
 			sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
-		}
-
-		// Openness
-		if s.terrain != nil {
-			terrainDist := s.terrain.DistanceToSolid(task.posX, task.posY)
-			if terrainDist < effectiveRadius {
-				sensory.Openness = terrainDist / effectiveRadius
-			} else {
-				sensory.Openness = 1.0
-			}
-		} else {
-			sensory.Openness = 1.0
 		}
 
 		// Run brain
@@ -620,7 +611,8 @@ func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics co
 	flowY += flowDriftY
 	flowX += float32(math.Sin(float64(s.tick)*flowTimeScale*2)) * flowSideEffect
 
-	shapeResistance := shapeMetrics.Streamlining * 0.4
+	// Low drag = more resistance to being pushed by flow (streamlined shapes cut through)
+	shapeResistance := (1.0 - shapeMetrics.Drag) * 0.4
 	massResistance := float32(math.Min(float64(energy/maxEnergy)/3, 1))
 	totalResistance := shapeResistance + massResistance*0.6
 	factor := 1 - totalResistance*0.7
@@ -727,6 +719,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 		TotalSensorGain:  getTotalSensorGain(cells),
 		ActuatorCount:    getActuatorCount(cells),
 		TotalActuatorStr: getTotalActuatorStrength(cells),
+		BeingEaten:       org.BeingEaten,
 	}
 
 	// Cell count from actual cells if available
@@ -757,20 +750,6 @@ func (s *BehaviorSystem) getBrainOutputs(
 		sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
 	} else {
 		sensory.FlowAlignment = 0
-	}
-
-	// Phase 5: Openness scalar for terrain awareness
-	// Pathfinding layer handles actual terrain avoidance, brain just gets context
-	if s.terrain != nil {
-		terrainDist := s.terrain.DistanceToSolid(pos.X, pos.Y)
-		if terrainDist < effectiveRadius {
-			// Openness = normalized distance to terrain (0 = touching, 1 = far)
-			sensory.Openness = terrainDist / effectiveRadius
-		} else {
-			sensory.Openness = 1.0
-		}
-	} else {
-		sensory.Openness = 1.0
 	}
 
 	// Convert to neural inputs and run brain
@@ -885,8 +864,8 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 
 	// All ECS organisms are fauna (flora are in FloraSystem)
 
-	// Shape-based flow resistance
-	shapeResistance := org.ShapeMetrics.Streamlining * 0.4
+	// Shape-based flow resistance (low drag = more resistance to being pushed)
+	shapeResistance := (1.0 - org.ShapeMetrics.Drag) * 0.4
 	massResistance := float32(math.Min(float64(org.Energy/org.MaxEnergy)/3, 1))
 	totalResistance := shapeResistance + massResistance*0.6
 	factor := 1 - totalResistance*0.7

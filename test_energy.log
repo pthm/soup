@@ -1,0 +1,462 @@
+Starting headless simulation (GPU compute enabled)...
+  Speed: 10x, Max ticks: 5000
+  Neural logging: enabled (detail=true)
+
+[BIRTH] Entity 87 @ (39,572): gen=1, nodes=34, genes=27, species=2
+[BIRTH] Entity 88 @ (1081,615): gen=1, nodes=34, genes=20, species=1
+[BIRTH] Entity 89 @ (1255,505): gen=1, nodes=34, genes=86, species=1
+[BIRTH] Entity 90 @ (23,653): gen=1, nodes=34, genes=113, species=3 [SPECIATED: 7->3]
+[BIRTH] Entity 91 @ (332,240): gen=1, nodes=34, genes=17, species=1
+[BIRTH] Entity 92 @ (1075,471): gen=1, nodes=34, genes=38, species=1
+[BIRTH] Entity 93 @ (712,342): gen=1, nodes=34, genes=45, species=5 [SPECIATED: 1->5]
+[BIRTH] Entity 94 @ (129,448): gen=1, nodes=34, genes=27, species=3
+[DEATH] Entity 36: gen=0, species=7, fitness=0.06, survived=368 ticks
+[DEATH] Entity 76: gen=0, species=2, fitness=0.07, survived=379 ticks
+[DEATH] Entity 74: gen=0, species=1, fitness=0.07, survived=384 ticks
+[DEATH] Entity 20: gen=0, species=2, fitness=0.07, survived=385 ticks
+[DEATH] Entity 15: gen=0, species=2, fitness=0.07, survived=388 ticks
+[DEATH] Entity 77: gen=0, species=5, fitness=0.07, survived=395 ticks
+[DEATH] Entity 28: gen=0, species=2, fitness=0.07, survived=396 ticks
+[DEATH] Entity 33: gen=0, species=1, fitness=0.07, survived=402 ticks
+[DEATH] Entity 58: gen=0, species=3, fitness=0.07, survived=405 ticks
+[DEATH] Entity 6: gen=0, species=2, fitness=0.07, survived=407 ticks
+[DEATH] Entity 69: gen=0, species=2, fitness=0.07, survived=407 ticks
+[DEATH] Entity 50: gen=0, species=2, fitness=0.07, survived=408 ticks
+[DEATH] Entity 48: gen=0, species=2, fitness=0.07, survived=415 ticks
+[DEATH] Entity 12: gen=0, species=1, fitness=0.07, survived=419 ticks
+[DEATH] Entity 34: gen=0, species=8, fitness=0.07, survived=420 ticks
+[DEATH] Entity 10: gen=0, species=2, fitness=0.07, survived=423 ticks
+[DEATH] Entity 86: gen=0, species=2, fitness=0.07, survived=423 ticks
+[DEATH] Entity 23: gen=0, species=6, fitness=0.07, survived=429 ticks
+[DEATH] Entity 5: gen=0, species=2, fitness=0.07, survived=437 ticks
+[BIRTH] Entity 95 @ (492,409): gen=1, nodes=34, genes=275, species=1
+[DEATH] Entity 38: gen=0, species=2, fitness=0.08, survived=447 ticks
+[DEATH] Entity 82: gen=0, species=2, fitness=0.08, survived=449 ticks
+[DEATH] Entity 29: gen=0, species=2, fitness=0.08, survived=450 ticks
+[BIRTH] Entity 96 @ (65,446): gen=1, nodes=34, genes=265, species=1
+[BIRTH] Entity 97 @ (40,583): gen=1, nodes=34, genes=133, species=1 [SPECIATED: 7->1]
+[DEATH] Entity 3: gen=0, species=2, fitness=0.08, survived=455 ticks
+[DEATH] Entity 90: gen=1, species=3, fitness=0.08, survived=469 ticks
+[DEATH] Entity 81: gen=0, species=2, fitness=0.08, survived=473 ticks
+[DEATH] Entity 45: gen=0, species=3, fitness=0.08, survived=481 ticks
+[BIRTH] Entity 98 @ (1219,514): gen=1, nodes=34, genes=23, species=3 [SPECIATED: 1->3]
+[DEATH] Entity 71: gen=0, species=2, fitness=0.08, survived=486 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 70 | Best Fitness: 0.81
+║ Total Offspring: 12 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 70
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=127.2, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 37 members, age=0, stale=0, fit=0.8, offspring=8
+║   #2: Species 2 - 13 members, age=0, stale=0, fit=0.5, offspring=1
+║   #3: Species 3 - 7 members, age=0, stale=0, fit=0.7, offspring=1
+║   #4: Species 5 - 6 members, age=0, stale=0, fit=0.5, offspring=0
+║   #5: Species 4 - 3 members, age=0, stale=0, fit=0.8, offspring=0
+║   #6: Species 7 - 2 members, age=0, stale=0, fit=0.4, offspring=2
+║   #7: Species 8 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+║   #8: Species 9 - 1 members, age=0, stale=0, fit=0.2, offspring=0
+║   #9: Species 6 - 0 members, age=0, stale=0, fit=0.1, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 2 @ (938,524) v=(0.3,0.4) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=4, energy=160/401
+║   Entity 4 @ (676,623) v=(0.5,-0.4) spd=0.6 mode=SURVIVE: species=1, gen=0, cells=6, energy=107/466
+║   Entity 7 @ (701,348) v=(0.8,0.4) spd=0.9 mode=SURVIVE: species=1, gen=0, cells=6, energy=107/437
+║   Entity 8 @ (169,15) v=(0.0,0.0) spd=0.0 mode=SURVIVE: species=3, gen=0, cells=6, energy=115/467
+║   Entity 9 @ (407,322) v=(0.4,0.4) spd=0.6 mode=SURVIVE: species=1, gen=0, cells=6, energy=90/458
+║   Entity 11 @ (156,418) v=(0.6,-0.3) spd=0.6 mode=SURVIVE: species=2, gen=0, cells=11, energy=101/957
+║   Entity 13 @ (791,432) v=(0.8,0.5) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=197/307
+║   Entity 14 @ (811,241) v=(-0.2,0.4) spd=0.5 mode=BREED: species=1, gen=0, cells=1, energy=113/150
+║   Entity 16 @ (237,345) v=(0.5,-0.7) spd=0.9 mode=SURVIVE: species=3, gen=0, cells=5, energy=144/468
+║   Entity 17 @ (524,412) v=(0.9,-0.2) spd=0.9 mode=SURVIVE: species=1, gen=0, cells=4, energy=136/381
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 80: gen=0, species=2, fitness=0.08, survived=510 ticks
+[DEATH] Entity 68: gen=0, species=2, fitness=0.08, survived=511 ticks
+[DEATH] Entity 94: gen=1, species=3, fitness=0.08, survived=512 ticks
+[BIRTH] Entity 99 @ (202,372): gen=1, nodes=34, genes=27, species=3
+[DEATH] Entity 19: gen=0, species=2, fitness=0.08, survived=518 ticks
+[DEATH] Entity 70: gen=0, species=1, fitness=0.09, survived=531 ticks
+[DEATH] Entity 11: gen=0, species=2, fitness=0.09, survived=537 ticks
+[DEATH] Entity 59: gen=0, species=2, fitness=0.09, survived=544 ticks
+[DEATH] Entity 66: gen=0, species=2, fitness=0.09, survived=553 ticks
+[DEATH] Entity 44: gen=0, species=5, fitness=0.09, survived=560 ticks
+[DEATH] Entity 93: gen=1, species=5, fitness=0.09, survived=571 ticks
+[BIRTH] Entity 100 @ (32,509): gen=1, nodes=34, genes=91, species=7
+[DEATH] Entity 30: gen=0, species=7, fitness=0.10, survived=612 ticks
+[DEATH] Entity 49: gen=0, species=5, fitness=0.10, survived=614 ticks
+[DEATH] Entity 87: gen=1, species=2, fitness=0.10, survived=623 ticks
+[DEATH] Entity 85: gen=0, species=3, fitness=0.10, survived=625 ticks
+[DEATH] Entity 72: gen=0, species=1, fitness=0.10, survived=642 ticks
+[DEATH] Entity 88: gen=1, species=1, fitness=0.10, survived=651 ticks
+[DEATH] Entity 99: gen=1, species=3, fitness=0.10, survived=657 ticks
+[BIRTH] Entity 101 @ (244,309): gen=1, nodes=34, genes=27, species=3
+[DEATH] Entity 37: gen=0, species=1, fitness=0.10, survived=675 ticks
+[DEATH] Entity 24: gen=0, species=2, fitness=0.11, survived=703 ticks
+[DEATH] Entity 40: gen=0, species=2, fitness=0.11, survived=704 ticks
+[DEATH] Entity 22: gen=0, species=2, fitness=0.11, survived=722 ticks
+[DEATH] Entity 25: gen=0, species=4, fitness=0.11, survived=764 ticks
+[DEATH] Entity 9: gen=0, species=1, fitness=0.12, survived=798 ticks
+[DEATH] Entity 101: gen=1, species=3, fitness=0.12, survived=809 ticks
+[DEATH] Entity 42: gen=0, species=4, fitness=0.12, survived=835 ticks
+[BIRTH] Entity 102 @ (150,434): gen=1, nodes=34, genes=57, species=7
+[DEATH] Entity 92: gen=1, species=1, fitness=0.12, survived=891 ticks
+[DEATH] Entity 2: gen=0, species=1, fitness=0.12, survived=892 ticks
+[DEATH] Entity 63: gen=0, species=1, fitness=0.13, survived=908 ticks
+[BIRTH] Entity 103 @ (156,425): gen=2, nodes=34, genes=49, species=2 [SPECIATED: 7->2]
+[DEATH] Entity 96: gen=1, species=1, fitness=0.13, survived=936 ticks
+[DEATH] Entity 79: gen=0, species=5, fitness=0.13, survived=943 ticks
+[DEATH] Entity 21: gen=0, species=5, fitness=0.13, survived=953 ticks
+[DEATH] Entity 18: gen=0, species=1, fitness=0.13, survived=954 ticks
+[DEATH] Entity 103: gen=2, species=2, fitness=0.13, survived=970 ticks
+[DEATH] Entity 46: gen=0, species=1, fitness=0.13, survived=977 ticks
+[DEATH] Entity 47: gen=0, species=5, fitness=0.13, survived=979 ticks
+[DEATH] Entity 56: gen=0, species=1, fitness=0.13, survived=979 ticks
+[DEATH] Entity 4: gen=0, species=1, fitness=0.13, survived=981 ticks
+[DEATH] Entity 41: gen=0, species=1, fitness=0.13, survived=987 ticks
+[DEATH] Entity 31: gen=0, species=1, fitness=0.13, survived=992 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 1000 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 36 | Best Fitness: 1.34
+║ Total Offspring: 17 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 36
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=150.5, min=17, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 22 members, age=0, stale=0, fit=1.3, offspring=8
+║   #2: Species 3 - 5 members, age=0, stale=0, fit=1.1, offspring=3
+║   #3: Species 2 - 3 members, age=0, stale=0, fit=0.6, offspring=1
+║   #4: Species 7 - 3 members, age=0, stale=0, fit=1.3, offspring=5
+║   #5: Species 4 - 1 members, age=0, stale=0, fit=0.9, offspring=0
+║   #6: Species 8 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+║   #7: Species 9 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+║   #8: Species 5 - 0 members, age=0, stale=0, fit=0.6, offspring=0
+║   #9: Species 6 - 0 members, age=0, stale=0, fit=0.1, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 7 @ (1000,362) v=(0.4,-0.6) spd=0.7 mode=BREED: species=1, gen=0, cells=9, energy=247/611
+║   Entity 8 @ (201,15) v=(0.0,0.0) spd=0.0 mode=SURVIVE: species=3, gen=0, cells=8, energy=19/594
+║   Entity 13 @ (1220,476) v=(0.8,0.6) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=195/307
+║   Entity 14 @ (923,391) v=(0.4,-0.3) spd=0.5 mode=BREED: species=1, gen=0, cells=1, energy=112/150
+║   Entity 16 @ (576,278) v=(0.3,-0.8) spd=0.9 mode=SURVIVE: species=3, gen=0, cells=5, energy=116/468
+║   Entity 17 @ (862,427) v=(0.9,0.1) spd=0.9 mode=SURVIVE: species=1, gen=0, cells=7, energy=5/591
+║   Entity 100 @ (201,384) v=(0.3,-0.4) spd=0.5 mode=SURVIVE: species=7, gen=1, cells=10, energy=329/614
+║   Entity 26 @ (1120,371) v=(0.5,0.3) spd=0.6 mode=SURVIVE: species=1, gen=0, cells=4, energy=80/354
+║   Entity 27 @ (778,341) v=(0.7,1.2) spd=1.4 mode=BREED: species=1, gen=0, cells=4, energy=192/390
+║   Entity 97 @ (417,299) v=(0.9,0.7) spd=1.1 mode=SURVIVE: species=1, gen=1, cells=16, energy=205/1059
+╚══════════════════════════════════════════════════════════════════╝
+
+[BIRTH] Entity 29 @ (212,363): gen=1, nodes=34, genes=21, species=1 [SPECIATED: 7->1]
+[DEATH] Entity 17: gen=0, species=1, fitness=0.14, survived=1056 ticks
+[DEATH] Entity 60: gen=0, species=3, fitness=0.14, survived=1073 ticks
+[BIRTH] Entity 71 @ (240,333): gen=2, nodes=34, genes=91, species=7
+[DEATH] Entity 84: gen=0, species=9, fitness=0.15, survived=1115 ticks
+[DEATH] Entity 35: gen=0, species=1, fitness=0.15, survived=1132 ticks
+[DEATH] Entity 98: gen=1, species=3, fitness=0.15, survived=1159 ticks
+[DEATH] Entity 57: gen=0, species=8, fitness=0.15, survived=1169 ticks
+[BIRTH] Entity 85 @ (261,293): gen=1, nodes=34, genes=48, species=7
+[BIRTH] Entity 72 @ (1166,393): gen=1, nodes=34, genes=21, species=1
+[DEATH] Entity 8: gen=0, species=3, fitness=0.16, survived=1250 ticks
+[DEATH] Entity 62: gen=0, species=3, fitness=0.16, survived=1253 ticks
+[DEATH] Entity 54: gen=0, species=1, fitness=0.16, survived=1271 ticks
+[BIRTH] Entity 37 @ (268,235): gen=2, nodes=34, genes=151, species=3 [SPECIATED: 7->3]
+[DEATH] Entity 37: gen=2, species=3, fitness=0.16, survived=1308 ticks
+[DEATH] Entity 73: gen=0, species=1, fitness=0.17, survived=1382 ticks
+[DEATH] Entity 85: gen=1, species=7, fitness=0.17, survived=1423 ticks
+[BIRTH] Entity 101 @ (348,251): gen=1, nodes=34, genes=45, species=8 [SPECIATED: 7->8]
+[DEATH] Entity 29: gen=1, species=1, fitness=0.17, survived=1432 ticks
+[BIRTH] Entity 42 @ (-1,507): gen=1, nodes=34, genes=21, species=1
+[DEATH] Entity 83: gen=0, species=1, fitness=0.17, survived=1451 ticks
+[BIRTH] Entity 9 @ (341,226): gen=2, nodes=34, genes=44, species=2 [SPECIATED: 7->2]
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 1500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 30 | Best Fitness: 1.72
+║ Total Offspring: 25 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 30
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=146.3, min=17, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 19 members, age=0, stale=0, fit=1.7, offspring=10
+║   #2: Species 2 - 4 members, age=0, stale=0, fit=1.6, offspring=1
+║   #3: Species 7 - 4 members, age=0, stale=0, fit=1.3, offspring=11
+║   #4: Species 3 - 1 members, age=0, stale=0, fit=1.2, offspring=3
+║   #5: Species 4 - 1 members, age=0, stale=0, fit=1.1, offspring=0
+║   #6: Species 8 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+║   #7: Species 5 - 0 members, age=0, stale=0, fit=0.6, offspring=0
+║   #8: Species 6 - 0 members, age=0, stale=0, fit=0.1, offspring=0
+║   #9: Species 9 - 0 members, age=0, stale=0, fit=0.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 42 @ (26,480) v=(0.6,-0.4) spd=0.7 mode=SURVIVE: species=1, gen=1, cells=16, energy=89/929
+║   Entity 65 @ (377,252) v=(0.4,0.3) spd=0.5 mode=SURVIVE: species=7, gen=0, cells=12, energy=442/713
+║   Entity 102 @ (413,278) v=(0.5,0.3) spd=0.6 mode=SURVIVE: species=7, gen=1, cells=6, energy=13/579
+║   Entity 7 @ (49,469) v=(0.8,-0.2) spd=0.8 mode=SURVIVE: species=1, gen=0, cells=12, energy=701/767
+║   Entity 72 @ (1279,499) v=(0.6,0.0) spd=0.6 mode=SURVIVE: species=1, gen=1, cells=16, energy=344/1031
+║   Entity 71 @ (399,269) v=(0.5,0.3) spd=0.6 mode=SURVIVE: species=7, gen=2, cells=9, energy=20/564
+║   Entity 13 @ (303,212) v=(1.0,-0.1) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=192/307
+║   Entity 14 @ (1143,368) v=(0.3,0.4) spd=0.5 mode=BREED: species=1, gen=0, cells=1, energy=111/150
+║   Entity 64 @ (1105,330) v=(0.7,0.4) spd=0.8 mode=BREED: species=2, gen=0, cells=4, energy=160/360
+║   Entity 16 @ (952,347) v=(0.7,-0.6) spd=0.9 mode=SURVIVE: species=3, gen=0, cells=5, energy=65/468
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 97: gen=1, species=1, fitness=0.18, survived=1531 ticks
+[DEATH] Entity 51: gen=0, species=1, fitness=0.18, survived=1546 ticks
+[DEATH] Entity 32: gen=0, species=1, fitness=0.18, survived=1568 ticks
+[BIRTH] Entity 41 @ (38,464): gen=2, nodes=34, genes=21, species=1
+[BIRTH] Entity 31 @ (435,271): gen=1, nodes=34, genes=91, species=7
+[DEATH] Entity 61: gen=0, species=1, fitness=0.19, survived=1741 ticks
+[BIRTH] Entity 57 @ (152,423): gen=2, nodes=34, genes=21, species=1
+[DEATH] Entity 42: gen=1, species=1, fitness=0.20, survived=1802 ticks
+[BIRTH] Entity 98 @ (543,265): gen=1, nodes=34, genes=64, species=7
+[DEATH] Entity 102: gen=1, species=7, fitness=0.20, survived=1847 ticks
+[DEATH] Entity 9: gen=2, species=2, fitness=0.20, survived=1852 ticks
+[DEATH] Entity 71: gen=2, species=7, fitness=0.21, survived=1938 ticks
+[DEATH] Entity 41: gen=2, species=1, fitness=0.21, survived=1945 ticks
+[BIRTH] Entity 37 @ (612,206): gen=1, nodes=34, genes=32, species=1 [SPECIATED: 7->1]
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 2000 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 26 | Best Fitness: 2.06
+║ Total Offspring: 30 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 26
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=142.0, min=17, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 16 members, age=0, stale=0, fit=2.1, offspring=12
+║   #2: Species 7 - 4 members, age=0, stale=0, fit=1.3, offspring=14
+║   #3: Species 2 - 3 members, age=0, stale=0, fit=2.1, offspring=1
+║   #4: Species 3 - 1 members, age=0, stale=0, fit=1.2, offspring=3
+║   #5: Species 4 - 1 members, age=0, stale=0, fit=1.3, offspring=0
+║   #6: Species 8 - 1 members, age=0, stale=0, fit=0.5, offspring=0
+║   #7: Species 5 - 0 members, age=0, stale=0, fit=0.6, offspring=0
+║   #8: Species 6 - 0 members, age=0, stale=0, fit=0.1, offspring=0
+║   #9: Species 9 - 0 members, age=0, stale=0, fit=0.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 91 @ (1150,369) v=(0.4,0.5) spd=0.6 mode=SURVIVE: species=1, gen=1, cells=16, energy=53/1120
+║   Entity 65 @ (615,212) v=(0.5,-0.1) spd=0.5 mode=SURVIVE: species=7, gen=0, cells=15, energy=214/866
+║   Entity 7 @ (317,200) v=(0.8,0.1) spd=0.8 mode=BREED: species=1, gen=0, cells=15, energy=565/930
+║   Entity 98 @ (668,209) v=(0.8,0.1) spd=0.8 mode=SURVIVE: species=7, gen=1, cells=16, energy=33/1183
+║   Entity 72 @ (232,312) v=(0.1,-0.6) spd=0.6 mode=BREED: species=1, gen=1, cells=16, energy=388/1031
+║   Entity 37 @ (636,205) v=(0.7,-0.0) spd=0.7 mode=SURVIVE: species=1, gen=1, cells=12, energy=96/888
+║   Entity 13 @ (761,246) v=(0.8,0.6) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=190/307
+║   Entity 14 @ (54,476) v=(0.5,-0.1) spd=0.5 mode=BREED: species=1, gen=0, cells=1, energy=109/150
+║   Entity 64 @ (143,441) v=(0.7,-0.4) spd=0.8 mode=BREED: species=2, gen=0, cells=4, energy=153/360
+║   Entity 16 @ (42,480) v=(0.9,-0.3) spd=0.9 mode=SURVIVE: species=3, gen=0, cells=5, energy=36/468
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 31: gen=1, species=7, fitness=0.21, survived=2012 ticks
+[DEATH] Entity 95: gen=1, species=1, fitness=0.21, survived=2031 ticks
+[BIRTH] Entity 83 @ (229,266): gen=2, nodes=34, genes=21, species=1
+[DEATH] Entity 57: gen=2, species=1, fitness=0.22, survived=2126 ticks
+[DEATH] Entity 43: gen=0, species=2, fitness=0.22, survived=2146 ticks
+[DEATH] Entity 100: gen=1, species=7, fitness=0.22, survived=2169 ticks
+[DEATH] Entity 98: gen=1, species=7, fitness=0.22, survived=2171 ticks
+[DEATH] Entity 16: gen=0, species=3, fitness=0.23, survived=2271 ticks
+[DEATH] Entity 101: gen=1, species=8, fitness=0.23, survived=2295 ticks
+[DEATH] Entity 53: gen=0, species=1, fitness=0.24, survived=2438 ticks
+[DEATH] Entity 83: gen=2, species=1, fitness=0.24, survived=2461 ticks
+[DEATH] Entity 26: gen=0, species=1, fitness=0.24, survived=2477 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 2500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 16 | Best Fitness: 2.35
+║ Total Offspring: 31 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 16
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=147.3, min=17, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 12 members, age=0, stale=0, fit=2.3, offspring=13
+║   #2: Species 2 - 2 members, age=0, stale=0, fit=2.3, offspring=1
+║   #3: Species 4 - 1 members, age=0, stale=0, fit=1.5, offspring=0
+║   #4: Species 7 - 1 members, age=0, stale=0, fit=1.3, offspring=14
+║   #5: Species 3 - 0 members, age=0, stale=0, fit=1.2, offspring=3
+║   #6: Species 5 - 0 members, age=0, stale=0, fit=0.6, offspring=0
+║   #7: Species 6 - 0 members, age=0, stale=0, fit=0.1, offspring=0
+║   #8: Species 8 - 0 members, age=0, stale=0, fit=0.5, offspring=0
+║   #9: Species 9 - 0 members, age=0, stale=0, fit=0.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 55 @ (418,662) v=(-0.1,0.1) spd=0.2 mode=BREED: species=1, gen=0, cells=4, energy=181/419
+║   Entity 91 @ (110,464) v=(0.6,-0.2) spd=0.6 mode=SURVIVE: species=1, gen=1, cells=16, energy=18/1120
+║   Entity 65 @ (856,305) v=(0.5,0.2) spd=0.5 mode=SURVIVE: species=7, gen=0, cells=16, energy=44/917
+║   Entity 7 @ (699,196) v=(0.8,0.1) spd=0.8 mode=BREED: species=1, gen=0, cells=16, energy=405/989
+║   Entity 39 @ (189,410) v=(0.5,-0.5) spd=0.7 mode=BREED: species=1, gen=0, cells=4, energy=134/327
+║   Entity 72 @ (457,252) v=(0.6,0.0) spd=0.6 mode=SURVIVE: species=1, gen=1, cells=16, energy=218/1031
+║   Entity 37 @ (969,314) v=(0.7,-0.1) spd=0.7 mode=SURVIVE: species=1, gen=1, cells=12, energy=38/888
+║   Entity 13 @ (1189,423) v=(0.5,0.8) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=187/307
+║   Entity 14 @ (231,315) v=(0.0,-0.5) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=35/150
+║   Entity 64 @ (383,217) v=(0.7,0.4) spd=0.8 mode=SURVIVE: species=2, gen=0, cells=4, energy=141/360
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 67: gen=0, species=1, fitness=0.25, survived=2563 ticks
+[DEATH] Entity 91: gen=1, species=1, fitness=0.26, survived=2761 ticks
+[DEATH] Entity 64: gen=0, species=2, fitness=0.26, survived=2823 ticks
+[DEATH] Entity 37: gen=1, species=1, fitness=0.26, survived=2834 ticks
+[DEATH] Entity 65: gen=0, species=7, fitness=0.27, survived=2934 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 3000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 3 | Total Members: 11 | Best Fitness: 2.61
+║ Total Offspring: 14 | Avg Staleness: 1.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 11
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=175.2, min=21, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 9 members, age=1, stale=1, fit=2.6, offspring=13
+║   #2: Species 2 - 1 members, age=1, stale=1, fit=2.5, offspring=1
+║   #3: Species 4 - 1 members, age=1, stale=1, fit=1.6, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 55 @ (417,670) v=(-0.2,0.8) spd=0.8 mode=BREED: species=1, gen=0, cells=4, energy=177/419
+║   Entity 27 @ (322,152) v=(1.4,0.1) spd=1.4 mode=BREED: species=1, gen=0, cells=4, energy=177/390
+║   Entity 7 @ (1078,312) v=(0.8,0.2) spd=0.8 mode=SURVIVE: species=1, gen=0, cells=16, energy=214/989
+║   Entity 78 @ (480,232) v=(1.1,-0.1) spd=1.1 mode=BREED: species=2, gen=0, cells=5, energy=357/379
+║   Entity 39 @ (387,198) v=(0.6,0.4) spd=0.7 mode=SURVIVE: species=1, gen=0, cells=4, energy=122/327
+║   Entity 72 @ (761,195) v=(0.6,0.2) spd=0.6 mode=SURVIVE: species=1, gen=1, cells=16, energy=27/1031
+║   Entity 52 @ (1088,316) v=(0.6,0.2) spd=0.6 mode=BREED: species=1, gen=0, cells=2, energy=197/219
+║   Entity 13 @ (237,252) v=(0.1,-1.0) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=185/307
+║   Entity 14 @ (385,200) v=(0.4,0.2) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=34/150
+║   Entity 89 @ (800,222) v=(0.7,0.7) spd=1.0 mode=BREED: species=1, gen=1, cells=16, energy=529/1173
+╚══════════════════════════════════════════════════════════════════╝
+
+[BIRTH] Entity 83 @ (1140,320): gen=1, nodes=34, genes=21, species=1
+[DEATH] Entity 72: gen=1, species=1, fitness=0.28, survived=3133 ticks
+[DEATH] Entity 14: gen=0, species=1, fitness=0.63, survived=3210 ticks
+[BIRTH] Entity 91 @ (21,490): gen=1, nodes=34, genes=21, species=1
+[DEATH] Entity 83: gen=1, species=1, fitness=0.29, survived=3427 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 3500 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 3 | Total Members: 10 | Best Fitness: 2.82
+║ Total Offspring: 16 | Avg Staleness: 0.3
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 10
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=163.2, min=21, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 8 members, age=1, stale=1, fit=2.6, offspring=15
+║   #2: Species 2 - 1 members, age=1, stale=0, fit=2.8, offspring=1
+║   #3: Species 4 - 1 members, age=1, stale=0, fit=1.8, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 55 @ (414,659) v=(-0.0,0.8) spd=0.8 mode=BREED: species=1, gen=0, cells=4, energy=173/419
+║   Entity 75 @ (773,180) v=(0.4,0.2) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=3/150
+║   Entity 27 @ (945,312) v=(1.4,0.2) spd=1.4 mode=BREED: species=1, gen=0, cells=4, energy=173/390
+║   Entity 7 @ (129,465) v=(0.7,-0.3) spd=0.8 mode=SURVIVE: species=1, gen=0, cells=16, energy=191/989
+║   Entity 78 @ (979,313) v=(1.1,0.0) spd=1.1 mode=BREED: species=2, gen=0, cells=5, energy=362/379
+║   Entity 39 @ (745,167) v=(0.7,0.1) spd=0.7 mode=SURVIVE: species=1, gen=0, cells=4, energy=109/327
+║   Entity 89 @ (1216,443) v=(0.6,0.7) spd=1.0 mode=BREED: species=1, gen=1, cells=16, energy=607/1173
+║   Entity 52 @ (47,492) v=(0.6,-0.1) spd=0.6 mode=SURVIVE: species=1, gen=0, cells=2, energy=0/219
+║   Entity 13 @ (670,164) v=(1.0,-0.1) spd=1.0 mode=BREED: species=4, gen=0, cells=4, energy=182/307
+║   Entity 91 @ (80,483) v=(0.5,-0.1) spd=0.5 mode=SURVIVE: species=1, gen=1, cells=16, energy=76/1075
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 52: gen=0, species=1, fitness=0.30, survived=3643 ticks
+[DEATH] Entity 91: gen=1, species=1, fitness=0.31, survived=3722 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 4000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 3 | Total Members: 8 | Best Fitness: 3.14
+║ Total Offspring: 16 | Avg Staleness: 0.3
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 8
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=181.9, min=21, max=328
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 6 members, age=1, stale=1, fit=2.6, offspring=15
+║   #2: Species 2 - 1 members, age=1, stale=0, fit=3.1, offspring=1
+║   #3: Species 4 - 1 members, age=1, stale=0, fit=2.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 55 @ (405,681) v=(0.0,0.6) spd=0.6 mode=BREED: species=1, gen=0, cells=2, energy=170/259
+║   Entity 75 @ (983,317) v=(0.5,0.1) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=1/150
+║   Entity 27 @ (256,353) v=(0.4,-1.4) spd=1.5 mode=BREED: species=1, gen=0, cells=3, energy=169/319
+║   Entity 7 @ (297,122) v=(0.7,-0.3) spd=0.8 mode=SURVIVE: species=1, gen=0, cells=16, energy=2/987
+║   Entity 78 @ (151,458) v=(0.9,-0.4) spd=1.0 mode=BREED: species=2, gen=0, cells=4, energy=319/325
+║   Entity 39 @ (1023,320) v=(0.6,0.0) spd=0.6 mode=SURVIVE: species=1, gen=0, cells=4, energy=63/327
+║   Entity 13 @ (1165,372) v=(0.8,0.8) spd=1.1 mode=BREED: species=4, gen=0, cells=3, energy=180/255
+║   Entity 89 @ (243,240) v=(-0.1,-1.0) spd=1.0 mode=BREED: species=1, gen=1, cells=14, energy=545/1037
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 7: gen=0, species=1, fitness=0.32, survived=4009 ticks
+[DEATH] Entity 13: gen=0, species=4, fitness=3.26, survived=4144 ticks
+[DEATH] Entity 55: gen=0, species=1, fitness=3.08, survived=4150 ticks
+[DEATH] Entity 75: gen=0, species=1, fitness=0.33, survived=4156 ticks
+[DEATH] Entity 27: gen=0, species=1, fitness=3.19, survived=4402 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 4500 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 3 | Total Members: 3 | Best Fitness: 3.43
+║ Total Offspring: 16 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 3
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=188.3, min=86, max=295
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 2 members, age=1, stale=0, fit=3.2, offspring=15
+║   #2: Species 2 - 1 members, age=1, stale=0, fit=3.4, offspring=1
+║   #3: Species 4 - 0 members, age=1, stale=0, fit=3.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 89 @ (636,145) v=(1.0,-0.2) spd=1.0 mode=BREED: species=1, gen=1, cells=7, energy=502/577
+║   Entity 78 @ (262,123) v=(0.2,-0.4) spd=0.5 mode=BREED: species=2, gen=0, cells=1, energy=152/152
+║   Entity 39 @ (1265,455) v=(0.4,0.3) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=51/154
+╚══════════════════════════════════════════════════════════════════╝
+
+[DEATH] Entity 89: gen=1, species=1, fitness=3.52, survived=4764 ticks
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 5000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 3 | Total Members: 2 | Best Fitness: 3.52
+║ Total Offspring: 16 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 2
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=239.5, min=184, max=295
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 1 - 1 members, age=1, stale=0, fit=3.5, offspring=15
+║   #2: Species 2 - 1 members, age=1, stale=0, fit=3.5, offspring=1
+║   #3: Species 4 - 0 members, age=1, stale=0, fit=3.3, offspring=0
+╠══════════════════════════════════════════════════════════════════╣
+║ DETAILED ORGANISM DATA (sample of 10):
+║   Entity 39 @ (224,442) v=(0.5,-0.1) spd=0.5 mode=SURVIVE: species=1, gen=0, cells=1, energy=46/154
+║   Entity 78 @ (482,151) v=(0.5,0.1) spd=0.5 mode=BREED: species=2, gen=0, cells=1, energy=147/152
+╚══════════════════════════════════════════════════════════════════╝
+
+Reached max ticks (5000), stopping.
+
+Simulation complete.
+  Total ticks: 5000
+  Elapsed time: 1.226s
+  Average: 4077 ticks/sec

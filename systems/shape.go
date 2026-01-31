@@ -42,43 +42,68 @@ func getCellBounds(cells *components.CellBuffer, onlyAlive bool) cellBounds {
 	return cellBounds{minX: minX, minY: minY, maxX: maxX, maxY: maxY, valid: found}
 }
 
-// CalculateShapeMetrics computes physical shape characteristics from an organism's cells.
-// These metrics influence drag, flow resistance, and movement efficiency.
+// CalculateShapeMetrics computes drag from the organism's actual frontal profile.
+// Y+ is the forward direction (heading). Drag is based on:
+// - Frontal area: cells at the leading edge (highest Y)
+// - Body length: extent in Y direction
+// - Taper: whether front is narrower than the widest point
+//
+// A fish shape (narrow front, long body) has low drag ~0.2-0.4
+// A flat plate (wide front, short body) has high drag ~1.0+
 func CalculateShapeMetrics(cells *components.CellBuffer) components.ShapeMetrics {
+	if cells.Count == 0 {
+		return components.ShapeMetrics{Drag: 1.0}
+	}
+
 	bounds := getCellBounds(cells, false)
 	if !bounds.valid {
-		return components.ShapeMetrics{
-			AspectRatio:     1.0,
-			CrossSection:    1.0,
-			Streamlining:    0.0,
-			DragCoefficient: 1.0,
+		return components.ShapeMetrics{Drag: 1.0}
+	}
+
+	// Count cells at each Y level to analyze frontal profile
+	// Y+ is forward, so maxY is the "front" (leading edge)
+	yProfile := make(map[int8]int)
+	for i := uint8(0); i < cells.Count; i++ {
+		c := &cells.Cells[i]
+		yProfile[c.GridY]++
+	}
+
+	// Find frontal width (cells at leading edge) and max width
+	frontWidth := yProfile[bounds.maxY]
+	maxWidth := 0
+	for _, count := range yProfile {
+		if count > maxWidth {
+			maxWidth = count
 		}
 	}
 
-	width := float32(bounds.maxX - bounds.minX + 1)
-	height := float32(bounds.maxY - bounds.minY + 1)
+	// Body length in Y direction
+	length := float32(bounds.maxY - bounds.minY + 1)
 
-	// Aspect ratio (Y is forward direction)
-	aspectRatio := height / width
-	if width > height {
-		aspectRatio = 1.0 / aspectRatio // Invert if wider than tall
+	// Base drag: frontal area / length
+	// Fish: front=1, length=6 -> 1/6 = 0.17
+	// Plate: front=10, length=2 -> 10/2 = 5.0
+	baseDrag := float32(frontWidth) / length
+
+	// Taper bonus: if front is narrower than widest point, reduce drag
+	// taper=1.0 means no taper (front is as wide as body)
+	// taper=0.5 means front is half as wide as widest point
+	taper := float32(1.0)
+	if maxWidth > 0 {
+		taper = float32(frontWidth) / float32(maxWidth)
 	}
 
-	// Density (how filled the bounding box is)
-	area := width * height
-	density := float32(cells.Count) / area
+	// Final drag: base * taper factor
+	// Good taper (0.3) reduces drag significantly
+	// No taper (1.0) keeps full drag
+	drag := baseDrag * (0.3 + taper*0.7)
 
-	// Streamlining: high aspect + moderate density = streamlined
-	streamlining := clampFloat((aspectRatio-1.0)/3.0, 0, 1) * (1 - density*0.3)
-
-	// Drag coefficient: 0.3 (fish) to 1.0 (flat plate)
-	dragCoeff := 1.0 - streamlining*0.7
-
+	// Clamp to reasonable range
+	// 0.2 = very streamlined (long thin fish)
+	// 1.0 = neutral (square-ish)
+	// 2.0+ = very draggy (wide flat plate)
 	return components.ShapeMetrics{
-		AspectRatio:     aspectRatio,
-		CrossSection:    width,
-		Streamlining:    streamlining,
-		DragCoefficient: dragCoeff,
+		Drag: clampFloat(drag, 0.2, 3.0),
 	}
 }
 

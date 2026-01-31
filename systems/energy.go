@@ -8,20 +8,40 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
-// Energy system constants
+// Energy system constants - REDESIGNED for brain-output-driven costs
 const (
-	photoMaxOffset    = 0.80  // Photosynthesis can offset max 80% of base drain
-	photoRate         = 0.10  // Energy per light per photosynthetic weight
-	massScaleExponent = 0.70  // Mass factor for movement cost (cells^0.7)
-	movementCostBase  = 1.50  // Base multiplier for thrust cost
-	armorDragPenalty  = 0.40  // 40% more movement cost at full armor
+	// Base metabolism (low - resting is efficient)
+	baseMetabolismPerCell = 0.0005 // Low drain when doing nothing
+
+	// Brain output costs - MINIMAL pressure
+	// Intent costs are very light - the main pressure is movement and feeding success
+	eatIntentCost   = 0.00005 // Minimal - eating is core survival
+	breedIntentCost = 0.00010 // Minimal - breeding is core to evolution
+	glowIntentCost  = 0.00050 // Slightly higher - glow is optional luxury
+	// Note: GrowIntent removed - fauna no longer grow, evolution via breeding only
+
+	// Movement costs - PRIMARY selective pressure
+	// These should be the main energy sink for active organisms
+	movementCostBase  = 0.0015 // Cost per unit of DesireDistance (urgency)
+	turnCostBase      = 0.0008 // Cost for turning (changing direction)
+	thrustCostBase    = 0.0020 // Cost for actual thrust/speed
+	massScaleExponent = 0.40   // Larger organisms pay more to move
+
+	// Photosynthesis - helps organisms with photo cells survive
+	photoMaxOffset = 0.95 // Photosynthesis can offset up to 95% of base drain
+	photoRate      = 0.12 // Energy per light per photosynthetic weight (increased)
+
+	// Energy capacity
+	baseEnergy        = 100.0 // Minimum energy capacity
 	baseEnergyPerCell = 50.0  // Base energy capacity per cell
 	storageBonus      = 30.0  // Bonus energy per cell at full storage
-	baseEnergy        = 100.0 // Minimum energy capacity
+
+	// Armor penalty
+	armorDragPenalty = 0.30 // 30% more movement cost at full armor
 )
 
-// EnergySystem handles organism energy updates.
-// All ECS organisms are fauna - flora are managed separately by FloraSystem.
+// EnergySystem handles organism energy updates with brain-output-driven costs.
+// This creates evolutionary pressure for efficient, context-sensitive behavior.
 type EnergySystem struct {
 	filter    ecs.Filter3[components.Position, components.Organism, components.CellBuffer]
 	shadowMap *ShadowMap
@@ -35,75 +55,109 @@ func NewEnergySystem(w *ecs.World, shadowMap *ShadowMap) *EnergySystem {
 	}
 }
 
-// Update runs the energy system.
+// Update runs the energy system with brain-output-driven costs.
 func (s *EnergySystem) Update(w *ecs.World) {
 	query := s.filter.Query()
 	for query.Next() {
 		pos, org, cells := query.Get()
 
-		// Compute capabilities once for this organism
-		caps := cells.ComputeCapabilities()
-
-		// Class-based speed and energy drain based on cell count
-		// Key insight: Base drain is LOW (resting is efficient for all sizes)
-		// Activity cost scales with mass (moving is expensive for large organisms)
-		cellCount := int(cells.Count)
-		var baseSpeed, baseDrain float32
-
-		switch {
-		case cellCount <= 3: // Drifters: small, efficient, fast for size
-			baseDrain = 0.002 + 0.0005*float32(cellCount)
-			baseSpeed = 0.5 + org.ShapeMetrics.Streamlining*0.2
-
-		case cellCount <= 10: // Generalists: balanced metabolism
-			penalty := float32(cellCount-1) * 0.08
-			baseDrain = 0.003 + 0.0008*float32(cellCount)
-			baseSpeed = float32(max(0.8, 2.0-float64(penalty))) * (0.8 + org.ShapeMetrics.Streamlining*0.4)
-
-		default: // Apex: low resting metabolism, high activity cost (applied below)
-			penalty := float32(cellCount-1) * 0.04
-			baseDrain = 0.004 + 0.0006*float32(cellCount) // Lower base than before
-			baseSpeed = float32(max(0.6, 1.4-float64(penalty))) * (0.7 + org.ShapeMetrics.Streamlining*0.5)
+		if org.Dead {
+			continue
 		}
 
-		energyDrain := baseDrain
-		org.MaxSpeed = baseSpeed
+		// Compute capabilities once
+		caps := cells.ComputeCapabilities()
+		cellCount := float32(cells.Count)
 
-		// Fauna photosynthesis: organisms with photosynthetic cells can offset energy drain
+		// === BASE METABOLISM ===
+		// Very low - resting is efficient for all organisms
+		baseDrain := baseMetabolismPerCell * cellCount
+
+		// === BRAIN OUTPUT COSTS ===
+		// These create selective pressure - maxing outputs is expensive
+		intentCost := float32(0.0)
+
+		// Eat intent cost - "hunting mode" uses energy for active sensing, digestion prep
+		// Scaled by intensity: low intent = low cost, high intent = high cost
+		intentCost += org.EatIntent * eatIntentCost * cellCount
+
+		// Breed intent cost - reproductive readiness requires energy
+		intentCost += org.BreedIntent * breedIntentCost * cellCount
+
+		// Glow intent cost - bioluminescence is expensive
+		// Note: GrowIntent removed - fauna born with their cells, evolution via breeding
+		intentCost += org.GlowIntent * glowIntentCost * cellCount
+
+		// === MOVEMENT COSTS ===
+		// Larger organisms pay exponentially more to move
+		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
+		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
+
+		// Movement urgency cost (DesireDistance) - wanting to move fast costs energy
+		movementCost := org.DesireDistance * movementCostBase * massFactor * armorPen
+
+		// Turning cost - changing direction takes energy
+		turnCost := float32(math.Abs(float64(org.TurnOutput))) * turnCostBase * massFactor
+
+		// Thrust cost - actual movement (from physics integration)
+		// High drag = more energy to move
+		thrustCost := org.ActiveThrust * thrustCostBase * massFactor * armorPen * org.ShapeMetrics.Drag
+		org.ActiveThrust = 0 // Reset for next tick
+
+		// === PHOTOSYNTHESIS OFFSET ===
+		// Can offset most of base drain but not activity costs
+		photoOffset := float32(0.0)
 		if caps.PhotoWeight > 0 && s.shadowMap != nil {
 			light := s.shadowMap.SampleLight(pos.X, pos.Y)
 			photoEnergy := photoRate * light * caps.PhotoWeight
-			// Cap photosynthesis (can't fully sustain on light alone)
-			maxOffset := energyDrain * photoMaxOffset
+			// Cap at fraction of base drain only
+			maxOffset := baseDrain * photoMaxOffset
 			if photoEnergy > maxOffset {
 				photoEnergy = maxOffset
 			}
-			energyDrain -= photoEnergy
+			photoOffset = photoEnergy
 		}
 
-		// Movement cost: active thrust x drag x mass factor x armor penalty
-		// Larger organisms pay more to move - hunting is expensive for apex predators
-		massFactor := float32(math.Pow(float64(cells.Count), massScaleExponent))
-		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
-		thrustCost := org.ActiveThrust * org.ShapeMetrics.DragCoefficient * movementCostBase * massFactor * armorPen
-		energyDrain += thrustCost
-		org.ActiveThrust = 0
+		// === TOTAL ENERGY DRAIN ===
+		totalDrain := baseDrain + intentCost + movementCost + turnCost + thrustCost - photoOffset
 
-		org.Energy -= energyDrain
+		// Minimum drain (can't gain energy from just photosynthesis without feeding)
+		if totalDrain < 0.0001 {
+			totalDrain = 0.0001
+		}
+
+		org.Energy -= totalDrain
+
+		// Cap energy at max
 		if org.Energy > org.MaxEnergy {
 			org.Energy = org.MaxEnergy
 		}
 
+		// Death check
 		if org.Energy <= 0 {
 			org.Dead = true
 		}
 
+		// Update breeding cooldown
 		if org.BreedingCooldown > 0 {
 			org.BreedingCooldown--
 		}
 
-		// Update max energy based on cell count and storage capacity
-		cellCountF := float32(cellCount)
-		org.MaxEnergy = baseEnergy + cellCountF*baseEnergyPerCell + caps.StorageCapacity*cellCountF*storageBonus
+		// Decay "being eaten" awareness (fades over ~10 ticks)
+		if org.BeingEaten > 0 {
+			org.BeingEaten *= 0.85 // Decay factor
+			if org.BeingEaten < 0.01 {
+				org.BeingEaten = 0
+			}
+		}
+
+		// Update max energy based on cell count and storage
+		org.MaxEnergy = baseEnergy + cellCount*baseEnergyPerCell + caps.StorageCapacity*cellCount*storageBonus
+
+		// Update max speed based on size and drag
+		// Smaller organisms are faster, low drag = faster
+		speedPenalty := float32(math.Pow(float64(cellCount), 0.3)) * 0.1
+		dragFactor := 1.2 - org.ShapeMetrics.Drag*0.5 // Low drag (0.2) = 1.1x, High drag (1.0) = 0.7x
+		org.MaxSpeed = float32(math.Max(0.5, 1.5-float64(speedPenalty))) * dragFactor
 	}
 }

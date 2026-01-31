@@ -1,0 +1,446 @@
+Starting headless simulation (GPU compute enabled)...
+  Speed: 10x, Max ticks: 10000
+  Neural logging: enabled (detail=false)
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 8 | Total Members: 96 | Best Fitness: 0.82
+║ Total Offspring: 14 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 96
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=164.6, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 45 members, age=0, stale=0, fit=0.8, offspring=11
+║   #2: Species 1 - 14 members, age=0, stale=0, fit=0.7, offspring=1
+║   #3: Species 4 - 14 members, age=0, stale=0, fit=0.8, offspring=2
+║   #4: Species 5 - 9 members, age=0, stale=0, fit=0.8, offspring=0
+║   #5: Species 3 - 6 members, age=0, stale=0, fit=0.5, offspring=0
+║   #6: Species 6 - 4 members, age=0, stale=0, fit=0.8, offspring=0
+║   #7: Species 7 - 3 members, age=0, stale=0, fit=0.5, offspring=0
+║   #8: Species 8 - 1 members, age=0, stale=0, fit=0.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 1000 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 88 | Best Fitness: 1.35
+║ Total Offspring: 29 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 88
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=148.5, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 43 members, age=0, stale=0, fit=1.3, offspring=23
+║   #2: Species 4 - 14 members, age=0, stale=0, fit=1.3, offspring=2
+║   #3: Species 1 - 10 members, age=0, stale=0, fit=1.3, offspring=4
+║   #4: Species 3 - 7 members, age=0, stale=0, fit=0.8, offspring=0
+║   #5: Species 5 - 4 members, age=0, stale=0, fit=1.3, offspring=0
+║   #6: Species 6 - 4 members, age=0, stale=0, fit=1.3, offspring=0
+║   #7: Species 7 - 3 members, age=0, stale=0, fit=0.9, offspring=0
+║   #8: Species 8 - 2 members, age=0, stale=0, fit=0.7, offspring=0
+║   #9: Species 9 - 1 members, age=0, stale=0, fit=1.3, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 1500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 83 | Best Fitness: 1.76
+║ Total Offspring: 42 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 83
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=145.2, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 36 members, age=0, stale=0, fit=1.8, offspring=30
+║   #2: Species 1 - 13 members, age=0, stale=0, fit=1.7, offspring=7
+║   #3: Species 4 - 13 members, age=0, stale=0, fit=1.8, offspring=4
+║   #4: Species 3 - 7 members, age=0, stale=0, fit=1.0, offspring=0
+║   #5: Species 6 - 5 members, age=0, stale=0, fit=1.8, offspring=0
+║   #6: Species 5 - 3 members, age=0, stale=0, fit=1.7, offspring=0
+║   #7: Species 7 - 3 members, age=0, stale=0, fit=1.0, offspring=0
+║   #8: Species 8 - 2 members, age=0, stale=0, fit=0.7, offspring=0
+║   #9: Species 9 - 1 members, age=0, stale=0, fit=1.7, offspring=1
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 2000 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 78 | Best Fitness: 2.11
+║ Total Offspring: 55 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 78
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=141.2, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 34 members, age=0, stale=0, fit=2.1, offspring=37
+║   #2: Species 1 - 13 members, age=0, stale=0, fit=2.1, offspring=9
+║   #3: Species 4 - 12 members, age=0, stale=0, fit=2.1, offspring=5
+║   #4: Species 3 - 5 members, age=0, stale=0, fit=2.0, offspring=0
+║   #5: Species 6 - 5 members, age=0, stale=0, fit=2.1, offspring=0
+║   #6: Species 5 - 3 members, age=0, stale=0, fit=1.7, offspring=0
+║   #7: Species 7 - 3 members, age=0, stale=0, fit=1.2, offspring=0
+║   #8: Species 8 - 2 members, age=0, stale=0, fit=0.7, offspring=0
+║   #9: Species 9 - 1 members, age=0, stale=0, fit=1.9, offspring=4
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 2500 (Gen 0)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 9 | Total Members: 77 | Best Fitness: 2.42
+║ Total Offspring: 67 | Avg Staleness: 0.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 77
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=139.7, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 36 members, age=0, stale=0, fit=2.4, offspring=48
+║   #2: Species 4 - 12 members, age=0, stale=0, fit=2.4, offspring=6
+║   #3: Species 1 - 11 members, age=0, stale=0, fit=2.2, offspring=9
+║   #4: Species 3 - 5 members, age=0, stale=0, fit=2.4, offspring=0
+║   #5: Species 6 - 5 members, age=0, stale=0, fit=2.4, offspring=0
+║   #6: Species 5 - 4 members, age=0, stale=0, fit=1.8, offspring=0
+║   #7: Species 8 - 2 members, age=0, stale=0, fit=0.7, offspring=0
+║   #8: Species 7 - 1 members, age=0, stale=0, fit=1.2, offspring=0
+║   #9: Species 9 - 1 members, age=0, stale=0, fit=1.9, offspring=4
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 3000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 10 | Total Members: 76 | Best Fitness: 2.70
+║ Total Offspring: 79 | Avg Staleness: 1.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 76
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=146.3, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 32 members, age=1, stale=1, fit=2.7, offspring=55
+║   #2: Species 4 - 14 members, age=1, stale=1, fit=2.7, offspring=11
+║   #3: Species 1 - 11 members, age=1, stale=1, fit=2.2, offspring=9
+║   #4: Species 5 - 6 members, age=1, stale=1, fit=2.0, offspring=0
+║   #5: Species 3 - 5 members, age=1, stale=1, fit=2.7, offspring=0
+║   #6: Species 6 - 3 members, age=1, stale=1, fit=2.7, offspring=0
+║   #7: Species 8 - 2 members, age=1, stale=1, fit=0.7, offspring=0
+║   #8: Species 7 - 1 members, age=1, stale=1, fit=1.2, offspring=0
+║   #9: Species 9 - 1 members, age=1, stale=1, fit=1.9, offspring=4
+║   #10: Species 10 - 1 members, age=1, stale=1, fit=0.3, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 3500 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 11 | Total Members: 77 | Best Fitness: 2.95
+║ Total Offspring: 86 | Avg Staleness: 0.4
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 77
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=145.0, min=16, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 36 members, age=1, stale=0, fit=3.0, offspring=59
+║   #2: Species 4 - 16 members, age=1, stale=0, fit=3.0, offspring=14
+║   #3: Species 1 - 9 members, age=1, stale=1, fit=2.2, offspring=9
+║   #4: Species 5 - 5 members, age=1, stale=0, fit=2.1, offspring=0
+║   #5: Species 3 - 4 members, age=1, stale=0, fit=3.0, offspring=0
+║   #6: Species 6 - 2 members, age=1, stale=0, fit=2.9, offspring=0
+║   #7: Species 7 - 1 members, age=1, stale=1, fit=1.2, offspring=0
+║   #8: Species 8 - 1 members, age=1, stale=1, fit=0.7, offspring=0
+║   #9: Species 9 - 1 members, age=1, stale=1, fit=1.9, offspring=4
+║   #10: Species 10 - 1 members, age=1, stale=0, fit=0.3, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 4000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 11 | Total Members: 64 | Best Fitness: 3.20
+║ Total Offspring: 98 | Avg Staleness: 0.2
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 64
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=144.9, min=21, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 30 members, age=1, stale=0, fit=3.2, offspring=66
+║   #2: Species 4 - 16 members, age=1, stale=0, fit=3.2, offspring=19
+║   #3: Species 1 - 8 members, age=1, stale=0, fit=2.9, offspring=9
+║   #4: Species 3 - 3 members, age=1, stale=0, fit=3.0, offspring=0
+║   #5: Species 5 - 2 members, age=1, stale=0, fit=2.9, offspring=0
+║   #6: Species 6 - 1 members, age=1, stale=0, fit=3.2, offspring=0
+║   #7: Species 8 - 1 members, age=1, stale=1, fit=0.7, offspring=0
+║   #8: Species 9 - 1 members, age=1, stale=1, fit=1.9, offspring=4
+║   #9: Species 10 - 1 members, age=1, stale=0, fit=0.3, offspring=0
+║   #10: Species 11 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 4500 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 11 | Total Members: 45 | Best Fitness: 4.42
+║ Total Offspring: 105 | Avg Staleness: 0.2
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 45
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=159.0, min=21, max=339
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 21 members, age=1, stale=0, fit=4.4, offspring=70
+║   #2: Species 4 - 12 members, age=1, stale=0, fit=3.4, offspring=22
+║   #3: Species 1 - 5 members, age=1, stale=0, fit=3.3, offspring=9
+║   #4: Species 5 - 2 members, age=1, stale=0, fit=2.9, offspring=0
+║   #5: Species 3 - 1 members, age=1, stale=0, fit=3.3, offspring=0
+║   #6: Species 6 - 1 members, age=1, stale=0, fit=3.4, offspring=0
+║   #7: Species 8 - 1 members, age=1, stale=1, fit=0.7, offspring=0
+║   #8: Species 10 - 1 members, age=1, stale=0, fit=0.3, offspring=0
+║   #9: Species 11 - 1 members, age=0, stale=0, fit=0.3, offspring=0
+║   #10: Species 7 - 0 members, age=1, stale=0, fit=2.3, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 5000 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 11 | Total Members: 41 | Best Fitness: 4.42
+║ Total Offspring: 113 | Avg Staleness: 0.2
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 41
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=148.8, min=21, max=305
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 19 members, age=1, stale=0, fit=4.4, offspring=75
+║   #2: Species 4 - 13 members, age=1, stale=0, fit=3.5, offspring=25
+║   #3: Species 1 - 4 members, age=1, stale=0, fit=3.3, offspring=9
+║   #4: Species 3 - 1 members, age=1, stale=0, fit=3.3, offspring=0
+║   #5: Species 5 - 1 members, age=1, stale=0, fit=2.9, offspring=0
+║   #6: Species 6 - 1 members, age=1, stale=0, fit=3.4, offspring=0
+║   #7: Species 8 - 1 members, age=1, stale=1, fit=0.7, offspring=0
+║   #8: Species 11 - 1 members, age=0, stale=0, fit=1.0, offspring=0
+║   #9: Species 7 - 0 members, age=1, stale=0, fit=2.3, offspring=0
+║   #10: Species 9 - 0 members, age=1, stale=1, fit=1.9, offspring=4
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 5500 (Gen 1)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 11 | Total Members: 35 | Best Fitness: 4.42
+║ Total Offspring: 116 | Avg Staleness: 0.2
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 35
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=162.3, min=21, max=309
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 15 members, age=1, stale=0, fit=4.4, offspring=78
+║   #2: Species 4 - 11 members, age=1, stale=0, fit=3.5, offspring=25
+║   #3: Species 1 - 5 members, age=1, stale=0, fit=3.3, offspring=9
+║   #4: Species 3 - 1 members, age=1, stale=0, fit=3.3, offspring=0
+║   #5: Species 5 - 1 members, age=1, stale=0, fit=2.9, offspring=0
+║   #6: Species 6 - 1 members, age=1, stale=0, fit=3.4, offspring=0
+║   #7: Species 11 - 1 members, age=0, stale=0, fit=1.0, offspring=0
+║   #8: Species 7 - 0 members, age=1, stale=0, fit=2.3, offspring=0
+║   #9: Species 8 - 0 members, age=1, stale=1, fit=0.7, offspring=0
+║   #10: Species 9 - 0 members, age=1, stale=1, fit=1.9, offspring=4
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 6000 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 31 | Best Fitness: 4.42
+║ Total Offspring: 113 | Avg Staleness: 1.0
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 31
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=171.8, min=21, max=309
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 15 members, age=2, stale=1, fit=4.4, offspring=79
+║   #2: Species 4 - 10 members, age=2, stale=1, fit=3.5, offspring=25
+║   #3: Species 1 - 3 members, age=2, stale=1, fit=3.6, offspring=9
+║   #4: Species 5 - 1 members, age=2, stale=1, fit=2.9, offspring=0
+║   #5: Species 6 - 1 members, age=2, stale=1, fit=3.4, offspring=0
+║   #6: Species 11 - 1 members, age=1, stale=1, fit=1.1, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 6500 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 28 | Best Fitness: 4.42
+║ Total Offspring: 115 | Avg Staleness: 0.8
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 28
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=192.3, min=21, max=309
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 14 members, age=2, stale=1, fit=4.4, offspring=81
+║   #2: Species 4 - 9 members, age=2, stale=1, fit=3.5, offspring=25
+║   #3: Species 1 - 4 members, age=2, stale=1, fit=3.6, offspring=9
+║   #4: Species 11 - 1 members, age=1, stale=0, fit=1.1, offspring=0
+║   #5: Species 5 - 0 members, age=2, stale=1, fit=2.9, offspring=0
+║   #6: Species 6 - 0 members, age=2, stale=1, fit=3.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 7000 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 29 | Best Fitness: 4.46
+║ Total Offspring: 120 | Avg Staleness: 0.7
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 29
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=202.5, min=21, max=333
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 16 members, age=2, stale=0, fit=4.5, offspring=86
+║   #2: Species 4 - 8 members, age=2, stale=1, fit=3.5, offspring=25
+║   #3: Species 1 - 4 members, age=2, stale=1, fit=3.6, offspring=9
+║   #4: Species 11 - 1 members, age=1, stale=0, fit=1.1, offspring=0
+║   #5: Species 5 - 0 members, age=2, stale=1, fit=2.9, offspring=0
+║   #6: Species 6 - 0 members, age=2, stale=1, fit=3.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 7500 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 33 | Best Fitness: 4.52
+║ Total Offspring: 128 | Avg Staleness: 0.7
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 33
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=200.7, min=21, max=333
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 17 members, age=2, stale=0, fit=4.5, offspring=92
+║   #2: Species 4 - 8 members, age=2, stale=1, fit=3.5, offspring=26
+║   #3: Species 1 - 7 members, age=2, stale=1, fit=3.6, offspring=9
+║   #4: Species 11 - 1 members, age=1, stale=0, fit=2.5, offspring=1
+║   #5: Species 5 - 0 members, age=2, stale=1, fit=2.9, offspring=0
+║   #6: Species 6 - 0 members, age=2, stale=1, fit=3.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 8000 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 36 | Best Fitness: 4.83
+║ Total Offspring: 137 | Avg Staleness: 0.5
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 36
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=211.8, min=21, max=333
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 18 members, age=2, stale=0, fit=4.8, offspring=100
+║   #2: Species 1 - 9 members, age=2, stale=1, fit=3.6, offspring=9
+║   #3: Species 4 - 8 members, age=2, stale=0, fit=4.8, offspring=26
+║   #4: Species 11 - 1 members, age=1, stale=0, fit=4.8, offspring=2
+║   #5: Species 5 - 0 members, age=2, stale=1, fit=2.9, offspring=0
+║   #6: Species 6 - 0 members, age=2, stale=1, fit=3.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 8500 (Gen 2)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 36 | Best Fitness: 5.70
+║ Total Offspring: 144 | Avg Staleness: 0.5
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 36
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=217.2, min=21, max=336
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 16 members, age=2, stale=0, fit=5.0, offspring=106
+║   #2: Species 4 - 10 members, age=2, stale=0, fit=5.7, offspring=27
+║   #3: Species 1 - 9 members, age=2, stale=1, fit=3.6, offspring=9
+║   #4: Species 11 - 1 members, age=1, stale=0, fit=5.0, offspring=2
+║   #5: Species 5 - 0 members, age=2, stale=1, fit=2.9, offspring=0
+║   #6: Species 6 - 0 members, age=2, stale=1, fit=3.4, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 9000 (Gen 3)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 5 | Total Members: 37 | Best Fitness: 5.70
+║ Total Offspring: 148 | Avg Staleness: 1.4
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 37
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=211.2, min=21, max=336
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 17 members, age=3, stale=1, fit=5.1, offspring=110
+║   #2: Species 4 - 10 members, age=3, stale=1, fit=5.7, offspring=27
+║   #3: Species 1 - 8 members, age=3, stale=2, fit=3.6, offspring=9
+║   #4: Species 5 - 1 members, age=3, stale=2, fit=2.9, offspring=0
+║   #5: Species 11 - 1 members, age=2, stale=1, fit=5.2, offspring=2
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 9500 (Gen 3)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 5 | Total Members: 34 | Best Fitness: 5.70
+║ Total Offspring: 152 | Avg Staleness: 0.8
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 34
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=202.0, min=21, max=336
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 15 members, age=3, stale=1, fit=5.1, offspring=112
+║   #2: Species 1 - 8 members, age=3, stale=0, fit=4.4, offspring=11
+║   #3: Species 4 - 8 members, age=3, stale=1, fit=5.7, offspring=27
+║   #4: Species 11 - 2 members, age=2, stale=0, fit=5.4, offspring=2
+║   #5: Species 5 - 1 members, age=3, stale=2, fit=2.9, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║ NEURAL EVOLUTION @ Tick 10000 (Gen 3)                              
+╠══════════════════════════════════════════════════════════════════╣
+║ Species: 6 | Total Members: 35 | Best Fitness: 5.70
+║ Total Offspring: 155 | Avg Staleness: 0.7
+╠══════════════════════════════════════════════════════════════════╣
+║ Neural Organisms: 35
+║ Brain Complexity:
+║   Nodes: avg=34.0, min=34, max=34
+║   Genes: avg=199.2, min=21, max=336
+╠══════════════════════════════════════════════════════════════════╣
+║ TOP SPECIES:
+║   #1: Species 2 - 14 members, age=3, stale=1, fit=5.1, offspring=112
+║   #2: Species 1 - 8 members, age=3, stale=0, fit=4.5, offspring=14
+║   #3: Species 4 - 8 members, age=3, stale=1, fit=5.7, offspring=27
+║   #4: Species 5 - 2 members, age=3, stale=2, fit=2.9, offspring=0
+║   #5: Species 11 - 2 members, age=2, stale=0, fit=5.5, offspring=2
+║   #6: Species 12 - 1 members, age=0, stale=0, fit=0.6, offspring=0
+╚══════════════════════════════════════════════════════════════════╝
+
+Reached max ticks (10000), stopping.
+
+Simulation complete.
+  Total ticks: 10000
+  Elapsed time: 5.542s
+  Average: 1804 ticks/sec

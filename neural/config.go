@@ -5,7 +5,7 @@ import (
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
-// Phase 4b: 12 cone inputs + 5 environment + 2 light gradients = 19 total
+// 12 cone inputs + 4 environment + 2 light gradients + 1 being eaten = 19 total
 const BrainInputs = 19
 
 // BrainOutputs is the number of outputs from the brain network.

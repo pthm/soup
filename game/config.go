@@ -6,12 +6,8 @@ const (
 	ScreenHeight = 800
 )
 
-// GrowIntent constants for neural-controlled growth
-const (
-	GrowIntentThreshold = 0.4  // Minimum intent to trigger growth
-	MinGrowthInterval   = 60   // Fastest growth (high intent)
-	MaxGrowthInterval   = 300  // Slowest growth (low intent)
-)
+// Note: Fauna growth has been removed. Organisms are born with their cells from CPPN.
+// Evolution happens through breeding/reproduction, not individual organism growth.
 
 // GameConfig holds configuration for game initialization.
 type GameConfig struct {
