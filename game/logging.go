@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/pthm-cable/soup/components"
 )
 
@@ -30,7 +31,8 @@ func Logf(format string, args ...interface{}) {
 // logPerfStats logs performance statistics.
 func (g *Game) logPerfStats() {
 	total := g.perf.Total()
-	Logf("=== Perf @ Tick %d (speed %dx) ===", g.tick, g.stepsPerFrame)
+	fps := rl.GetFPS()
+	Logf("=== Perf @ Tick %d (speed %dx) | FPS: %d ===", g.tick, g.stepsPerFrame, fps)
 	Logf("Total step time: %s", total.Round(time.Microsecond))
 
 	for _, name := range g.perf.SortedNames() {

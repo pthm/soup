@@ -11,8 +11,10 @@ import (
 
 // BrainController wraps a goNEAT network for runtime evaluation.
 type BrainController struct {
-	Genome  *genetics.Genome
-	network *network.Network
+	Genome        *genetics.Genome
+	network       *network.Network
+	cachedDepth   int  // Cached activation depth to avoid recomputation
+	depthComputed bool // Whether depth has been computed
 }
 
 // NewBrainController creates a controller from a genome.
@@ -40,13 +42,16 @@ func (b *BrainController) Think(inputs []float64) ([]float64, error) {
 		return nil, fmt.Errorf("failed to load sensors: %w", err)
 	}
 
-	// Activate with depth-based steps for proper signal propagation
-	depth, err := b.network.MaxActivationDepth()
-	if err != nil || depth < 1 {
-		depth = 5 // Fallback for simple networks
-	}
+	// Use cached depth to avoid recomputing every tick
+	depth := b.getActivationDepth()
 
-	for i := 0; i < depth; i++ {
+	// Activate network - single pass is often sufficient for feedforward networks
+	// Use min(depth, 3) to cap activation steps while still allowing recurrent signal flow
+	activations := depth
+	if activations > 3 {
+		activations = 3
+	}
+	for i := 0; i < activations; i++ {
 		if _, err := b.network.Activate(); err != nil {
 			return nil, fmt.Errorf("activation failed: %w", err)
 		}
@@ -62,6 +67,19 @@ func (b *BrainController) Think(inputs []float64) ([]float64, error) {
 	return outputs, nil
 }
 
+// getActivationDepth returns the cached network depth, computing it once if needed.
+func (b *BrainController) getActivationDepth() int {
+	if !b.depthComputed {
+		depth, err := b.network.MaxActivationDepth()
+		if err != nil || depth < 1 {
+			depth = 2 // Sensible default for simple networks
+		}
+		b.cachedDepth = depth
+		b.depthComputed = true
+	}
+	return b.cachedDepth
+}
+
 // RebuildNetwork recreates the phenotype network from the genome.
 // Call this after the genome has been mutated.
 func (b *BrainController) RebuildNetwork() error {
@@ -70,6 +88,7 @@ func (b *BrainController) RebuildNetwork() error {
 		return fmt.Errorf("failed to rebuild network: %w", err)
 	}
 	b.network = phenotype
+	b.depthComputed = false // Reset cached depth since network structure changed
 	return nil
 }
 

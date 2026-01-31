@@ -17,32 +17,87 @@ import (
 func (g *Game) Draw() {
 	rl.BeginDrawing()
 
+	// Render timing (only measure every 120 ticks when perf logging is on)
+	measureRender := g.perfLog && g.tick%120 == 0
+	var renderStart time.Time
+	var waterTime, terrainTime, flowTime, occluderTime, sunTime, floraTime, faunaTime time.Duration
+
 	// Draw animated water background
+	if measureRender {
+		renderStart = time.Now()
+	}
 	g.waterBackground.Draw(float32(g.tick) * 0.016) // Convert tick to approximate seconds
+	if measureRender {
+		waterTime = time.Since(renderStart)
+	}
 
 	// Draw terrain (after water, before flow field)
+	if measureRender {
+		renderStart = time.Now()
+	}
 	if g.terrainRenderer != nil {
 		g.terrainRenderer.Draw(g.terrain, g.tick)
 	}
+	if measureRender {
+		terrainTime = time.Since(renderStart)
+	}
 
 	// Draw flow field particles (on top of water and terrain)
+	if measureRender {
+		renderStart = time.Now()
+	}
 	g.flowRenderer.Draw(g.flowField.Particles, g.tick)
+	if measureRender {
+		flowTime = time.Since(renderStart)
+	}
 
 	// Collect occluders from organisms for shadow casting
+	if measureRender {
+		renderStart = time.Now()
+	}
 	occluders := g.collectOccluders()
+	if measureRender {
+		occluderTime = time.Since(renderStart)
+	}
 
 	// Draw sun with shadows
+	if measureRender {
+		renderStart = time.Now()
+	}
 	g.sunRenderer.Draw(g.light, occluders)
+	if measureRender {
+		sunTime = time.Since(renderStart)
+	}
 
 	// Draw lightweight flora from FloraSystem
+	if measureRender {
+		renderStart = time.Now()
+	}
 	g.drawLightweightFlora()
+	if measureRender {
+		floraTime = time.Since(renderStart)
+	}
 
 	// Draw all fauna organisms (ECS)
+	if measureRender {
+		renderStart = time.Now()
+	}
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
 		pos, _, org, cells := query.Get()
 		g.drawOrganism(entity, pos, org, cells)
+	}
+	if measureRender {
+		faunaTime = time.Since(renderStart)
+		Logf("  --- Render Breakdown ---")
+		Logf("    water:    %10s", waterTime.Round(time.Microsecond))
+		Logf("    terrain:  %10s", terrainTime.Round(time.Microsecond))
+		Logf("    flow:     %10s", flowTime.Round(time.Microsecond))
+		Logf("    occluder: %10s", occluderTime.Round(time.Microsecond))
+		Logf("    sun:      %10s", sunTime.Round(time.Microsecond))
+		Logf("    flora:    %10s", floraTime.Round(time.Microsecond))
+		Logf("    fauna:    %10s", faunaTime.Round(time.Microsecond))
 	}
 
 	// Draw selection indicator (after organisms, before UI)

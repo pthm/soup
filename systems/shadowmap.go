@@ -6,8 +6,8 @@ import (
 
 const (
 	// Target cell size in pixels for shadow map (lower resolution than terrain)
-	// Increased from 20 to 30 for performance (fewer cells to compute)
-	shadowCellSize = 30.0
+	// Increased to 40 for performance (fewer cells to compute)
+	shadowCellSize = 40.0
 	// Occluder grid uses larger cells for spatial acceleration
 	occluderCellSize = 80.0
 )
@@ -63,7 +63,7 @@ func NewShadowMap(screenWidth, screenHeight float32) *ShadowMap {
 		gridHeight:       gridHeight,
 		width:            screenWidth,
 		height:           screenHeight,
-		updateInterval:   12, // Update every 12 ticks (was 8)
+		updateInterval:   20, // Update every 20 ticks for better performance
 		occluderGrid:     occGrid,
 		occluderGridSize: occGridSize,
 	}

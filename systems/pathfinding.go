@@ -142,51 +142,35 @@ func (p *Pathfinder) computeAttraction(posX, posY, targetX, targetY, desireDista
 }
 
 // computeRepulsion calculates repulsion force from nearby obstacles.
-// Samples 8 points around the organism to detect obstacles and compute gradient-based repulsion.
+// Samples 4 cardinal points around the organism for fast obstacle detection.
 func (p *Pathfinder) computeRepulsion(posX, posY, organismRadius float32) (float32, float32) {
+	// First check center - if far from terrain, skip detailed sampling
+	centerDist := p.terrain.DistanceToSolid(posX, posY)
+	if centerDist > p.params.RepulsionRadius+organismRadius {
+		return 0, 0 // Far from terrain, no repulsion needed
+	}
+
 	var repX, repY float32
 
-	// Sample 8 points around the organism at organismRadius + RepulsionRadius*0.5
+	// Sample 4 cardinal points (reduced from 8 for performance)
 	sampleDist := organismRadius + p.params.RepulsionRadius*0.5
-	numSamples := 8
-	angleStep := float32(2 * math.Pi / float64(numSamples))
+	directions := [4][2]float32{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
 
-	for i := 0; i < numSamples; i++ {
-		angle := float32(i) * angleStep
-		sampleX := posX + float32(math.Cos(float64(angle)))*sampleDist
-		sampleY := posY + float32(math.Sin(float64(angle)))*sampleDist
+	for _, dir := range directions {
+		sampleX := posX + dir[0]*sampleDist
+		sampleY := posY + dir[1]*sampleDist
 
 		// Get distance to solid at this sample point
 		distToSolid := p.terrain.DistanceToSolid(sampleX, sampleY)
 
 		if distToSolid < p.params.RepulsionRadius {
 			// Calculate repulsion magnitude with falloff
-			// Closer = stronger repulsion
 			normalizedDist := (p.params.RepulsionRadius - distToSolid) / p.params.RepulsionRadius
 			mag := p.params.RepulsionStrength * float32(math.Pow(float64(normalizedDist), float64(p.params.RepulsionFalloff)))
 
-			// Get repulsion direction from terrain gradient or sample-to-pos direction
-			gx, gy := p.terrain.GetGradient(sampleX, sampleY)
-			gradMag := float32(math.Sqrt(float64(gx*gx + gy*gy)))
-
-			var dirX, dirY float32
-			if gradMag > 0.001 {
-				// Use terrain gradient (points away from solid)
-				dirX = gx / gradMag
-				dirY = gy / gradMag
-			} else {
-				// Fallback: push away from sample point toward pos
-				dirX = posX - sampleX
-				dirY = posY - sampleY
-				fallbackMag := float32(math.Sqrt(float64(dirX*dirX + dirY*dirY)))
-				if fallbackMag > 0.001 {
-					dirX /= fallbackMag
-					dirY /= fallbackMag
-				}
-			}
-
-			repX += dirX * mag
-			repY += dirY * mag
+			// Push away from sample direction (inverse of sample direction)
+			repX -= dir[0] * mag
+			repY -= dir[1] * mag
 		}
 	}
 

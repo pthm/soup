@@ -58,6 +58,9 @@ type BehaviorSystem struct {
 	pathfinder  *Pathfinder  // Potential-field navigation layer
 	floraSystem *FloraSystem // Lightweight flora system for vision
 
+	// Pre-allocated buffer to reduce allocations in hot path
+	entityBuffer []neural.EntityInfo
+
 	// Performance tracking
 	perfEnabled bool
 	perfStats   BehaviorPerfStats
@@ -394,31 +397,33 @@ func buildSensorCells(cells *components.CellBuffer) []neural.SensorCell {
 }
 
 // buildEntityList creates the entity info list for polar vision scanning.
+// Uses pre-allocated buffer to avoid allocations in hot path.
+// Line-of-sight checks are skipped for performance - polar vision handles directionality.
 func (s *BehaviorSystem) buildEntityList(
 	pos *components.Position,
 	org *components.Organism,
 	effectiveRadius float32,
-	floraPos, faunaPos []components.Position,
-	floraOrgs, faunaOrgs []*components.Organism,
+	_ []components.Position, // floraPos unused - flora comes from FloraSystem
+	faunaPos []components.Position,
+	_ []*components.Organism, // floraOrgs unused
+	faunaOrgs []*components.Organism,
 	grid *SpatialGrid,
 ) []neural.EntityInfo {
-	var entities []neural.EntityInfo
+	// Reset buffer (reuse underlying array)
+	s.entityBuffer = s.entityBuffer[:0]
 
 	// Add nearby flora from FloraSystem
 	if s.floraSystem != nil {
 		nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
 		for _, ref := range nearbyFlora {
-			// Check line of sight
-			if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, ref.X, ref.Y) {
-				continue
-			}
-			entities = append(entities, neural.EntityInfo{
+			// Skip LOS check for performance - polar vision cones handle directionality
+			s.entityBuffer = append(s.entityBuffer, neural.EntityInfo{
 				X:               ref.X,
 				Y:               ref.Y,
 				Composition:     1.0, // Flora is pure photosynthetic
 				DigestiveSpec:   0.0, // Flora doesn't eat
-				StructuralArmor: DefaultFloraArmor(), // Standard flora armor
-				GeneticDistance: -1,  // No genetic comparison with flora
+				StructuralArmor: DefaultFloraArmor(),
+				GeneticDistance: -1, // No genetic comparison with flora
 				IsFlora:         true,
 			})
 		}
@@ -430,37 +435,21 @@ func (s *BehaviorSystem) buildEntityList(
 		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 			continue
 		}
-		// Check line of sight
-		if s.terrain != nil && !s.terrain.HasLineOfSight(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) {
-			continue
-		}
 
 		other := faunaOrgs[i]
-
-		// Without access to other organisms' cells, use neutral/default values
-		// TODO: Access other organisms' cells via entity lookup for true capability-based check.
-		var theirDigestive float32 = 0.5   // Neutral - unknown diet
-		var theirComposition float32 = 0.0 // Fauna have low photosynthesis
-		var theirArmor float32 = 0.0       // Unknown armor
-
-		// Genetic distance uses default since we can't compare cell-based traits
-		// Species ID comparison would be more accurate but requires entity lookup
-		var geneticDistance float32 = 1.0 // Default: moderately different
-		_ = other                          // Suppress unused warning
-
-		entities = append(entities, neural.EntityInfo{
+		s.entityBuffer = append(s.entityBuffer, neural.EntityInfo{
 			X:               faunaPos[i].X,
 			Y:               faunaPos[i].Y,
-			Composition:     theirComposition,
-			DigestiveSpec:   theirDigestive,
-			StructuralArmor: theirArmor,
-			GeneticDistance: geneticDistance,
+			Composition:     0.0, // Fauna have low photosynthesis
+			DigestiveSpec:   0.5, // Neutral - unknown diet
+			StructuralArmor: 0.0, // Unknown armor
+			GeneticDistance: 1.0, // Default: moderately different
 			IsFlora:         false,
-			EmittedLight:    other.EmittedLight, // Phase 5b: bioluminescence
+			EmittedLight:    other.EmittedLight,
 		})
 	}
 
-	return entities
+	return s.entityBuffer
 }
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {

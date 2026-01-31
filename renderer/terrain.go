@@ -9,10 +9,13 @@ import (
 )
 
 // TerrainRenderer renders the terrain with organic edges and color variation.
+// Uses cached texture for performance - terrain only re-renders when invalidated.
 type TerrainRenderer struct {
-	width       int32
-	height      int32
-	initialized bool
+	width         int32
+	height        int32
+	initialized   bool
+	cachedTexture rl.Texture2D
+	cacheValid    bool
 }
 
 // NewTerrainRenderer creates a new terrain renderer.
@@ -23,11 +26,32 @@ func NewTerrainRenderer(width, height int32) *TerrainRenderer {
 	}
 }
 
-// Draw renders the terrain.
+// Draw renders the terrain using a cached texture for performance.
 func (r *TerrainRenderer) Draw(terrain *systems.TerrainSystem, tick int32) {
 	if terrain == nil {
 		return
 	}
+
+	// Build cache if needed (terrain is static, so only render once)
+	if !r.cacheValid {
+		r.buildCache(terrain)
+	}
+
+	// Draw the cached texture (flipped because render textures are Y-inverted)
+	if r.cacheValid {
+		source := rl.Rectangle{X: 0, Y: 0, Width: float32(r.cachedTexture.Width), Height: -float32(r.cachedTexture.Height)}
+		dest := rl.Rectangle{X: 0, Y: 0, Width: float32(r.width), Height: float32(r.height)}
+		rl.DrawTexturePro(r.cachedTexture, source, dest, rl.Vector2{X: 0, Y: 0}, 0, rl.White)
+	}
+}
+
+// buildCache renders terrain to a texture for fast subsequent draws.
+func (r *TerrainRenderer) buildCache(terrain *systems.TerrainSystem) {
+	// Create render texture
+	renderTarget := rl.LoadRenderTexture(r.width, r.height)
+
+	rl.BeginTextureMode(renderTarget)
+	rl.ClearBackground(rl.Color{R: 0, G: 0, B: 0, A: 0}) // Transparent background
 
 	grid := terrain.Grid()
 	gridW := terrain.GridWidth()
@@ -35,7 +59,7 @@ func (r *TerrainRenderer) Draw(terrain *systems.TerrainSystem, tick int32) {
 	cellSize := terrain.CellSize()
 	noise := terrain.Noise()
 
-	// Draw terrain cells
+	// Draw terrain cells to render texture
 	for gy := 0; gy < gridH; gy++ {
 		for gx := 0; gx < gridW; gx++ {
 			cell := grid[gy][gx]
@@ -95,6 +119,12 @@ func (r *TerrainRenderer) Draw(terrain *systems.TerrainSystem, tick int32) {
 			r.drawCellEdges(gx, gy, baseX, baseY, cellSize, grid, gridW, gridH, baseColor, noise)
 		}
 	}
+
+	rl.EndTextureMode()
+
+	// Store the texture (flip Y because render textures are inverted)
+	r.cachedTexture = renderTarget.Texture
+	r.cacheValid = true
 }
 
 // drawCellEdges adds visual depth with edge highlights and shadows.

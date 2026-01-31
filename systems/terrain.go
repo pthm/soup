@@ -18,6 +18,10 @@ const (
 const (
 	// Target cell size in pixels (2px for high resolution terrain)
 	terrainCellSize = 2.0
+	// Distance field cell size (coarser for performance)
+	distanceFieldCellSize = 8.0
+	// Maximum distance to store in the distance field
+	maxDistanceFieldDist = 60.0
 )
 
 // TerrainSystem manages procedural terrain with collision detection.
@@ -30,6 +34,11 @@ type TerrainSystem struct {
 	gridHeight    int
 	occluderCache []Occluder
 	noise         *PerlinNoise
+	// Precomputed distance field for fast queries
+	distanceField   [][]float32
+	dfCellSize      float32
+	dfWidth         int
+	dfHeight        int
 }
 
 // NewTerrainSystem creates a new terrain system and generates terrain.
@@ -44,17 +53,30 @@ func NewTerrainSystem(screenWidth, screenHeight float32, seed int64) *TerrainSys
 		grid[y] = make([]TerrainCell, gridWidth)
 	}
 
+	// Allocate distance field grid (coarser resolution)
+	dfWidth := int(screenWidth/distanceFieldCellSize) + 1
+	dfHeight := int(screenHeight/distanceFieldCellSize) + 1
+	distanceField := make([][]float32, dfHeight)
+	for y := range distanceField {
+		distanceField[y] = make([]float32, dfWidth)
+	}
+
 	t := &TerrainSystem{
-		grid:       grid,
-		cellSize:   terrainCellSize,
-		width:      screenWidth,
-		height:     screenHeight,
-		gridWidth:  gridWidth,
-		gridHeight: gridHeight,
-		noise:      NewPerlinNoise(seed),
+		grid:          grid,
+		cellSize:      terrainCellSize,
+		width:         screenWidth,
+		height:        screenHeight,
+		gridWidth:     gridWidth,
+		gridHeight:    gridHeight,
+		noise:         NewPerlinNoise(seed),
+		distanceField: distanceField,
+		dfCellSize:    distanceFieldCellSize,
+		dfWidth:       dfWidth,
+		dfHeight:      dfHeight,
 	}
 	t.Generate(seed)
 	t.buildOccluderCache()
+	t.buildDistanceField()
 	return t
 }
 
@@ -395,14 +417,138 @@ func (t *TerrainSystem) distanceToSolidInDirection(x, y, dx, dy, maxDist float32
 }
 
 // DistanceToSolid returns the approximate distance to the nearest solid cell.
+// Uses precomputed distance field with bilinear interpolation for fast queries.
 func (t *TerrainSystem) DistanceToSolid(x, y float32) float32 {
 	// Quick check if we're inside solid
 	if t.IsSolid(x, y) {
 		return 0
 	}
 
-	// Sample in 8 directions
-	minDist := t.cellSize * 10 // Default max
+	// Use precomputed distance field with bilinear interpolation
+	return t.sampleDistanceField(x, y)
+}
+
+// sampleDistanceField returns the interpolated distance from the precomputed field.
+func (t *TerrainSystem) sampleDistanceField(x, y float32) float32 {
+	// Convert to distance field coordinates
+	fx := x / t.dfCellSize
+	fy := y / t.dfCellSize
+
+	// Get integer cell and fractional offset
+	x0 := int(fx)
+	y0 := int(fy)
+	fracX := fx - float32(x0)
+	fracY := fy - float32(y0)
+
+	// Clamp to grid bounds
+	if x0 < 0 {
+		x0 = 0
+		fracX = 0
+	}
+	if y0 < 0 {
+		y0 = 0
+		fracY = 0
+	}
+	if x0 >= t.dfWidth-1 {
+		x0 = t.dfWidth - 2
+		fracX = 1
+	}
+	if y0 >= t.dfHeight-1 {
+		y0 = t.dfHeight - 2
+		fracY = 1
+	}
+
+	// Bilinear interpolation
+	v00 := t.distanceField[y0][x0]
+	v10 := t.distanceField[y0][x0+1]
+	v01 := t.distanceField[y0+1][x0]
+	v11 := t.distanceField[y0+1][x0+1]
+
+	v0 := v00*(1-fracX) + v10*fracX
+	v1 := v01*(1-fracX) + v11*fracX
+
+	return v0*(1-fracY) + v1*fracY
+}
+
+// buildDistanceField precomputes distance to nearest solid for each cell.
+// Uses a simple flood fill approach from solid cells outward.
+func (t *TerrainSystem) buildDistanceField() {
+	// Initialize all cells to max distance
+	for y := 0; y < t.dfHeight; y++ {
+		for x := 0; x < t.dfWidth; x++ {
+			t.distanceField[y][x] = float32(maxDistanceFieldDist)
+		}
+	}
+
+	// For each distance field cell, compute distance to nearest solid
+	for dfy := 0; dfy < t.dfHeight; dfy++ {
+		for dfx := 0; dfx < t.dfWidth; dfx++ {
+			// World position of distance field cell center
+			worldX := (float32(dfx) + 0.5) * t.dfCellSize
+			worldY := (float32(dfy) + 0.5) * t.dfCellSize
+
+			// Check if this cell is in solid terrain
+			if t.IsSolid(worldX, worldY) {
+				t.distanceField[dfy][dfx] = 0
+				continue
+			}
+
+			// Search nearby terrain cells for nearest solid
+			minDist := float32(maxDistanceFieldDist)
+			searchRadius := float32(maxDistanceFieldDist)
+
+			// Terrain grid cells to search
+			minTX := int((worldX - searchRadius) / t.cellSize)
+			maxTX := int((worldX + searchRadius) / t.cellSize)
+			minTY := int((worldY - searchRadius) / t.cellSize)
+			maxTY := int((worldY + searchRadius) / t.cellSize)
+
+			if minTX < 0 {
+				minTX = 0
+			}
+			if maxTX >= t.gridWidth {
+				maxTX = t.gridWidth - 1
+			}
+			if minTY < 0 {
+				minTY = 0
+			}
+			if maxTY >= t.gridHeight {
+				maxTY = t.gridHeight - 1
+			}
+
+			for ty := minTY; ty <= maxTY; ty++ {
+				for tx := minTX; tx <= maxTX; tx++ {
+					if t.grid[ty][tx] == TerrainEmpty {
+						continue
+					}
+
+					// Distance to center of terrain cell
+					tcx := (float32(tx) + 0.5) * t.cellSize
+					tcy := (float32(ty) + 0.5) * t.cellSize
+					dx := worldX - tcx
+					dy := worldY - tcy
+					dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+					// Subtract half cell size since terrain cell has extent
+					dist -= t.cellSize * 0.5
+					if dist < 0 {
+						dist = 0
+					}
+
+					if dist < minDist {
+						minDist = dist
+					}
+				}
+			}
+
+			t.distanceField[dfy][dfx] = minDist
+		}
+	}
+}
+
+// distanceToSolidSlow is the original ray-march implementation for comparison.
+func (t *TerrainSystem) distanceToSolidSlow(x, y float32) float32 {
+	minDist := t.cellSize * 10
 	directions := [][2]float32{
 		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
 		{0.707, 0.707}, {-0.707, 0.707}, {0.707, -0.707}, {-0.707, -0.707},

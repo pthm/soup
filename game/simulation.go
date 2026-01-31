@@ -382,9 +382,11 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 }
 
 // collectOccluders collects shadow-casting occluders.
+// Note: Terrain shadows are skipped for performance - terrain is rendered with baked-in depth.
 func (g *Game) collectOccluders() []systems.Occluder {
-	// Start with terrain occluders (static, cached, full density)
-	occluders := append([]systems.Occluder{}, g.terrain.GetOccluders()...)
+	// Skip terrain occluders for performance - they generate thousands of shadows
+	// Terrain already has depth-based darkening baked into its texture
+	var occluders []systems.Occluder
 
 	// Add floating flora occluders only (fauna don't cast shadows)
 	// Rooted flora don't cast shadows - they're attached to terrain which already casts shadows
