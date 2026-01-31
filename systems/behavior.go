@@ -177,8 +177,9 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 
 		// HEADING-AS-STATE: Integrate heading from turn rate
 		// Turn rate is scaled by morphology - asymmetric actuators affect turning
+		// Turning requires forward motion (like a rudder) - scale by throttle
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, cells)
-		org.Heading += outputs.UTurn * effectiveTurnRate
+		org.Heading += outputs.UTurn * effectiveTurnRate * outputs.UThrottle
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -436,8 +437,9 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 
 		// HEADING-AS-STATE: Integrate heading from turn rate
 		// Turn rate is scaled by morphology - asymmetric actuators affect turning
+		// Turning requires forward motion (like a rudder) - scale by throttle
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, task.cells)
-		org.Heading += outputs.UTurn * effectiveTurnRate
+		org.Heading += outputs.UTurn * effectiveTurnRate * outputs.UThrottle
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -498,7 +500,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		task := &s.taskBuffer[i]
 
 		// Calculate flow field (thread-safe - uses Perlin noise)
-		flowX, flowY := s.getFlowFieldForceParallel(task.posX, task.posY, task.shapeMetrics, task.energy, task.maxEnergy, bounds)
+		flowX, flowY := s.getFlowFieldForceParallel(task.posX, task.posY, task.shapeMetrics, task.energy, task.maxEnergy, task.bodyRadius, bounds)
 		task.flowX = flowX
 		task.flowY = flowY
 
@@ -624,7 +626,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 
 
 // getFlowFieldForceParallel calculates flow field without organism pointer (thread-safe).
-func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics components.ShapeMetrics, energy, maxEnergy float32, _ Bounds) (float32, float32) {
+func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics components.ShapeMetrics, energy, maxEnergy, bodyRadius float32, _ Bounds) (float32, float32) {
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*flowTimeScale)
 	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*flowTimeScale)
 
@@ -636,11 +638,15 @@ func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics co
 	flowY += flowDriftY
 	flowX += float32(math.Sin(float64(s.tick)*flowTimeScale*2)) * flowSideEffect
 
+	// Size-based resistance: larger organisms are less affected by flow
+	// Normalize by typical body radius (~5-10 units), clamp to reasonable range
+	sizeResistance := float32(math.Min(float64(bodyRadius)/10.0, 1.0)) * 0.5
+
 	// Low drag = more resistance to being pushed by flow (streamlined shapes cut through)
-	shapeResistance := (1.0 - shapeMetrics.Drag) * 0.4
-	massResistance := float32(math.Min(float64(energy/maxEnergy)/3, 1))
-	totalResistance := shapeResistance + massResistance*0.6
-	factor := 1 - totalResistance*0.7
+	shapeResistance := (1.0 - shapeMetrics.Drag) * 0.3
+	massResistance := float32(math.Min(float64(energy/maxEnergy)/3, 1)) * 0.2
+	totalResistance := sizeResistance + shapeResistance + massResistance
+	factor := 1 - totalResistance
 
 	return flowX * factor, flowY * factor
 }
@@ -872,11 +878,15 @@ func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organis
 
 	// All ECS organisms are fauna (flora are in FloraSystem)
 
+	// Size-based resistance: larger organisms are less affected by flow
+	// Normalize by typical body radius (~5-10 units), clamp to reasonable range
+	sizeResistance := float32(math.Min(float64(org.BodyRadius)/10.0, 1.0)) * 0.5
+
 	// Shape-based flow resistance (low drag = more resistance to being pushed)
-	shapeResistance := (1.0 - org.ShapeMetrics.Drag) * 0.4
-	massResistance := float32(math.Min(float64(org.Energy/org.MaxEnergy)/3, 1))
-	totalResistance := shapeResistance + massResistance*0.6
-	factor := 1 - totalResistance*0.7
+	shapeResistance := (1.0 - org.ShapeMetrics.Drag) * 0.3
+	massResistance := float32(math.Min(float64(org.Energy/org.MaxEnergy)/3, 1)) * 0.2
+	totalResistance := sizeResistance + shapeResistance + massResistance
+	factor := 1 - totalResistance
 
 	return flowX * factor, flowY * factor
 }

@@ -28,6 +28,10 @@ const (
 	// Encourages smooth movement, discourages oscillation
 	jitterCostBase = 0.002 // Cost per unit of direction change
 
+	// Turn penalty - sharp turns while moving cost more
+	// Multiplier: 1.0 (straight) to 1.0 + turnCostMultiplier (max turn)
+	turnCostMultiplier = 0.3 // 30% extra cost at maximum turn rate
+
 	// Energy capacity
 	baseEnergy        = 100.0 // Minimum energy capacity
 	baseEnergyPerCell = 50.0  // Base energy capacity per cell
@@ -84,11 +88,13 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
 		armorPen := 1.0 + caps.StructuralArmor*armorDragPenalty
 
-		// QUADRATIC movement cost: cost = throttle² * base
+		// QUADRATIC movement cost: cost = throttle² * base * turnPenalty
 		// This makes full throttle (1.0) 4x more expensive than half throttle (0.5)
 		// Encourages cruising at moderate speeds, bursting only when needed
+		// Sharp turns while moving cost extra (like a fish expending energy to change direction)
 		throttleSquared := org.UThrottle * org.UThrottle
-		movementCost := throttleSquared * movementCostBase * massFactor * armorPen
+		turnPenalty := 1.0 + float32(math.Abs(float64(org.UTurn)))*turnCostMultiplier
+		movementCost := throttleSquared * turnPenalty * movementCostBase * massFactor * armorPen
 
 		// JITTER PENALTY: penalize rapid turn/throttle changes
 		// Discourages oscillating, rewards smooth trajectories

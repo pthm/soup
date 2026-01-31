@@ -65,7 +65,8 @@ for query.Next() {
 
 **Heading-as-State Model**:
 - Heading is brain-controlled state, not derived from velocity
-- `heading += UTurn * TurnRateMax` (TurnRateMax = 0.15 rad/tick)
+- `heading += UTurn * TurnRateMax * UThrottle` (TurnRateMax = 0.15 rad/tick)
+- Turning requires forward motion (like a rudder) - no throttle = no turning
 - Desired velocity = `(cos(heading), sin(heading)) * UThrottle * maxSpeed`
 - Eliminates velocity-heading feedback loop that caused jittering
 
@@ -95,7 +96,8 @@ for query.Next() {
 ### Energy Model
 
 Brain outputs drive energy costs:
-- **Movement**: UThrottle² + ActiveThrust + jitter penalty (main pressure)
+- **Movement**: UThrottle² × (1 + |UTurn| × 0.3) + ActiveThrust + jitter penalty (main pressure)
+- Sharp turns while moving cost 30% extra at max turn rate
 - **Attack**: Body-scaled cost when AttackIntent > 0.5
 - **Base**: ~0.0005/cell/tick (photosynthesis can offset up to 95%)
 
