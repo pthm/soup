@@ -15,8 +15,6 @@ const (
 	deadFriction          = float32(0.96) // Velocity dampening for dead organisms
 	aliveFrictionMin      = float32(0.96) // Base friction for alive organisms
 	aliveFrictionRange    = float32(0.03) // Additional friction from streamlining (0 to this)
-	wallFriction          = float32(0.5)  // Velocity multiplier on wall contact (strong brake)
-	fallbackCircleScale   = float32(3)    // Multiplier for cellSize when OBB unavailable
 	headingUpdateMinVelSq = float32(0.01) // Minimum velocity squared to update heading
 )
 
@@ -91,30 +89,18 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 			org.Heading = float32(math.Atan2(float64(vel.Y), float64(vel.X)))
 		}
 
-		// Horizontal wrap-around
+		// Toroidal wrap-around (all edges)
 		if pos.X < 0 {
 			pos.X += s.bounds.Width
 		}
 		if pos.X > s.bounds.Width {
 			pos.X -= s.bounds.Width
 		}
-
-		// Vertical bounds (no wrap - top and bottom are walls)
-		// Stop vertical motion and apply friction (no bounce - just settle)
-		cellRadius := org.CellSize * fallbackCircleScale
-		if pos.Y < cellRadius {
-			pos.Y = cellRadius
-			if vel.Y < 0 {
-				vel.Y = 0 // Stop downward motion
-			}
-			vel.X *= wallFriction // Friction from floor contact
+		if pos.Y < 0 {
+			pos.Y += s.bounds.Height
 		}
-		if pos.Y > s.bounds.Height-cellRadius {
-			pos.Y = s.bounds.Height - cellRadius
-			if vel.Y > 0 {
-				vel.Y = 0 // Stop upward motion
-			}
-			vel.X *= wallFriction // Friction from ceiling contact
+		if pos.Y > s.bounds.Height {
+			pos.Y -= s.bounds.Height
 		}
 	}
 }

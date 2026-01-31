@@ -132,13 +132,9 @@ func NewGame(cfg GameConfig) *Game {
 		uiSystemRegistry: systems.NewSystemRegistry(),
 	}
 
-	// GPU compute resources (always created - headless uses hidden window)
-	// Stub distance function returns large distance (no terrain obstacles)
-	noTerrainDistance := func(x, y float32) float32 { return 1000.0 }
-	g.gpuFlowField = renderer.NewGPUFlowField(
-		float32(cfg.Width), float32(cfg.Height),
-		noTerrainDistance,
-	)
+	// GPU flow field - unified flow field for the entire scene
+	// Flora, fauna, and particles all sample from this
+	g.gpuFlowField = renderer.NewGPUFlowField(float32(cfg.Width), float32(cfg.Height))
 	g.flowField.SetGPUSampler(g.gpuFlowField)
 
 	// Visual renderers and UI - only for graphics mode (not headless)
@@ -156,8 +152,9 @@ func NewGame(cfg GameConfig) *Game {
 		g.uiControlsPanel = ui.NewControlsPanel(10, 100, 200)
 	}
 
-	// Create FloraSystem after other systems are initialized
-	g.floraSystem = systems.NewFloraSystem(bounds, nil, g.flowField)
+	// Create FloraSystem and wire up the shared flow field
+	g.floraSystem = systems.NewFloraSystem(bounds)
+	g.floraSystem.SetFlowSampler(g.gpuFlowField)
 
 	// Wire up FloraSystem to systems that need it
 	g.feeding.SetFloraSystem(g.floraSystem)
@@ -209,28 +206,19 @@ func (g *Game) Unload() {
 // seedUniverse populates the world with initial organisms.
 func (g *Game) seedUniverse() {
 	// Seed initial flora directly using FloraSystem
-	// More flora to sustain the fauna population with brain-output-driven energy costs
-	// Rooted flora on terrain and seafloor
-	for i := 0; i < 120; i++ {
+	// All flora now floats and follows the flow field
+	// Spread throughout the water column
+	for i := 0; i < 200; i++ {
 		x := rand.Float32() * g.bounds.Width
-		// Place on seafloor or terrain
-		y := g.bounds.Height - 4 - rand.Float32()*30
-		g.floraSystem.AddRooted(x, y, 100+rand.Float32()*50)
+		y := rand.Float32()*g.bounds.Height*0.9 + g.bounds.Height*0.05 // Avoid very top/bottom
+		g.floraSystem.Add(x, y, 80+rand.Float32()*50)
 	}
 
-	// Floating flora spread throughout water column
-	for i := 0; i < 80; i++ {
-		x := rand.Float32() * g.bounds.Width
-		y := rand.Float32()*g.bounds.Height*0.8 + 30
-		g.floraSystem.AddFloating(x, y, 80+rand.Float32()*40)
-	}
-
-	// More spores to help flora respawn
+	// Initial spores to help flora respawn
 	for i := 0; i < 40; i++ {
 		g.spores.SpawnSpore(
 			rand.Float32()*g.bounds.Width,
-			rand.Float32()*g.bounds.Height*0.6,
-			rand.Float32() > 0.5, // Mix of rooted and floating parents
+			rand.Float32()*g.bounds.Height*0.7,
 		)
 	}
 

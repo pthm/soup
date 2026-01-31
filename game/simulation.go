@@ -48,8 +48,7 @@ func (g *Game) Update() {
 	if rl.IsKeyPressed(rl.KeyF) {
 		g.createFloraLightweight(
 			rand.Float32()*(g.bounds.Width-100)+50,
-			g.bounds.Height-4,
-			true, // isRooted
+			rand.Float32()*(g.bounds.Height-100)+50, // Spawn in water column
 			80,
 		)
 	}
@@ -136,8 +135,8 @@ func (g *Game) runSimulationStep() {
 	measure("physics", func() { g.physics.Update(g.world) })
 	measure("feeding", func() { g.feeding.Update() })
 	measure("floraSystem", func() {
-		g.floraSystem.UpdateParallel(g.tick, func(x, y float32, isRooted bool) {
-			g.spores.SpawnSpore(x, y, isRooted)
+		g.floraSystem.UpdateParallel(g.tick, func(x, y float32) {
+			g.spores.SpawnSpore(x, y)
 		})
 	})
 	measure("energy", func() { g.energy.Update(g.world) })
@@ -147,8 +146,8 @@ func (g *Game) runSimulationStep() {
 
 	// Spores (germinates into new flora via FloraSystem)
 	measure("spores", func() {
-		g.spores.Update(g.tick, func(x, y float32, isRooted bool, energy float32) ecs.Entity {
-			g.createFloraLightweight(x, y, isRooted, energy)
+		g.spores.Update(g.tick, func(x, y float32, _ bool, energy float32) ecs.Entity {
+			g.createFloraLightweight(x, y, energy)
 			return ecs.Entity{} // Return zero entity, not used
 		})
 	})

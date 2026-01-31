@@ -127,8 +127,7 @@ func (g *Game) logWorldState() {
 	}
 
 	Logf("=== Tick %d ===", g.tick)
-	Logf("Flora: %d (rooted: %d, floating: %d, energy: %.1f avg)",
-		floraCount, g.floraSystem.RootedCount(), g.floraSystem.FloatingCount(), avgFloraEnergy)
+	Logf("Flora: %d (energy: %.1f avg)", floraCount, avgFloraEnergy)
 	Logf("Fauna: %d (cells: %d, energy: %.1f avg, %.1f-%.1f range)",
 		faunaCount, totalFaunaCells, avgFaunaEnergy, minFaunaEnergy, maxFaunaEnergy)
 	Logf("  Herbivores: %d, Carnivores: %d, Carrion: %d",

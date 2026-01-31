@@ -12,11 +12,8 @@ import (
 
 // createFloraLightweight creates a lightweight flora using FloraSystem.
 // Returns true if flora was created successfully.
-func (g *Game) createFloraLightweight(x, y float32, isRooted bool, energy float32) bool {
-	if isRooted {
-		return g.floraSystem.AddRooted(x, y, energy)
-	}
-	return g.floraSystem.AddFloating(x, y, energy)
+func (g *Game) createFloraLightweight(x, y float32, energy float32) bool {
+	return g.floraSystem.Add(x, y, energy)
 }
 
 // createNeuralOrganism creates an organism with neural network brain and CPPN-generated morphology.

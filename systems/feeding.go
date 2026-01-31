@@ -592,7 +592,7 @@ func (s *FeedingSystem) executeFeed(
 	// Handle lightweight flora differently
 	if target.isFlora && s.floraSystem != nil {
 		// Apply damage through FloraSystem
-		extracted := s.floraSystem.ApplyDamage(target.floraRef.Index, target.floraRef.IsRooted, effectiveBite)
+		extracted := s.floraSystem.ApplyDamage(target.floraRef.Index, effectiveBite)
 		predOrg.Energy += extracted
 		return
 	}

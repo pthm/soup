@@ -186,9 +186,9 @@ func (g *Game) drawSpores() {
 	for i := range g.spores.Spores {
 		spore := &g.spores.Spores[i]
 
-		// Calculate alpha based on life/landing state
+		// Calculate alpha based on life/settling state
 		alpha := uint8(180)
-		if spore.Landed {
+		if spore.Settled {
 			// Fade as germination approaches
 			fadeRatio := 1.0 - float32(spore.LandedTimer)/50.0
 			alpha = uint8(fadeRatio * 180)
@@ -202,12 +202,9 @@ func (g *Game) drawSpores() {
 
 // drawLightweightFlora renders all flora from the FloraSystem.
 func (g *Game) drawLightweightFlora() {
-	// Base flora color (green)
-	baseR, baseG, baseB := uint8(50), uint8(180), uint8(80)
-
-	// Draw rooted flora
-	for i := range g.floraSystem.Rooted {
-		f := &g.floraSystem.Rooted[i]
+	// Draw all floating flora
+	for i := range g.floraSystem.Flora {
+		f := &g.floraSystem.Flora[i]
 		if f.Dead {
 			continue
 		}
@@ -219,33 +216,11 @@ func (g *Game) drawLightweightFlora() {
 			brightness = 0.5 + energyRatio
 		}
 
+		// Green-cyan color for floating flora
 		color := rl.Color{
-			R: uint8(float32(baseR) * brightness),
-			G: uint8(float32(baseG) * brightness),
-			B: uint8(float32(baseB) * brightness),
-			A: 255,
-		}
-		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)
-	}
-
-	// Draw floating flora (slightly different shade)
-	for i := range g.floraSystem.Floating {
-		f := &g.floraSystem.Floating[i]
-		if f.Dead {
-			continue
-		}
-
-		energyRatio := f.Energy / f.MaxEnergy
-		brightness := float32(1.0)
-		if energyRatio < 0.3 {
-			brightness = 0.5 + energyRatio
-		}
-
-		// Floating flora is slightly more cyan
-		color := rl.Color{
-			R: uint8(float32(40) * brightness),
-			G: uint8(float32(170) * brightness),
-			B: uint8(float32(100) * brightness),
+			R: uint8(float32(45) * brightness),
+			G: uint8(float32(175) * brightness),
+			B: uint8(float32(90) * brightness),
 			A: 240,
 		}
 		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)

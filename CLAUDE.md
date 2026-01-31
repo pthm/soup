@@ -118,6 +118,39 @@ Sexual reproduction requires sustained contact, not instant mating:
 - **Failure reset**: If any condition fails, progress resets to zero
 - **Cooldown**: 120 ticks after successful mating (150 for asexual)
 
+### World Space
+
+The simulation uses **toroidal space** - all edges wrap around. Entities leaving one side appear on the opposite side.
+
+**Unified Flow Field**:
+- GPU-computed via shader (`shaders/flowfield.fs`)
+- Simplex noise → angle → velocity vector
+- 128x128 texture, updated every 30 ticks
+- Sampled by flora, fauna, and flow particles
+- `GPUFlowField.Sample(x, y)` for fast O(1) lookups
+
+### Flora System
+
+Flora are lightweight food sources managed outside the ECS. All flora float and drift with the unified flow field.
+
+**Flora Lifecycle**:
+- Energy gain: 0.15/tick (passive)
+- Max energy: 150
+- Death: Below 10% max energy
+- Spore release: Every 400 ticks when energy > 40 (costs 15 energy)
+
+**Movement**:
+- Samples unified GPU flow field
+- Flow force: 0.04, drag: 0.97, max speed: 0.5
+- Wraps all edges (toroidal)
+
+**Spores**:
+- Drift with Perlin noise
+- Settle randomly when slow enough
+- Germinate after 50 ticks of settling
+- Create new flora with 60 energy
+- Wrap all edges (toroidal)
+
 ### Key Files
 
 | File | Purpose |
@@ -131,6 +164,8 @@ Sexual reproduction requires sustained contact, not instant mating:
 | `systems/behavior.go` | Polar vision, brain evaluation |
 | `systems/energy.go` | Energy costs, photosynthesis |
 | `systems/breeding.go` | Mating, offspring creation |
+| `systems/flora.go` | Flora management, flow-based drift |
+| `systems/spores.go` | Spore lifecycle, germination |
 | `components/components.go` | All component definitions |
 
 ### System Update Order

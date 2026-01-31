@@ -5,7 +5,6 @@ out vec4 finalColor;
 
 uniform float time;
 uniform vec2 resolution;
-uniform sampler2D terrainTex; // Terrain distance field (R = distance to solid)
 
 // Permutation polynomial hash
 vec3 permute(vec3 x) {
@@ -41,58 +40,33 @@ float snoise(vec2 v) {
 }
 
 void main() {
-    vec2 uv = fragTexCoord;
+    // Flow field: simple noise -> angle -> vector
+    // Based on Nature of Code flow fields
 
-    // Flow field parameters (match CPU version)
-    const float flowScale = 0.003;
-    const float timeScale = 0.0001;
-    const float baseStrength = 0.08;
+    const float noiseScale = 0.006;   // Spatial frequency of flow patterns
+    const float timeScale = 0.00015;  // How fast patterns evolve
+    const float flowStrength = 0.06;  // Base strength of flow vectors
 
-    // World position (assuming 1200x800 screen)
-    vec2 worldPos = uv * resolution;
+    // World position
+    vec2 worldPos = fragTexCoord * resolution;
 
-    // Sample noise for flow angle and magnitude
-    float noiseX = snoise(vec2(worldPos.x * flowScale, worldPos.y * flowScale) + vec2(0.0, time * timeScale));
-    float noiseY = snoise(vec2(worldPos.x * flowScale + 100.0, worldPos.y * flowScale + 100.0) + vec2(0.0, time * timeScale));
+    // Single noise sample -> angle (Nature of Code approach)
+    float noise = snoise(vec2(
+        worldPos.x * noiseScale + time * timeScale,
+        worldPos.y * noiseScale
+    ));
 
-    // Convert to flow vector
-    float flowAngle = noiseX * 3.14159 * 2.0;
-    float flowMagnitude = (noiseY + 1.0) * 0.5;
+    // Map noise [-1, 1] to angle [0, 2π]
+    float angle = (noise + 1.0) * 3.14159;
 
-    float flowX = cos(flowAngle) * flowMagnitude * baseStrength;
-    float flowY = sin(flowAngle) * flowMagnitude * baseStrength;
-
-    // Add constant drift (downward + slight side-to-side)
-    flowY += 0.01;
-    flowX += sin(time * 0.0002) * 0.005;
-
-    // Terrain deflection
-    // Sample terrain distance (R channel = normalized distance, 0 = solid, 1 = far)
-    float terrainDist = texture(terrainTex, uv).r * 100.0; // Denormalize to ~pixels
-
-    if (terrainDist < 40.0) {
-        // Compute gradient by sampling neighbors
-        float texelSize = 1.0 / 128.0; // Assuming 128x128 terrain texture
-        float distLeft = texture(terrainTex, uv + vec2(-texelSize, 0.0)).r * 100.0;
-        float distRight = texture(terrainTex, uv + vec2(texelSize, 0.0)).r * 100.0;
-        float distUp = texture(terrainTex, uv + vec2(0.0, -texelSize)).r * 100.0;
-        float distDown = texture(terrainTex, uv + vec2(0.0, texelSize)).r * 100.0;
-
-        // Gradient points away from terrain
-        float gradX = (distRight - distLeft) * 0.5;
-        float gradY = (distDown - distUp) * 0.5;
-
-        // Blend based on proximity
-        float blend = 1.0 - terrainDist / 40.0;
-        flowX += gradX * blend * 0.1;
-        flowY += gradY * blend * 0.1;
-    }
+    // Convert angle to unit vector, scale by strength
+    float flowX = cos(angle) * flowStrength;
+    float flowY = sin(angle) * flowStrength;
 
     // Encode flow vector as color
-    // Map [-0.5, 0.5] to [0, 1] for storage
-    // R = flowX, G = flowY, B = magnitude (for debugging), A = 1
-    float encodedX = flowX + 0.5;
-    float encodedY = flowY + 0.5;
+    // Map [-0.5, 0.5] to [0, 1] for storage in texture
+    float encodedX = clamp(flowX + 0.5, 0.0, 1.0);
+    float encodedY = clamp(flowY + 0.5, 0.0, 1.0);
     float magnitude = length(vec2(flowX, flowY));
 
     finalColor = vec4(encodedX, encodedY, magnitude, 1.0);
