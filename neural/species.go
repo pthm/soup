@@ -15,25 +15,27 @@ type SpeciesColor struct {
 
 // Species represents a group of genetically similar organisms.
 type Species struct {
-	ID             int
-	Representative *genetics.Genome // Used for compatibility comparisons
-	Members        []int            // Entity IDs of members
-	BestFitness    float64
-	AvgFitness     float64
-	TotalFitness   float64
-	Age            int // Generations since species was created
-	Staleness      int // Generations without fitness improvement
-	Color          SpeciesColor
-	OffspringCount int // Total offspring produced by this species
+	ID                  int
+	Representative      *genetics.Genome // Used for compatibility comparisons
+	Members             []int            // Entity IDs of members
+	BestFitness         float64
+	AvgFitness          float64
+	TotalFitness        float64
+	Age                 int // Generations since species was created
+	Staleness           int // Generations without fitness improvement (or offspring in ecology mode)
+	Color               SpeciesColor
+	OffspringCount      int // Total offspring produced by this species
+	GenerationOffspring int // Offspring produced this generation (reset each gen)
 }
 
 // SpeciesManager manages speciation for the population.
 type SpeciesManager struct {
-	Species       []*Species
-	opts          *neat.Options
-	nextSpeciesID int
-	generation    int
-	speciesColors []SpeciesColor // Pre-generated distinct colors
+	Species                []*Species
+	opts                   *neat.Options
+	nextSpeciesID          int
+	generation             int
+	speciesColors          []SpeciesColor // Pre-generated distinct colors
+	DisableFitnessTracking bool           // When true, skip fitness accumulation (persistent ecology mode)
 }
 
 // NewSpeciesManager creates a new species manager.
@@ -174,16 +176,28 @@ func (sm *SpeciesManager) EndGeneration() {
 	for _, sp := range sm.Species {
 		sp.Age++
 
-		// Calculate average fitness from total
-		if len(sp.Members) > 0 && sp.TotalFitness > 0 {
-			sp.AvgFitness = sp.TotalFitness / float64(len(sp.Members))
+		if sm.DisableFitnessTracking {
+			// In ecology mode, staleness is based on reproductive success
+			// If no offspring this generation, increase staleness
+			if sp.GenerationOffspring == 0 {
+				sp.Staleness++
+			}
+			// Staleness reset happens in RecordOffspring when offspring are produced
+		} else {
+			// Calculate average fitness from total
+			if len(sp.Members) > 0 && sp.TotalFitness > 0 {
+				sp.AvgFitness = sp.TotalFitness / float64(len(sp.Members))
+			}
+
+			// Increase staleness (will be reset by AccumulateFitness if improved)
+			sp.Staleness++
+
+			// Reset fitness tracking for next generation
+			sp.TotalFitness = 0
 		}
 
-		// Increase staleness (will be reset by UpdateFitness if improved)
-		sp.Staleness++
-
-		// Reset fitness tracking for next generation
-		sp.TotalFitness = 0
+		// Reset per-generation offspring counter
+		sp.GenerationOffspring = 0
 	}
 
 	// Remove empty or stale species
@@ -191,10 +205,15 @@ func (sm *SpeciesManager) EndGeneration() {
 }
 
 // RecordOffspring increments the offspring count for a species.
+// When fitness tracking is disabled, this also resets staleness (reproductive success = not stale).
 func (sm *SpeciesManager) RecordOffspring(speciesID int) {
 	for _, sp := range sm.Species {
 		if sp.ID == speciesID {
 			sp.OffspringCount++
+			sp.GenerationOffspring++
+			if sm.DisableFitnessTracking {
+				sp.Staleness = 0 // Reproductive success indicates species viability
+			}
 			return
 		}
 	}
@@ -202,7 +221,11 @@ func (sm *SpeciesManager) RecordOffspring(speciesID int) {
 
 // AccumulateFitness adds to the total fitness for a species member.
 // Called when updating an organism's fitness.
+// When DisableFitnessTracking is true, this is a no-op (persistent ecology mode).
 func (sm *SpeciesManager) AccumulateFitness(speciesID int, fitness float64) {
+	if sm.DisableFitnessTracking {
+		return // Skip fitness tracking in persistent ecology mode
+	}
 	for _, sp := range sm.Species {
 		if sp.ID == speciesID {
 			sp.TotalFitness += fitness
@@ -244,14 +267,15 @@ type SpeciesStats struct {
 
 // SpeciesInfo contains display information about a single species.
 type SpeciesInfo struct {
-	ID         int
-	Size       int
-	BestFit    float64
-	AvgFit     float64
-	Age        int
-	Staleness  int
-	Color      SpeciesColor
-	Offspring  int
+	ID                  int
+	Size                int
+	BestFit             float64
+	AvgFit              float64
+	Age                 int
+	Staleness           int
+	Color               SpeciesColor
+	Offspring           int // Total offspring
+	GenerationOffspring int // Offspring this generation
 }
 
 // GetStats returns summary statistics about species distribution.
@@ -322,14 +346,15 @@ func (sm *SpeciesManager) GetTopSpecies(n int) []SpeciesInfo {
 	for i := 0; i < n; i++ {
 		sp := sorted[i]
 		result[i] = SpeciesInfo{
-			ID:        sp.ID,
-			Size:      len(sp.Members),
-			BestFit:   sp.BestFitness,
-			AvgFit:    sp.AvgFitness,
-			Age:       sp.Age,
-			Staleness: sp.Staleness,
-			Color:     sp.Color,
-			Offspring: sp.OffspringCount,
+			ID:                  sp.ID,
+			Size:                len(sp.Members),
+			BestFit:             sp.BestFitness,
+			AvgFit:              sp.AvgFitness,
+			Age:                 sp.Age,
+			Staleness:           sp.Staleness,
+			Color:               sp.Color,
+			Offspring:           sp.OffspringCount,
+			GenerationOffspring: sp.GenerationOffspring,
 		}
 	}
 

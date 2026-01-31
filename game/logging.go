@@ -203,10 +203,15 @@ func (g *Game) logNeuralStats() {
 	Logf("╔══════════════════════════════════════════════════════════════════╗")
 	Logf("║ NEURAL EVOLUTION @ Tick %d (Gen %d)                              ", g.tick, stats.Generation)
 	Logf("╠══════════════════════════════════════════════════════════════════╣")
-	Logf("║ Species: %d | Total Members: %d | Best Fitness: %.2f",
-		stats.Count, stats.TotalMembers, stats.BestFitness)
-	Logf("║ Total Offspring: %d | Avg Staleness: %.1f",
-		stats.TotalOffspring, stats.AverageStaleness)
+	if g.speciesManager.DisableFitnessTracking {
+		Logf("║ Species: %d | Members: %d | Offspring: %d (ecology mode)",
+			stats.Count, stats.TotalMembers, stats.TotalOffspring)
+	} else {
+		Logf("║ Species: %d | Total Members: %d | Best Fitness: %.2f",
+			stats.Count, stats.TotalMembers, stats.BestFitness)
+		Logf("║ Total Offspring: %d | Avg Staleness: %.1f",
+			stats.TotalOffspring, stats.AverageStaleness)
+	}
 
 	// Count neural organisms
 	neuralCount := 0
@@ -272,8 +277,13 @@ func (g *Game) logNeuralStats() {
 		Logf("╠══════════════════════════════════════════════════════════════════╣")
 		Logf("║ TOP SPECIES:")
 		for i, sp := range topSpecies {
-			Logf("║   #%d: Species %d - %d members, age=%d, stale=%d, fit=%.1f, offspring=%d",
-				i+1, sp.ID, sp.Size, sp.Age, sp.Staleness, sp.BestFit, sp.Offspring)
+			if g.speciesManager.DisableFitnessTracking {
+				Logf("║   #%d: Species %d - %d members, age=%d, stale=%d, offspring=%d",
+					i+1, sp.ID, sp.Size, sp.Age, sp.Staleness, sp.Offspring)
+			} else {
+				Logf("║   #%d: Species %d - %d members, age=%d, stale=%d, fit=%.1f, offspring=%d",
+					i+1, sp.ID, sp.Size, sp.Age, sp.Staleness, sp.BestFit, sp.Offspring)
+			}
 		}
 	}
 

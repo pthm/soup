@@ -132,6 +132,11 @@ func NewGame(cfg GameConfig) *Game {
 		uiSystemRegistry: systems.NewSystemRegistry(),
 	}
 
+	// Configure persistent ecology mode (disable fitness tracking)
+	if cfg.PersistentEcology {
+		g.speciesManager.DisableFitnessTracking = true
+	}
+
 	// GPU flow field - unified flow field for the entire scene
 	// Flora, fauna, and particles all sample from this
 	g.gpuFlowField = renderer.NewGPUFlowField(float32(cfg.Width), float32(cfg.Height))

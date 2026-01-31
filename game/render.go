@@ -289,11 +289,12 @@ func (g *Game) drawNeuralStats() {
 	var speciesInfo []ui.SpeciesInfo
 	for _, sp := range topSpecies {
 		speciesInfo = append(speciesInfo, ui.SpeciesInfo{
-			ID:      sp.ID,
-			Size:    sp.Size,
-			Age:     sp.Age,
-			BestFit: sp.BestFit,
-			Color:   rl.Color{R: sp.Color.R, G: sp.Color.G, B: sp.Color.B, A: 255},
+			ID:        sp.ID,
+			Size:      sp.Size,
+			Age:       sp.Age,
+			BestFit:   sp.BestFit,
+			Offspring: sp.Offspring,
+			Color:     rl.Color{R: sp.Color.R, G: sp.Color.G, B: sp.Color.B, A: 255},
 		})
 	}
 
@@ -303,8 +304,10 @@ func (g *Game) drawNeuralStats() {
 		SpeciesCount:      stats.Count,
 		TotalMembers:      stats.TotalMembers,
 		BestFitness:       stats.BestFitness,
+		TotalOffspring:    stats.TotalOffspring,
 		TopSpecies:        speciesInfo,
 		ShowSpeciesColors: g.showSpeciesColors,
+		EcologyMode:       g.speciesManager.DisableFitnessTracking,
 	})
 }
 

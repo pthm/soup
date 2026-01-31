@@ -187,6 +187,7 @@ Flora are lightweight food sources managed outside the ECS. All flora float and 
 | `-speed=N` | Simulation speed 1-10 |
 | `-max-ticks=N` | Auto-stop |
 | `-perf` | Performance logging |
+| `-fitness` | Enable explicit fitness tracking (default: ecology mode) |
 
 ## NEAT Tuning
 

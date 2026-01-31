@@ -11,16 +11,18 @@ const (
 
 // GameConfig holds configuration for game initialization.
 type GameConfig struct {
-	Headless bool
-	Width    int
-	Height   int
+	Headless          bool
+	Width             int
+	Height            int
+	PersistentEcology bool // When true, disable explicit fitness tracking (selection via energy economics)
 }
 
 // DefaultConfig returns the default game configuration.
 func DefaultConfig() GameConfig {
 	return GameConfig{
-		Headless: false,
-		Width:    ScreenWidth,
-		Height:   ScreenHeight,
+		Headless:          false,
+		Width:             ScreenWidth,
+		Height:            ScreenHeight,
+		PersistentEcology: true, // Default: ecology mode (no explicit fitness)
 	}
 }

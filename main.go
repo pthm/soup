@@ -20,6 +20,7 @@ var (
 	neuralLogDetail = flag.Bool("neural-detail", false, "Enable detailed neural logging (genomes, individual organisms)")
 	headless        = flag.Bool("headless", false, "Run without graphics (hidden window, GPU compute only)")
 	maxTicks        = flag.Int("max-ticks", 0, "Stop after N ticks (0 = run forever, useful with -headless)")
+	fitnessTracking = flag.Bool("fitness", false, "Enable explicit fitness tracking (disables ecology mode)")
 )
 
 func main() {
@@ -47,6 +48,9 @@ func main() {
 	rl.SetTargetFPS(60)
 
 	cfg := game.DefaultConfig()
+	if *fitnessTracking {
+		cfg.PersistentEcology = false
+	}
 	g := game.NewGame(cfg)
 	g.SetLogging(*logInterval, *perfLog, *neuralLog, *neuralLogDetail)
 
@@ -82,10 +86,10 @@ func runHeadless() {
 	rl.InitWindow(int32(game.ScreenWidth), int32(game.ScreenHeight), "Primordial Soup (Headless)")
 	defer rl.CloseWindow()
 
-	cfg := game.GameConfig{
-		Headless: true, // Skip visual renderers, keep GPU compute
-		Width:    game.ScreenWidth,
-		Height:   game.ScreenHeight,
+	cfg := game.DefaultConfig()
+	cfg.Headless = true // Skip visual renderers, keep GPU compute
+	if *fitnessTracking {
+		cfg.PersistentEcology = false
 	}
 	g := game.NewGame(cfg)
 	defer g.Unload()

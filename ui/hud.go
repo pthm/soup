@@ -138,21 +138,24 @@ func (p *PerfPanel) Draw(data PerfPanelData, sortedNames []string) {
 
 // NeuralStatsData holds data for the neural evolution stats panel.
 type NeuralStatsData struct {
-	Generation       int
-	SpeciesCount     int
-	TotalMembers     int
-	BestFitness      float64
-	TopSpecies       []SpeciesInfo
+	Generation        int
+	SpeciesCount      int
+	TotalMembers      int
+	BestFitness       float64 // Legacy: only shown when fitness tracking enabled
+	TotalOffspring    int     // Total offspring across all species
+	TopSpecies        []SpeciesInfo
 	ShowSpeciesColors bool
+	EcologyMode       bool // When true, show offspring instead of fitness
 }
 
 // SpeciesInfo holds info about a single species.
 type SpeciesInfo struct {
-	ID      int
-	Size    int
-	Age     int
-	BestFit float64
-	Color   rl.Color
+	ID        int
+	Size      int
+	Age       int
+	BestFit   float64 // Legacy: only shown when fitness tracking enabled
+	Offspring int     // Total offspring produced
+	Color     rl.Color
 }
 
 // NeuralStatsPanel renders the neural evolution statistics.
@@ -210,7 +213,11 @@ func (n *NeuralStatsPanel) Draw(data NeuralStatsData) {
 	y += lineHeight
 	rl.DrawText(fmt.Sprintf("Species: %d | Members: %d", data.SpeciesCount, data.TotalMembers), n.x+padding, y, 12, rl.LightGray)
 	y += lineHeight
-	rl.DrawText(fmt.Sprintf("Best Fitness: %.1f", data.BestFitness), n.x+padding, y, 12, rl.LightGray)
+	if data.EcologyMode {
+		rl.DrawText(fmt.Sprintf("Total Offspring: %d", data.TotalOffspring), n.x+padding, y, 12, rl.LightGray)
+	} else {
+		rl.DrawText(fmt.Sprintf("Best Fitness: %.1f", data.BestFitness), n.x+padding, y, 12, rl.LightGray)
+	}
 	y += lineHeight + 4
 
 	// Top species
@@ -227,9 +234,15 @@ func (n *NeuralStatsPanel) Draw(data NeuralStatsData) {
 			swatchSize := int32(10)
 			rl.DrawRectangle(n.x+padding, y+2, swatchSize, swatchSize, sp.Color)
 
-			// Species info
-			text := fmt.Sprintf("#%d: %d members (age: %d, fit: %.0f)",
-				sp.ID, sp.Size, sp.Age, sp.BestFit)
+			// Species info - show offspring in ecology mode, fitness otherwise
+			var text string
+			if data.EcologyMode {
+				text = fmt.Sprintf("#%d: %d members (age: %d, offspring: %d)",
+					sp.ID, sp.Size, sp.Age, sp.Offspring)
+			} else {
+				text = fmt.Sprintf("#%d: %d members (age: %d, fit: %.0f)",
+					sp.ID, sp.Size, sp.Age, sp.BestFit)
+			}
 			rl.DrawText(text, n.x+padding+swatchSize+6, y, 12, rl.LightGray)
 			y += lineHeight
 		}
