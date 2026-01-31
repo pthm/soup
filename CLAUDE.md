@@ -1,148 +1,149 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Real-time artificial life simulation with NEAT-evolved neural organisms.
 
-## Project Overview
-
-Primordial Soup is a real-time artificial life simulation written in Go. It features neural network-controlled organisms that evolve using NEAT (NeuroEvolution of Augmenting Topologies). Organisms compete for resources, reproduce with genetic crossover and mutation, and speciate over generations.
-
-**Key Technologies:**
-- **Go 1.25** with ECS architecture (mlange-42/ark)
-- **raylib-go** for graphics rendering
-- **goNEAT** for neural network evolution
-
-## Build and Run Commands
+## Quick Start
 
 ```bash
-# Build
-go build .
-
-# Run with graphics
-./soup
-
-# Run headless for evolution analysis
-./soup -headless -neural -max-ticks=10000
-
-# Fast headless run with detailed logging
-./soup -headless -neural -neural-detail -speed=10 -max-ticks=50000 -logfile=evolution.log
-
-# Run tests
-go test ./...
-go test ./neural/...
+go build . && ./soup                    # Graphics mode
+./soup -headless -neural -max-ticks=50000  # Fast evolution run
+go test ./...                           # Run tests
 ```
-
-### Command-Line Flags
-
-| Flag | Description |
-|------|-------------|
-| `-headless` | No graphics (faster simulation) |
-| `-neural` | Enable neural evolution logging (every 500 ticks) |
-| `-neural-detail` | Log individual birth/death events |
-| `-speed=N` | Simulation speed 1-10 |
-| `-max-ticks=N` | Stop after N ticks |
-| `-logfile=FILE` | Write logs to file |
-| `-log=N` | Log world state every N ticks |
-| `-perf` | Enable performance logging |
-
-### In-Game Controls
-
-- **Space**: Pause/Resume
-- **< >**: Decrease/Increase simulation speed
-- **Click**: Add herbivore at cursor
-- **F**: Add flora
-- **C**: Add carnivore
-- **S**: Toggle species coloring
-- **N**: Toggle neural stats panel
 
 ## Architecture
 
-### Package Structure
-
 ```
-soup/
-├── main.go           # Game loop, entity creation, UI rendering
-├── components/       # ECS components (Position, Organism, Brain, etc.)
-├── systems/          # ECS systems (Physics, Behavior, Feeding, etc.)
-├── neural/           # NEAT implementation (brain, CPPN morphology, speciation)
-├── traits/           # Organism traits and mutations
-├── renderer/         # Shader-based rendering (water, sun, particles)
-└── config/           # YAML configuration for NEAT parameters
+game/       Main loop, entity factory, UI
+components/ ECS components (Position, Organism, Brain, CellBuffer)
+systems/    ECS systems (Physics, Behavior, Feeding, Energy, Breeding)
+neural/     NEAT brains, CPPN morphology, speciation
+renderer/   Shaders (water, sun, terrain)
+ui/         HUD, controls, overlays
 ```
 
-### Neural Evolution System
-
-Each fauna organism has two neural genomes (goNEAT `genetics.Genome`):
-
-1. **Body Genome (CPPN)**: Queried once at birth to generate cell layout/morphology
-   - Inputs: x, y, distance, angle, bias (5 total)
-   - Outputs: cell presence, diet bias, traits, priority (4 total)
-
-2. **Brain Genome**: Queried every tick to control behavior
-   - Inputs (14): food distance/angle, predator distance/angle, mate distance, herd density, light level, flow field, energy ratio, cell count, bias
-   - Outputs (9): seek food, flee, seek mate, herd, wander, grow, breed, conserve, speed
-
-### Key Types
-
-- `components.Organism`: Energy, traits, shape metrics, allocation mode
-- `components.NeuralGenome`: Stores body and brain goNEAT genomes
-- `components.Brain`: Runtime neural network controller
-- `neural.BrainController`: Wraps goNEAT network evaluation
-- `neural.SpeciesManager`: NEAT speciation and fitness tracking
-- `traits.Trait`: Bitmask for organism characteristics (Herbivore, Carnivore, Speed, etc.)
-
-### ECS Patterns
-
-Uses mlange-42/ark ECS with typed mappers and filters:
+### ECS (mlange-42/ark)
 
 ```go
-// Creating entities with components
-faunaMapper := ecs.NewMap5[Position, Velocity, Organism, CellBuffer, Fauna](world)
-entity := faunaMapper.NewEntity(&pos, &vel, &org, &cells, &Fauna{})
+// Create entities with typed mappers
+entity := g.faunaMapper.NewEntity(&pos, &vel, &org, &cells, &components.Fauna{})
+g.neuralGenomeMap.Add(entity, neuralGenome)
 
-// Adding optional components after creation
-neuralGenomeMap.Add(entity, neuralGenome)
-brainMap.Add(entity, brain)
-
-// Querying entities
-query := faunaFilter.Query()
+// Query with typed filters
+query := g.faunaFilter.Query()
 for query.Next() {
-    pos, org, _ := query.Get()
-    // process...
+    pos, org, cells := query.Get()
 }
 ```
 
+### Neural System
+
+**CPPN** (queried once at birth):
+- Inputs (5): x, y, distance, angle, bias
+- Outputs (12): presence, sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, armor, storage, reproductive, brain_weight, brain_leo
+
+**Brain** (queried every tick via `BrainController.Think()`):
+- Inputs (26): self (2) + body descriptor (6) + boid fields (9) + food fields (6) + threat (2) + bias (1)
+- Outputs (4): UFwd, UUp, AttackIntent, MateIntent
+
+**Input Structure (26 inputs)**:
+| Index | Name | Range | Description |
+|-------|------|-------|-------------|
+| 0-1 | Self | [0,1] | speed_norm, energy_norm |
+| 2-7 | Body Descriptor | [0,1] | size, speed_capacity, agility, sense, bite, armor |
+| 8-16 | Boid Fields | varies | cohesion (3), alignment (2), separation (3), density (1) |
+| 17-22 | Food Fields | varies | plant (3), meat (3) |
+| 23-24 | Threat | varies | proximity, closing_speed |
+| 25 | Bias | 1.0 | constant |
+
+**Output Structure (4 outputs)**:
+| Index | Name | Range | Description |
+|-------|------|-------|-------------|
+| 0 | UFwd | [-1,1] | Desired forward velocity |
+| 1 | UUp | [-1,1] | Desired lateral velocity |
+| 2 | AttackIntent | [0,1] | Predation gate (>0.5 = attack) |
+| 3 | MateIntent | [0,1] | Mating gate (>0.5 = ready) |
+
+### Cell Types
+
+| Type | Function |
+|------|----------|
+| Sensor | Perception radius/quality |
+| Actuator | Movement thrust |
+| Mouth | Feeding ability |
+| Digestive | Diet spectrum (0=herbivore, 1=carnivore) |
+| Photosynthetic | Energy from light |
+| Bioluminescent | Light emission |
+| Reproductive | Breeding capability |
+
+### Energy Model
+
+Brain outputs drive energy costs:
+- **Movement**: UFwd + UUp magnitude + ActiveThrust (main pressure)
+- **Attack**: Body-scaled cost when AttackIntent > 0.5
+- **Base**: ~0.0005/cell/tick (photosynthesis can offset up to 95%)
+
+Death occurs when energy <= 0.
+
+### Feeding Mechanics
+
+**Herbivory** (implicit):
+- Automatic when near flora and digestiveSpectrum < 0.7
+- No brain output required
+
+**Predation** (explicit):
+- Requires AttackIntent > 0.5 from brain
+- Body-scaled range, damage, and cost
+- Attack cooldown (30 ticks)
+
+### Mating Mechanics
+
+- Requires MateIntent > 0.5 from brain
+- Surface-to-surface proximity check using body radii
+- Contact margin of 5 world units
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `game/factory.go` | Entity creation, `createNeuralOrganism()` |
+| `game/simulation.go` | System update order, `runSimulationStep()` |
+| `neural/brain.go` | `BrainController.Think()`, genome creation |
+| `neural/inputs.go` | `SensoryInputs`, `BehaviorOutputs`, I/O mapping |
+| `neural/morphology.go` | CPPN evaluation, cell generation |
+| `neural/reproduction.go` | Crossover, mutation |
+| `systems/behavior.go` | Polar vision, brain evaluation |
+| `systems/energy.go` | Energy costs, photosynthesis |
+| `systems/breeding.go` | Mating, offspring creation |
+| `components/components.go` | All component definitions |
+
 ### System Update Order
 
-1. Day/night cycle
-2. Flow field particles
-3. Shadow map (for photosynthesis)
-4. Spatial grid (O(1) neighbor lookups)
-5. Allocation mode (energy priorities)
-6. Behavior (neural network steering)
-7. Physics
-8. Feeding
-9. Photosynthesis
-10. Disease spread
-11. Energy consumption
-12. Cell aging
-13. Breeding (NEAT crossover/mutation)
-14. Spores (flora reproduction)
-15. Growth
-16. Cleanup dead entities
+1. Day/night, flow field, shadow map (environment)
+2. Spatial grid (neighbor lookups)
+3. Allocation, behavior (AI)
+4. Physics
+5. Feeding, energy, breeding
+6. Cleanup
 
-## Tuning Neural Evolution
+## Flags
 
-Key parameters in `neural/config.go` (`DefaultNEATOptions()`):
+| Flag | Description |
+|------|-------------|
+| `-headless` | No graphics |
+| `-neural` | Log evolution stats (every 500 ticks) |
+| `-neural-detail` | Log birth/death events |
+| `-speed=N` | Simulation speed 1-10 |
+| `-max-ticks=N` | Auto-stop |
+| `-perf` | Performance logging |
+
+## NEAT Tuning
+
+Key parameters in `neural/config.go`:
 
 ```go
-MutateAddNodeProb: 0.10      // Structural complexity growth
+MutateAddNodeProb: 0.10      // Structural complexity
 MutateAddLinkProb: 0.15      // Connection density
-CompatThreshold:   2.3       // Lower = more species
+CompatThreshold:   1.2       // Lower = more species
 ```
 
-Fitness is calculated in `neural/species.go` as: `energyRatio * survivalBonus * reproBonus`
-
-Target metrics for healthy evolution:
-- 3-10 coexisting species
-- Brain nodes growing from 23 (14 inputs + 9 outputs) toward 30+
-- Stable population of 100-300
+Target: 3-10 species, brain nodes growing from 25 toward 35+, population 100-300.

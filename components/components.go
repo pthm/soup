@@ -67,20 +67,34 @@ type Organism struct {
 	ActiveThrust   float32      // Thrust magnitude this tick (for energy cost)
 	OBB            CollisionOBB // Collision bounding box computed from cells
 
-	// Brain outputs (intent-based)
-	DesireAngle    float32 // Brain output: -pi to +pi, where to go relative to heading
-	DesireDistance float32 // Brain output: 0-1, movement urgency
-	EatIntent      float32 // Brain output: 0-1, >0.5 means try to eat
-	GrowIntent     float32 // Brain output: 0-1, allocate energy to growth
-	BreedIntent    float32 // Brain output: 0-1, >0.5 means try to reproduce
-	GlowIntent     float32 // Brain output: 0-1, bioluminescence intensity
+	// Body geometry (computed from cells at birth)
+	BodyRadius float32 // sqrt(cellCount) * cellSize
+
+	// Brain outputs (new simplified system)
+	UFwd         float32 // Brain output: -1 to +1, desired forward velocity
+	UUp          float32 // Brain output: -1 to +1, desired lateral velocity
+	AttackIntent float32 // Brain output: 0-1, >0.5 means attack
+	MateIntent   float32 // Brain output: 0-1, >0.5 means ready to mate
+
+	// Legacy brain outputs (computed from UFwd/UUp for compatibility)
+	DesireAngle    float32 // Computed: -pi to +pi, where to go relative to heading
+	DesireDistance float32 // Computed: 0-1, movement urgency
+	EatIntent      float32 // Derived: implicit from mouth proximity
+	GrowIntent     float32 // Removed: derived from energy level
+	BreedIntent    float32 // Alias for MateIntent
+	GlowIntent     float32 // Removed: can re-add later
 
 	// Derived motor outputs (computed by pathfinding layer)
 	TurnOutput   float32 // -1 to +1, current turn output
 	ThrustOutput float32 // 0 to 1, current thrust output
 
 	// Bioluminescence state
-	EmittedLight float32 // Current light emission (GlowIntent x BioluminescentCap)
+	EmittedLight float32 // Current light emission
+
+	// Attack state
+	AttackCooldown int32  // Ticks until can attack again
+	MateProgress   int32  // Ticks in mating contact
+	MatePartnerID  uint64 // Entity ID of current mating partner
 
 	// Damage awareness (set by feeding system, decays each tick)
 	BeingEaten float32 // 0-1, how intensely this organism is being eaten

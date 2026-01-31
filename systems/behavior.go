@@ -39,6 +39,10 @@ const (
 
 	// Parallel processing threshold
 	minOrganismsForParallel = 100 // Below this, goroutine overhead exceeds benefits
+
+	// Boid field parameters (matching neural/config.go)
+	boidSeparationRadius = 3.0  // In body lengths
+	boidExpectedNeighbors = 10.0
 )
 
 // BehaviorPerfStats tracks subsystem timings within the behavior system.
@@ -169,21 +173,17 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			outputs = neural.DefaultOutputs()
 		}
 
-		// Store intents for other systems (feeding, breeding, growth, bioluminescence)
+		// Store brain outputs
+		org.UFwd = outputs.UFwd
+		org.UUp = outputs.UUp
+		org.AttackIntent = outputs.AttackIntent
+		org.MateIntent = outputs.MateIntent
 		org.DesireAngle = outputs.DesireAngle
 		org.DesireDistance = outputs.DesireDistance
-		org.EatIntent = outputs.Eat
-		org.GrowIntent = outputs.Grow
-		org.BreedIntent = outputs.Breed
-		org.GlowIntent = outputs.Glow
+		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 
-		// Phase 5b: Compute emitted light from glow intent and bioluminescent capability
-		if cells != nil && outputs.Glow > 0 {
-			caps := cells.ComputeCapabilities()
-			org.EmittedLight = outputs.Glow * caps.BioluminescentCap
-		} else {
-			org.EmittedLight = 0
-		}
+		// Compute emitted light (placeholder - glow removed from brain)
+		org.EmittedLight = 0
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
@@ -407,20 +407,16 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 
 		// Apply brain outputs
 		outputs := task.outputs
+		org.UFwd = outputs.UFwd
+		org.UUp = outputs.UUp
+		org.AttackIntent = outputs.AttackIntent
+		org.MateIntent = outputs.MateIntent
 		org.DesireAngle = outputs.DesireAngle
 		org.DesireDistance = outputs.DesireDistance
-		org.EatIntent = outputs.Eat
-		org.GrowIntent = outputs.Grow
-		org.BreedIntent = outputs.Breed
-		org.GlowIntent = outputs.Glow
+		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 
-		// Compute emitted light
-		if task.cells != nil && outputs.Glow > 0 {
-			caps := task.cells.ComputeCapabilities()
-			org.EmittedLight = outputs.Glow * caps.BioluminescentCap
-		} else {
-			org.EmittedLight = 0
-		}
+		// Compute emitted light (placeholder - glow removed from brain)
+		org.EmittedLight = 0
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
@@ -486,19 +482,23 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		// Calculate effective perception radius
 		effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
 
-		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+		// Calculate organism center using OBB offset
 		cosH := float32(math.Cos(float64(task.heading)))
 		sinH := float32(math.Sin(float64(task.heading)))
 		centerX := task.posX + task.obb.OffsetX*cosH - task.obb.OffsetY*sinH
 		centerY := task.posY + task.obb.OffsetX*sinH + task.obb.OffsetY*cosH
 
 		// Get capabilities
-		var myComposition, myDigestiveSpec, myArmor float32
+		var caps components.Capabilities
+		var cellCount int
 		if task.cells != nil {
-			caps := task.cells.ComputeCapabilities()
-			myComposition = caps.Composition()
-			myDigestiveSpec = caps.DigestiveSpectrum()
-			myArmor = caps.StructuralArmor
+			caps = task.cells.ComputeCapabilities()
+			cellCount = int(task.cells.Count)
+		} else {
+			cellCount = int((task.maxEnergy - 100) / 50)
+			if cellCount < 1 {
+				cellCount = 1
+			}
 		}
 
 		// Get light level at organism center
@@ -515,9 +515,9 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			PosX:            centerX,
 			PosY:            centerY,
 			Heading:         task.heading,
-			MyComposition:   myComposition,
-			MyDigestiveSpec: myDigestiveSpec,
-			MyArmor:         myArmor,
+			MyComposition:   caps.Composition(),
+			MyDigestiveSpec: caps.DigestiveSpectrum(),
+			MyArmor:         caps.StructuralArmor,
 			EffectiveRadius: effectiveRadius,
 			LightLevel:      lightLevel,
 			Sensors:         sensorCells,
@@ -534,30 +534,24 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		}
 		pv.SampleDirectionalLight(centerX, centerY, task.heading, effectiveRadius, lightSampler)
 
+		// Compute separation urgency (thread-safe version)
+		separationUrge, neighborDensity := computeSeparationParallel(centerX, centerY, task.faunaIdx, faunaPos, faunaOrgs, grid)
+
 		// Build sensory inputs
 		sensory := neural.SensoryInputs{
+			Body:            computeBodyDescriptor(&components.Organism{CellSize: task.cellSize, ShapeMetrics: task.shapeMetrics}, &caps, cellCount),
+			EnergyNorm:      task.energy / task.maxEnergy,
+			LightLevel:      lightLevel,
+			BeingEaten:      task.beingEaten,
+			SeparationUrge:  separationUrge,
+			NeighborDensity: neighborDensity,
+			MaxSpeed:        task.maxSpeed,
+			MaxEnergy:       task.maxEnergy,
 			PerceptionRadius: effectiveRadius,
-			Energy:           task.energy,
-			MaxEnergy:        task.maxEnergy,
-			MaxCells:         16,
-			SensorCount:      getSensorCount(task.cells),
-			TotalSensorGain:  getTotalSensorGain(task.cells),
-			ActuatorCount:    getActuatorCount(task.cells),
-			TotalActuatorStr: getTotalActuatorStrength(task.cells),
-			BeingEaten:       task.beingEaten,
 		}
 
-		if task.cells != nil {
-			sensory.CellCount = int(task.cells.Count)
-		} else {
-			sensory.CellCount = int((task.maxEnergy - 100) / 50)
-			if sensory.CellCount < 1 {
-				sensory.CellCount = 1
-			}
-		}
-
+		// Copy normalized polar vision to sensory inputs
 		sensory.FromPolarVision(&pv)
-		sensory.LightLevel = lightLevel
 
 		// Flow alignment
 		headingX := float32(math.Cos(float64(task.heading)))
@@ -576,6 +570,40 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			task.outputs = neural.DecodeOutputs(rawOutputs)
 		}
 	}
+}
+
+// computeSeparationParallel is a thread-safe version of computeSeparation.
+func computeSeparationParallel(centerX, centerY float32, myIdx int, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (separationUrge, density float32) {
+	const separationRadius = 30.0
+	const maxNeighbors = 10.0
+
+	nearbyFauna := grid.GetNearbyFaunaSafe(centerX, centerY, separationRadius)
+
+	var totalUrge float32
+	var count int
+
+	for _, idx := range nearbyFauna {
+		if idx == myIdx || faunaOrgs[idx].Dead {
+			continue
+		}
+
+		dx := faunaPos[idx].X - centerX
+		dy := faunaPos[idx].Y - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+		if dist < separationRadius && dist > 0.1 {
+			urge := 1.0 - (dist / separationRadius)
+			totalUrge += urge
+			count++
+		}
+	}
+
+	if count > 0 {
+		separationUrge = clampFloat(totalUrge/float32(count), 0, 1)
+	}
+	density = clampFloat(float32(count)/maxNeighbors, 0, 1)
+
+	return separationUrge, density
 }
 
 // buildEntityListParallel creates entity list for parallel processing (no shared buffer).
@@ -645,8 +673,8 @@ func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics co
 	return flowX * factor, flowY * factor
 }
 
-// getBrainOutputs gathers sensory inputs using polar vision and runs the brain network.
-// Phase 3: Uses 4-cone × 3-channel polar vision instead of nearest-target sensing.
+// getBrainOutputs gathers sensory inputs using polar vision + body descriptor and runs the brain.
+// Hybrid approach: polar vision cones (proven to work) + body-aware capabilities.
 func (s *BehaviorSystem) getBrainOutputs(
 	entity ecs.Entity,
 	pos *components.Position,
@@ -670,24 +698,20 @@ func (s *BehaviorSystem) getBrainOutputs(
 	// Calculate effective perception radius based on sensor capability
 	effectiveRadius := getEffectivePerceptionRadius(org.PerceptionRadius, cells)
 
-	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	// Calculate organism center using OBB offset
 	cosH := float32(math.Cos(float64(org.Heading)))
 	sinH := float32(math.Sin(float64(org.Heading)))
 	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
 	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
 	// Get our capabilities for vision parameters
-	var myComposition, myDigestiveSpec, myArmor float32
+	var caps components.Capabilities
+	var cellCount int
 	if cells != nil {
-		caps := cells.ComputeCapabilities()
-		myComposition = caps.Composition()
-		myDigestiveSpec = caps.DigestiveSpectrum()
-		myArmor = caps.StructuralArmor
+		caps = cells.ComputeCapabilities()
+		cellCount = int(cells.Count)
 	} else {
-		// Fauna should always have cells - use defaults if somehow missing
-		myComposition = 0.0
-		myDigestiveSpec = 0.5
-		myArmor = 0.0
+		cellCount = 1
 	}
 
 	// Get light level at organism center
@@ -704,9 +728,9 @@ func (s *BehaviorSystem) getBrainOutputs(
 		PosX:            centerX,
 		PosY:            centerY,
 		Heading:         org.Heading,
-		MyComposition:   myComposition,
-		MyDigestiveSpec: myDigestiveSpec,
-		MyArmor:         myArmor,
+		MyComposition:   caps.Composition(),
+		MyDigestiveSpec: caps.DigestiveSpectrum(),
+		MyArmor:         caps.StructuralArmor,
 		EffectiveRadius: effectiveRadius,
 		LightLevel:      lightLevel,
 		Sensors:         sensorCells,
@@ -730,7 +754,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 	var pv neural.PolarVision
 	pv.ScanEntities(visionParams, entities)
 
-	// Phase 3b: Sample directional light for gradient computation from organism center
+	// Sample directional light for gradient computation from organism center
 	var lightSampler func(x, y float32) float32
 	if s.shadowMap != nil {
 		lightSampler = s.shadowMap.SampleLight
@@ -740,50 +764,35 @@ func (s *BehaviorSystem) getBrainOutputs(
 		s.perfStats.VisionNs += time.Since(visionStart).Nanoseconds()
 	}
 
-	// Build sensory inputs with polar vision data
-	sensory := neural.SensoryInputs{
-		PerceptionRadius: effectiveRadius,
-		Energy:           org.Energy,
-		MaxEnergy:        org.MaxEnergy,
-		MaxCells:         16,
-		SensorCount:      getSensorCount(cells),
-		TotalSensorGain:  getTotalSensorGain(cells),
-		ActuatorCount:    getActuatorCount(cells),
-		TotalActuatorStr: getTotalActuatorStrength(cells),
-		BeingEaten:       org.BeingEaten,
-	}
+	// Compute separation urgency from nearby fauna
+	separationUrge, neighborDensity := computeSeparation(centerX, centerY, org, faunaPos, faunaOrgs, grid)
 
-	// Cell count from actual cells if available
-	if cells != nil {
-		sensory.CellCount = int(cells.Count)
-	} else {
-		sensory.CellCount = int((org.MaxEnergy - 100) / 50)
-		if sensory.CellCount < 1 {
-			sensory.CellCount = 1
-		}
+	// Build sensory inputs with polar vision + body descriptor
+	sensory := neural.SensoryInputs{
+		Body:            computeBodyDescriptor(org, &caps, cellCount),
+		EnergyNorm:      org.Energy / org.MaxEnergy,
+		LightLevel:      lightLevel,
+		BeingEaten:      org.BeingEaten,
+		SeparationUrge:  separationUrge,
+		NeighborDensity: neighborDensity,
+		MaxSpeed:        org.MaxSpeed,
+		MaxEnergy:       org.MaxEnergy,
+		PerceptionRadius: effectiveRadius,
 	}
 
 	// Copy normalized polar vision to sensory inputs
 	sensory.FromPolarVision(&pv)
 
-	// Light level
-	sensory.LightLevel = lightLevel
-
-	// Flow alignment (Phase 4): dot product of flow direction with heading
-	// Positive = flow helping (pushing in direction we're facing)
-	// Negative = flow hindering (pushing against us)
+	// Flow alignment: dot product of flow direction with heading
 	flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
 	headingX := float32(math.Cos(float64(org.Heading)))
 	headingY := float32(math.Sin(float64(org.Heading)))
 	flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
 	if flowMag > 0.001 {
-		// Normalize flow and compute dot product
 		sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
-	} else {
-		sensory.FlowAlignment = 0
 	}
 
-	// Convert to neural inputs and run brain
+	// Run brain
 	var brainStart time.Time
 	if s.perfEnabled {
 		brainStart = time.Now()
@@ -798,6 +807,42 @@ func (s *BehaviorSystem) getBrainOutputs(
 	}
 
 	return neural.DecodeOutputs(rawOutputs)
+}
+
+// computeSeparation calculates separation urgency and neighbor density.
+// Used to prevent clustering - gives organisms a signal to spread out.
+func computeSeparation(centerX, centerY float32, org *components.Organism, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) (separationUrge, density float32) {
+	const separationRadius = 30.0 // World units - larger than feeding distance
+	const maxNeighbors = 10.0
+
+	nearbyFauna := grid.GetNearbyFauna(centerX, centerY, separationRadius)
+
+	var totalUrge float32
+	var count int
+
+	for _, idx := range nearbyFauna {
+		if faunaOrgs[idx] == org || faunaOrgs[idx].Dead {
+			continue
+		}
+
+		dx := faunaPos[idx].X - centerX
+		dy := faunaPos[idx].Y - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+		if dist < separationRadius && dist > 0.1 {
+			// Inverse distance - closer = more urgent
+			urge := 1.0 - (dist / separationRadius)
+			totalUrge += urge
+			count++
+		}
+	}
+
+	if count > 0 {
+		separationUrge = clampFloat(totalUrge/float32(count), 0, 1)
+	}
+	density = clampFloat(float32(count)/maxNeighbors, 0, 1)
+
+	return separationUrge, density
 }
 
 // buildSensorCells extracts sensor cell data for vision weighting.
@@ -1040,4 +1085,286 @@ func getEffectiveMaxSpeed(baseSpeed float32, cells *components.CellBuffer) float
 	// Scale: 0.5x (minimal actuators) to 1.5x (4+ actuator strength)
 	scale := float32(0.5 + math.Min(1.0, float64(totalStrength)/capabilityScale))
 	return baseSpeed * scale
+}
+
+// computeBodyRadius returns sqrt(cellCount) * cellSize for body length normalization.
+func computeBodyRadius(cellCount int, cellSize float32) float32 {
+	return float32(math.Sqrt(float64(cellCount))) * cellSize
+}
+
+// computeBodyDescriptor computes normalized body capability metrics.
+func computeBodyDescriptor(org *components.Organism, caps *components.Capabilities, cellCount int) neural.BodyDescriptor {
+	bodyRadius := computeBodyRadius(cellCount, org.CellSize)
+
+	return neural.BodyDescriptor{
+		SizeNorm:      clampFloat(bodyRadius/neural.MaxBodySize, 0, 1),
+		SpeedCapacity: clampFloat(caps.ActuatorWeight/(caps.ActuatorWeight+org.ShapeMetrics.Drag*2+0.1), 0, 1),
+		AgilityNorm:   clampFloat(1.0/(1.0+org.ShapeMetrics.Drag), 0, 1),
+		SenseStrength: clampFloat(caps.SensorWeight/neural.MaxSensorWeight, 0, 1),
+		BiteStrength:  clampFloat(caps.MouthSize/neural.MaxMouthSize, 0, 1),
+		ArmorLevel:    caps.StructuralArmor,
+	}
+}
+
+// worldToLocal converts a world-space direction to local space relative to heading.
+func worldToLocal(dx, dy, heading float32) (localFwd, localUp float32) {
+	cosH := float32(math.Cos(float64(heading)))
+	sinH := float32(math.Sin(float64(heading)))
+	// Rotate by -heading to get local coordinates
+	localFwd = dx*cosH + dy*sinH
+	localUp = -dx*sinH + dy*cosH
+	return localFwd, localUp
+}
+
+// normalizeVector normalizes a vector and returns its magnitude.
+func normalizeVector(x, y float32) (nx, ny, mag float32) {
+	mag = float32(math.Sqrt(float64(x*x + y*y)))
+	if mag < 0.001 {
+		return 0, 0, 0
+	}
+	return x / mag, y / mag, mag
+}
+
+// NeighborInfo holds data about a nearby same-species organism for boid calculations.
+type NeighborInfo struct {
+	PosX, PosY     float32 // World position
+	VelX, VelY     float32 // Velocity
+	BodyRadius     float32 // For surface-to-surface distance
+	SurfaceDistSq  float32 // Surface-to-surface distance squared
+}
+
+// computeBoidFields computes cohesion, alignment, separation fields from same-species neighbors.
+func computeBoidFields(
+	centerX, centerY float32,
+	heading float32,
+	myBodyRadius float32,
+	perceptionRadius float32,
+	neighbors []NeighborInfo,
+) neural.BoidFields {
+	var fields neural.BoidFields
+
+	if len(neighbors) == 0 {
+		return fields
+	}
+
+	// Accumulators
+	var comX, comY float32       // Center of mass
+	var avgVelX, avgVelY float32 // Average velocity
+	var sepX, sepY float32       // Separation force
+	var cohesionCount int
+	var alignCount int
+	var sepCount int
+
+	separationRadiusSq := float32(boidSeparationRadius * boidSeparationRadius * myBodyRadius * myBodyRadius)
+
+	for _, n := range neighbors {
+		// Compute surface-to-surface distance
+		dx := n.PosX - centerX
+		dy := n.PosY - centerY
+		centerDist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		surfaceDist := centerDist - myBodyRadius - n.BodyRadius
+		if surfaceDist < 0 {
+			surfaceDist = 0
+		}
+
+		// Cohesion: accumulate center of mass
+		comX += n.PosX
+		comY += n.PosY
+		cohesionCount++
+
+		// Alignment: accumulate velocities
+		velMag := float32(math.Sqrt(float64(n.VelX*n.VelX + n.VelY*n.VelY)))
+		if velMag > 0.1 {
+			avgVelX += n.VelX / velMag
+			avgVelY += n.VelY / velMag
+			alignCount++
+		}
+
+		// Separation: repulsion from close neighbors (surface distance)
+		surfaceDistSq := surfaceDist * surfaceDist
+		if surfaceDistSq < separationRadiusSq && centerDist > 0.1 {
+			// Inverse distance weighting
+			weight := 1.0 - (surfaceDist / (boidSeparationRadius * myBodyRadius))
+			if weight < 0 {
+				weight = 0
+			}
+			sepX -= (dx / centerDist) * weight
+			sepY -= (dy / centerDist) * weight
+			sepCount++
+		}
+	}
+
+	// Compute cohesion direction (to center of mass)
+	if cohesionCount > 0 {
+		comX /= float32(cohesionCount)
+		comY /= float32(cohesionCount)
+		dx := comX - centerX
+		dy := comY - centerY
+		localFwd, localUp := worldToLocal(dx, dy, heading)
+		nx, ny, mag := normalizeVector(localFwd, localUp)
+		fields.CohesionFwd = nx
+		fields.CohesionUp = ny
+		// Normalize magnitude by perception radius (in body lengths)
+		fields.CohesionMag = clampFloat(mag/(perceptionRadius), 0, 1)
+	}
+
+	// Compute alignment (average heading)
+	if alignCount > 0 {
+		avgVelX /= float32(alignCount)
+		avgVelY /= float32(alignCount)
+		localFwd, localUp := worldToLocal(avgVelX, avgVelY, heading)
+		nx, ny, _ := normalizeVector(localFwd, localUp)
+		fields.AlignmentFwd = nx
+		fields.AlignmentUp = ny
+	}
+
+	// Compute separation
+	if sepCount > 0 {
+		localFwd, localUp := worldToLocal(sepX, sepY, heading)
+		nx, ny, mag := normalizeVector(localFwd, localUp)
+		fields.SeparationFwd = nx
+		fields.SeparationUp = ny
+		fields.SeparationMag = clampFloat(mag, 0, 1)
+	}
+
+	// Density
+	fields.DensitySame = clampFloat(float32(len(neighbors))/boidExpectedNeighbors, 0, 1)
+
+	return fields
+}
+
+// FoodTarget holds data about a potential food source for field computation.
+type FoodTarget struct {
+	PosX, PosY  float32
+	Composition float32 // 1.0 = plant, 0.0 = meat
+	Intensity   float32 // Inverse distance weighted
+}
+
+// computeFoodFields computes plant and meat attraction fields.
+func computeFoodFields(
+	centerX, centerY float32,
+	heading float32,
+	digestiveSpectrum float32, // 0=herbivore, 1=carnivore
+	perceptionRadius float32,
+	foods []FoodTarget,
+) neural.FoodFields {
+	var fields neural.FoodFields
+
+	if len(foods) == 0 {
+		return fields
+	}
+
+	// Accumulators for weighted direction
+	var plantX, plantY, plantTotal float32
+	var meatX, meatY, meatTotal float32
+
+	// Plant preference for herbivores, meat preference for carnivores
+	plantWeight := 1.0 - digestiveSpectrum // Herbivores prefer plants
+	meatWeight := digestiveSpectrum        // Carnivores prefer meat
+
+	for _, f := range foods {
+		dx := f.PosX - centerX
+		dy := f.PosY - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		if dist < 1 {
+			dist = 1
+		}
+
+		// Intensity decreases with distance
+		intensity := f.Intensity / (dist * dist)
+
+		if f.Composition > 0.5 {
+			// Plant
+			plantX += dx * intensity * plantWeight
+			plantY += dy * intensity * plantWeight
+			plantTotal += intensity * plantWeight
+		} else {
+			// Meat
+			meatX += dx * intensity * meatWeight
+			meatY += dy * intensity * meatWeight
+			meatTotal += intensity * meatWeight
+		}
+	}
+
+	// Normalize and convert to local space
+	if plantTotal > 0.01 {
+		localFwd, localUp := worldToLocal(plantX, plantY, heading)
+		nx, ny, _ := normalizeVector(localFwd, localUp)
+		fields.PlantFwd = nx
+		fields.PlantUp = ny
+		fields.PlantMag = clampFloat(plantTotal/float32(len(foods)), 0, 1)
+	}
+
+	if meatTotal > 0.01 {
+		localFwd, localUp := worldToLocal(meatX, meatY, heading)
+		nx, ny, _ := normalizeVector(localFwd, localUp)
+		fields.MeatFwd = nx
+		fields.MeatUp = ny
+		fields.MeatMag = clampFloat(meatTotal/float32(len(foods)), 0, 1)
+	}
+
+	return fields
+}
+
+// computeThreatInfo computes threat proximity and closing speed.
+func computeThreatInfo(
+	centerX, centerY float32,
+	velX, velY float32,
+	heading float32,
+	maxSpeed float32,
+	perceptionRadius float32,
+	threats []neural.EntityInfo,
+	myComposition float32,
+	myArmor float32,
+) neural.ThreatInfo {
+	var info neural.ThreatInfo
+
+	if len(threats) == 0 {
+		return info
+	}
+
+	// Find the most threatening entity
+	var maxThreat float32
+	var threatDx, threatDy float32
+
+	for _, t := range threats {
+		if t.IsFlora {
+			continue // Plants aren't threats
+		}
+
+		dx := t.X - centerX
+		dy := t.Y - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		if dist > perceptionRadius {
+			continue
+		}
+
+		// Calculate how threatening this entity is
+		threatLevel := neural.ThreatLevel(t.DigestiveSpec, myComposition, myArmor)
+		proximity := 1.0 - (dist / perceptionRadius)
+		threat := threatLevel * proximity
+
+		if threat > maxThreat {
+			maxThreat = threat
+			threatDx = dx
+			threatDy = dy
+		}
+	}
+
+	if maxThreat > 0.01 {
+		info.Proximity = clampFloat(maxThreat, 0, 1)
+
+		// Compute closing speed (negative = approaching)
+		threatDist := float32(math.Sqrt(float64(threatDx*threatDx + threatDy*threatDy)))
+		if threatDist > 0.1 && maxSpeed > 0.1 {
+			// Direction to threat
+			dirX := threatDx / threatDist
+			dirY := threatDy / threatDist
+			// Closing speed is our velocity dotted with direction to threat
+			closingSpeed := (velX*dirX + velY*dirY)
+			info.ClosingSpeed = clampFloat(closingSpeed/maxSpeed, -1, 1)
+		}
+	}
+
+	return info
 }

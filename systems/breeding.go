@@ -19,6 +19,11 @@ const (
 	AsexualEnergyCost    = 15.0 // Energy cost for asexual reproduction (reduced)
 	SexualEnergyCost     = 12.0 // Energy cost for sexual reproduction (per parent, reduced)
 	MateProximity        = 100.0 // Maximum distance for finding mates (increased)
+
+	// Mating handshake parameters (from neural/config.go)
+	mateContactMargin = neural.MateContactMargin // Extra margin for mating proximity
+	mateDwellTime     = neural.MateDwellTime     // Ticks required in contact to mate
+	mateEnergyRatio   = neural.MateEnergyRatio   // Minimum energy ratio for mating
 )
 
 // BreedingSystem handles fauna reproduction (both asexual and sexual).
@@ -151,17 +156,16 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 }
 
 // isEligible checks if an organism meets basic requirements to attempt reproduction.
-// Brain output (BreedIntent) directly controls breeding - no allocation mode gating.
+// Uses MateIntent from brain output for explicit mating control.
 func (s *BreedingSystem) isEligible(org *components.Organism, cells *components.CellBuffer) bool {
-	// Check breed intent from brain (threshold for wanting to reproduce)
-	// This is the PRIMARY control - the brain decides when to breed
-	if org.BreedIntent < BreedIntentThreshold {
+	// Check mate intent from brain (threshold for wanting to reproduce)
+	// This is the PRIMARY control - the brain decides when to mate
+	if org.MateIntent < BreedIntentThreshold {
 		return false
 	}
 
-	// Minimum energy to attempt reproduction (can't breed at 0 energy)
-	// But this is much lower than before - let brains learn the tradeoffs
-	if org.Energy < org.MaxEnergy*0.25 {
+	// Minimum energy to attempt reproduction (uses new constant)
+	if org.Energy < org.MaxEnergy*mateEnergyRatio {
 		return false
 	}
 
@@ -184,11 +188,21 @@ const (
 	minAvgReproModeForSexual = float32(0.3)                  // Minimum average reproductive mode
 )
 
+// computeBodyRadius returns sqrt(cellCount) * cellSize for mating proximity.
+func computeBodyRadiusBreeding(cellCount int, cellSize float32) float32 {
+	return float32(math.Sqrt(float64(cellCount))) * cellSize
+}
+
 // isCompatibleForSexual checks if two organisms can mate sexually.
-// No longer requires opposite genders - any two willing organisms can mate.
+// Uses surface-to-surface distance based on body radii.
 func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
 	// Both must have reproductive capability
 	if a.caps.ReproductiveWeight <= 0 || b.caps.ReproductiveWeight <= 0 {
+		return false
+	}
+
+	// Both must have MateIntent above threshold
+	if a.org.MateIntent < BreedIntentThreshold || b.org.MateIntent < BreedIntentThreshold {
 		return false
 	}
 
@@ -203,8 +217,16 @@ func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
 	centerBX := b.pos.X + b.org.OBB.OffsetX*cosHB - b.org.OBB.OffsetY*sinHB
 	centerBY := b.pos.Y + b.org.OBB.OffsetX*sinHB + b.org.OBB.OffsetY*cosHB
 
-	// Must be within proximity (use squared distance to avoid sqrt)
-	if distanceSq(centerAX, centerAY, centerBX, centerBY) > mateProximitySq {
+	// Compute body radii
+	radiusA := computeBodyRadiusBreeding(int(a.cells.Count), a.org.CellSize)
+	radiusB := computeBodyRadiusBreeding(int(b.cells.Count), b.org.CellSize)
+
+	// Compute surface-to-surface distance
+	centerDist := float32(math.Sqrt(float64(distanceSq(centerAX, centerAY, centerBX, centerBY))))
+	surfaceDist := centerDist - radiusA - radiusB
+
+	// Must be within contact margin (touching or very close)
+	if surfaceDist > mateContactMargin {
 		return false
 	}
 

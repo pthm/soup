@@ -11,12 +11,15 @@ import (
 )
 
 const (
-	feedingDistance = 8.0  // Distance to consume food
+	feedingDistance = 8.0  // Distance to consume food (herbivory)
 	baseBiteSize    = 0.08 // Fraction of target energy per bite (increased for simpler system)
 	feedEfficiency  = 0.85 // Energy transfer efficiency
 
 	// Default flora armor (flora don't have cells with armor values)
 	defaultFloraArmor = 0.1
+
+	// Attack parameters (predation requires explicit AttackIntent from brain)
+	attackIntentThreshold = 0.5 // Brain output threshold for attacking
 )
 
 // biteSizeMultiplier returns how much food an organism can consume per tick.
@@ -38,6 +41,34 @@ func biteSizeMultiplier(org *components.Organism, mouthSize float32) float32 {
 	}
 
 	return sizeMultiplier * mouthMultiplier
+}
+
+// attackRange returns the effective attack range based on body capabilities.
+func attackRange(caps components.Capabilities, cellSize float32) float32 {
+	return neural.BaseAttackRange * (0.5 + caps.MouthSize)
+}
+
+// attackDamage returns the damage multiplier for attacks.
+func attackDamage(caps components.Capabilities) float32 {
+	return neural.BaseAttackDamage * (0.5 + caps.MouthSize)
+}
+
+// attackCost returns the energy cost for attacking.
+func attackCost(caps components.Capabilities) float32 {
+	return neural.BaseAttackCost * (0.5 + caps.ActuatorWeight*0.1)
+}
+
+// canAttack checks if an organism can attack (has intent and no cooldown).
+func canAttack(org *components.Organism) bool {
+	return org.AttackIntent > attackIntentThreshold && org.AttackCooldown == 0
+}
+
+// wantsToEatFlora checks if an organism wants to eat flora (implicit herbivory).
+// Herbivory is automatic when near flora and organism is a herbivore.
+func wantsToEatFlora(org *components.Organism, digestiveSpectrum float32) bool {
+	// Herbivores (low digestive spectrum) automatically try to eat flora
+	// This is implicit - no brain output required
+	return digestiveSpectrum < 0.7 // Not pure carnivore
 }
 
 // FeedingSystem handles fauna consuming food sources using capability matching.
@@ -119,7 +150,13 @@ func (s *FeedingSystem) updateWithSpatialGrid() {
 	// Process each fauna's feeding with spatial lookup
 	for i := range faunaOrgs {
 		org := faunaOrgs[i]
-		if org.Dead || org.EatIntent < 0.5 {
+
+		// Decay attack cooldown
+		if org.AttackCooldown > 0 {
+			org.AttackCooldown--
+		}
+
+		if org.Dead {
 			continue
 		}
 
@@ -134,6 +171,7 @@ func (s *FeedingSystem) updateWithSpatialGrid() {
 }
 
 // tryFeedSpatial finds and eats nearby targets using spatial grid.
+// Herbivory is implicit (near flora + herbivore diet), predation requires AttackIntent.
 func (s *FeedingSystem) tryFeedSpatial(
 	pos *components.Position,
 	org *components.Organism,
@@ -155,12 +193,20 @@ func (s *FeedingSystem) tryFeedSpatial(
 	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
 	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
 
-	var bestTarget *entityData
-	var bestPenetration float32
-	var bestDistSq float32 = feedDistSq + 1
+	var bestFloraTarget *entityData
+	var bestFaunaTarget *entityData
+	var bestFloraPenetration float32
+	var bestFaunaPenetration float32
+	var bestFloraDistSq float32 = feedDistSq + 1
+	var bestFaunaDistSq float32
 
-	// Check nearby flora using FloraSystem's spatial query (from center)
-	if s.floraSystem != nil {
+	// Determine attack range for predation
+	atkRange := attackRange(myCaps, org.CellSize)
+	atkRangeSq := atkRange * atkRange
+	bestFaunaDistSq = atkRangeSq + 1
+
+	// Check nearby flora using FloraSystem's spatial query (implicit herbivory)
+	if s.floraSystem != nil && wantsToEatFlora(org, myDigestive) {
 		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, feedingDistance)
 		for _, ref := range nearbyFlora {
 			dSq := distanceSq(centerX, centerY, ref.X, ref.Y)
@@ -176,75 +222,90 @@ func (s *FeedingSystem) tryFeedSpatial(
 				continue
 			}
 
-			if penetration > bestPenetration || (penetration == bestPenetration && dSq < bestDistSq) {
+			if penetration > bestFloraPenetration || (penetration == bestFloraPenetration && dSq < bestFloraDistSq) {
 				caps := components.Capabilities{
 					PhotoWeight:     1.0,
 					ActuatorWeight:  0.0,
 					StructuralArmor: DefaultFloraArmor(),
 				}
-				bestTarget = &entityData{
+				bestFloraTarget = &entityData{
 					pos:      &components.Position{X: ref.X, Y: ref.Y},
 					org:      &components.Organism{Energy: ref.Energy, MaxEnergy: 150, Dead: false},
 					caps:     caps,
 					isFlora:  true,
 					floraRef: ref,
 				}
-				bestPenetration = penetration
-				bestDistSq = dSq
+				bestFloraPenetration = penetration
+				bestFloraDistSq = dSq
 			}
 		}
 	}
 
-	// Check nearby fauna using spatial grid (from center)
-	nearbyFauna := s.spatialGrid.GetNearbyFauna(centerX, centerY, feedingDistance)
-	for _, idx := range nearbyFauna {
-		if idx == myIdx || faunaOrgs[idx].Dead {
-			continue
-		}
-
-		targetPos := &faunaPos[idx]
-		dSq := distanceSq(centerX, centerY, targetPos.X, targetPos.Y)
-		if dSq > feedDistSq {
-			continue
-		}
-
-		targetOrg := faunaOrgs[idx]
-		targetCells := faunaCells[idx]
-		targetCaps := targetCells.ComputeCapabilities()
-
-		edibility := neural.Edibility(myDigestive, targetCaps.Composition())
-		penetration := neural.Penetration(edibility, targetCaps.StructuralArmor)
-
-		if penetration <= 0 {
-			continue
-		}
-
-		// Kin avoidance
-		targetSpeciesID := faunaSpecies[idx]
-		isKin := mySpeciesID > 0 && targetSpeciesID == mySpeciesID
-		if isKin && rand.Float32() < kinAvoidanceProb {
-			continue
-		}
-
-		if penetration > bestPenetration || (penetration == bestPenetration && dSq < bestDistSq) {
-			bestTarget = &entityData{
-				pos:       targetPos,
-				org:       targetOrg,
-				cells:     targetCells,
-				caps:      targetCaps,
-				speciesID: targetSpeciesID,
-				isFlora:   false,
+	// Check nearby fauna using spatial grid (explicit predation - requires AttackIntent)
+	if canAttack(org) {
+		nearbyFauna := s.spatialGrid.GetNearbyFauna(centerX, centerY, atkRange)
+		for _, idx := range nearbyFauna {
+			if idx == myIdx || faunaOrgs[idx].Dead {
+				continue
 			}
-			bestPenetration = penetration
-			bestDistSq = dSq
+
+			targetPos := &faunaPos[idx]
+			dSq := distanceSq(centerX, centerY, targetPos.X, targetPos.Y)
+			if dSq > atkRangeSq {
+				continue
+			}
+
+			targetOrg := faunaOrgs[idx]
+			targetCells := faunaCells[idx]
+			targetCaps := targetCells.ComputeCapabilities()
+
+			edibility := neural.Edibility(myDigestive, targetCaps.Composition())
+			penetration := neural.Penetration(edibility, targetCaps.StructuralArmor)
+
+			if penetration <= 0 {
+				continue
+			}
+
+			// Kin avoidance
+			targetSpeciesID := faunaSpecies[idx]
+			isKin := mySpeciesID > 0 && targetSpeciesID == mySpeciesID
+			if isKin && rand.Float32() < kinAvoidanceProb {
+				continue
+			}
+
+			if penetration > bestFaunaPenetration || (penetration == bestFaunaPenetration && dSq < bestFaunaDistSq) {
+				bestFaunaTarget = &entityData{
+					pos:       targetPos,
+					org:       targetOrg,
+					cells:     targetCells,
+					caps:      targetCaps,
+					speciesID: targetSpeciesID,
+					isFlora:   false,
+				}
+				bestFaunaPenetration = penetration
+				bestFaunaDistSq = dSq
+			}
 		}
 	}
 
-	if bestTarget == nil {
-		return
+	// Execute feeding actions
+	// Flora feeding (herbivory) - implicit, no attack cost
+	if bestFloraTarget != nil {
+		s.executeFeed(org, myCaps, bestFloraTarget, bestFloraPenetration)
 	}
 
-	s.executeFeed(org, myCaps, bestTarget, bestPenetration)
+	// Fauna feeding (predation) - explicit, with attack cost and cooldown
+	if bestFaunaTarget != nil {
+		// Apply attack cost
+		cost := attackCost(myCaps)
+		if org.Energy > cost {
+			org.Energy -= cost
+			org.AttackCooldown = neural.AttackCooldown
+
+			// Execute attack with body-scaled damage
+			s.executeAttack(org, myCaps, bestFaunaTarget, bestFaunaPenetration)
+		}
+	}
 }
 
 // updateLegacy is the original O(n²) implementation for when spatial grid is unavailable.
@@ -386,7 +447,7 @@ func (s *FeedingSystem) tryFeed(
 	s.executeFeed(org, myCaps, bestTarget, bestPenetration)
 }
 
-// executeFeed performs the actual energy transfer.
+// executeFeed performs the actual energy transfer for herbivory.
 func (s *FeedingSystem) executeFeed(
 	predOrg *components.Organism,
 	predCaps components.Capabilities,
@@ -423,6 +484,37 @@ func (s *FeedingSystem) executeFeed(
 	// Signal to target that it's being eaten (for brain awareness)
 	// Scale by how much damage was done relative to max energy
 	damageIntensity := effectiveBite / target.org.MaxEnergy
+	if damageIntensity > target.org.BeingEaten {
+		target.org.BeingEaten = damageIntensity
+	}
+
+	// Kill target if energy depleted
+	if target.org.Energy <= 0 {
+		target.org.Dead = true
+	}
+}
+
+// executeAttack performs predation with body-scaled damage.
+func (s *FeedingSystem) executeAttack(
+	predOrg *components.Organism,
+	predCaps components.Capabilities,
+	target *entityData,
+	penetration float32,
+) {
+	// Body-scaled damage
+	damage := attackDamage(predCaps) * penetration * target.org.MaxEnergy
+
+	// Can only take what target has
+	if damage > target.org.Energy {
+		damage = target.org.Energy
+	}
+
+	// Transfer energy with efficiency
+	predOrg.Energy += damage * feedEfficiency
+	target.org.Energy -= damage
+
+	// Signal to target that it's being attacked
+	damageIntensity := damage / target.org.MaxEnergy
 	if damageIntensity > target.org.BeingEaten {
 		target.org.BeingEaten = damageIntensity
 	}

@@ -4,167 +4,224 @@ import (
 	"math"
 )
 
+// BodyDescriptor holds normalized body capability metrics.
+// These let brains learn policies based on their body type.
+type BodyDescriptor struct {
+	SizeNorm      float32 // bodyRadius / MaxBodySize [0,1]
+	SpeedCapacity float32 // actuatorWeight / (actuatorWeight + drag) [0,1]
+	AgilityNorm   float32 // 1 / (1 + drag) [0,1]
+	SenseStrength float32 // sensorWeight / MaxSensorWeight [0,1]
+	BiteStrength  float32 // mouthSize / MaxMouthSize [0,1]
+	ArmorLevel    float32 // structuralArmor [0,1]
+}
+
+// BoidFields holds aggregated same-species boid field inputs.
+// All directional values are in agent-local frame (fwd/up).
+type BoidFields struct {
+	CohesionFwd   float32 // Weighted center of mass direction (forward component) [-1,1]
+	CohesionUp    float32 // Weighted center of mass direction (lateral component) [-1,1]
+	CohesionMag   float32 // Weighted center of mass distance (normalized) [0,1]
+	AlignmentFwd  float32 // Average neighbor heading (forward component) [-1,1]
+	AlignmentUp   float32 // Average neighbor heading (lateral component) [-1,1]
+	SeparationFwd float32 // Repulsion direction (forward component) [-1,1]
+	SeparationUp  float32 // Repulsion direction (lateral component) [-1,1]
+	SeparationMag float32 // Separation urgency [0,1]
+	DensitySame   float32 // Local same-species density [0,1]
+}
+
+// FoodFields holds aggregated food attraction fields.
+// Plant and meat fields are computed with diet compatibility weighting.
+type FoodFields struct {
+	PlantFwd float32 // Plant attraction direction (forward) [-1,1]
+	PlantUp  float32 // Plant attraction direction (lateral) [-1,1]
+	PlantMag float32 // Plant attraction strength [0,1]
+	MeatFwd  float32 // Meat attraction direction (forward) [-1,1]
+	MeatUp   float32 // Meat attraction direction (lateral) [-1,1]
+	MeatMag  float32 // Meat attraction strength [0,1]
+}
+
+// ThreatInfo holds nearest predator/threat information.
+type ThreatInfo struct {
+	Proximity    float32 // Normalized distance to nearest threat [0,1] (0=far, 1=close)
+	ClosingSpeed float32 // Rate of approach [-1,1] (negative=approaching, positive=retreating)
+}
+
 // SensoryInputs holds the raw sensory data before normalization.
-// Phase 4b: Uses polar vision cones with intent-based outputs and terrain awareness.
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
 type SensoryInputs struct {
-	// Polar vision (Phase 3) - 4 cones × 3 channels = 12 inputs
-	// Cones: [Front, Right, Back, Left]
-	// Values are already normalized [0, 1] from PolarVision.NormalizeForBrain()
-	ConeFood   [NumCones]float32 // Food intensity per direction
-	ConeThreat [NumCones]float32 // Threat intensity per direction
-	ConeFriend [NumCones]float32 // Friend (genetic similarity) intensity per direction
+	// Self state (2 inputs)
+	SpeedNorm  float32 // current speed / max speed [0,1]
+	EnergyNorm float32 // energy / maxEnergy [0,1]
 
-	// Environment
-	LightLevel    float32 // 0-1 from shadowmap (ambient)
-	FlowAlignment float32 // dot(flow_direction, heading) [-1, 1]
+	// Body descriptor (6 inputs) - body-aware capability metrics
+	Body BodyDescriptor
 
-	// Directional light (Phase 3b)
-	// Gradients indicate where light is brighter (-1 to +1)
-	LightFB float32 // Front-back gradient: >0 means brighter ahead
-	LightLR float32 // Left-right gradient: >0 means brighter to the right
+	// Boid fields (9 inputs) - same-species flocking
+	Boid BoidFields
 
-	// Internal state
-	Energy           float32
+	// Food fields (6 inputs) - plant and meat attraction
+	Food FoodFields
+
+	// Threat info (2 inputs) - predator awareness
+	Threat ThreatInfo
+
+	// Metadata (not inputs)
+	MaxSpeed         float32
 	MaxEnergy        float32
-	CellCount        int
-	MaxCells         int
 	PerceptionRadius float32
-
-	// Body awareness (sensor capability)
-	SensorCount     int     // Number of active sensor cells
-	TotalSensorGain float32 // Sum of sensor gains (affects perception quality)
-
-	// Body awareness (actuator capability)
-	ActuatorCount    int     // Number of active actuator cells
-	TotalActuatorStr float32 // Sum of actuator strengths (affects movement)
-
-	// Damage awareness
-	BeingEaten float32 // 0-1, how intensely this organism is being attacked
 }
 
 // ToInputs converts sensory data to normalized neural network inputs.
-// Layout: 12 cone inputs + 4 environment + 2 light gradients + 1 damage = 19 total
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
 //
 // Input mapping:
 //
-//	[0-3]   ConeFood (front, right, back, left)
-//	[4-7]   ConeThreat (front, right, back, left)
-//	[8-11]  ConeFriend (front, right, back, left)
-//	[12]    Energy ratio
-//	[13]    Light level (ambient)
-//	[14]    Flow alignment (dot(flow, heading))
-//	[15]    Light gradient front-back
-//	[16]    Light gradient left-right
-//	[17]    Being eaten (damage awareness)
-//	[18]    Bias
+//	[0]     speed_norm [0,1]
+//	[1]     energy_norm [0,1]
+//	[2]     size_norm [0,1]
+//	[3]     speed_capacity [0,1]
+//	[4]     agility_norm [0,1]
+//	[5]     sense_strength [0,1]
+//	[6]     bite_strength [0,1]
+//	[7]     armor_level [0,1]
+//	[8]     cohesion_fwd [-1,1]
+//	[9]     cohesion_up [-1,1]
+//	[10]    cohesion_mag [0,1]
+//	[11]    alignment_fwd [-1,1]
+//	[12]    alignment_up [-1,1]
+//	[13]    separation_fwd [-1,1]
+//	[14]    separation_up [-1,1]
+//	[15]    separation_mag [0,1]
+//	[16]    density_same [0,1]
+//	[17]    plant_fwd [-1,1]
+//	[18]    plant_up [-1,1]
+//	[19]    plant_mag [0,1]
+//	[20]    meat_fwd [-1,1]
+//	[21]    meat_up [-1,1]
+//	[22]    meat_mag [0,1]
+//	[23]    threat_proximity [0,1]
+//	[24]    threat_closing_speed [-1,1]
+//	[25]    bias (1.0)
 func (s *SensoryInputs) ToInputs() []float64 {
 	inputs := make([]float64, BrainInputs)
 
-	// [0-3] Food cones (already normalized 0-1)
-	for i := 0; i < NumCones; i++ {
-		inputs[i] = float64(clampf(s.ConeFood[i], 0, 1))
-	}
+	// [0-1] Self state
+	inputs[0] = float64(clampf(s.SpeedNorm, 0, 1))
+	inputs[1] = float64(clampf(s.EnergyNorm, 0, 1))
 
-	// [4-7] Threat cones (already normalized 0-1)
-	for i := 0; i < NumCones; i++ {
-		inputs[4+i] = float64(clampf(s.ConeThreat[i], 0, 1))
-	}
+	// [2-7] Body descriptor
+	inputs[2] = float64(clampf(s.Body.SizeNorm, 0, 1))
+	inputs[3] = float64(clampf(s.Body.SpeedCapacity, 0, 1))
+	inputs[4] = float64(clampf(s.Body.AgilityNorm, 0, 1))
+	inputs[5] = float64(clampf(s.Body.SenseStrength, 0, 1))
+	inputs[6] = float64(clampf(s.Body.BiteStrength, 0, 1))
+	inputs[7] = float64(clampf(s.Body.ArmorLevel, 0, 1))
 
-	// [8-11] Friend cones (already normalized 0-1)
-	for i := 0; i < NumCones; i++ {
-		inputs[8+i] = float64(clampf(s.ConeFriend[i], 0, 1))
-	}
+	// [8-16] Boid fields
+	inputs[8] = float64(clampf(s.Boid.CohesionFwd, -1, 1))
+	inputs[9] = float64(clampf(s.Boid.CohesionUp, -1, 1))
+	inputs[10] = float64(clampf(s.Boid.CohesionMag, 0, 1))
+	inputs[11] = float64(clampf(s.Boid.AlignmentFwd, -1, 1))
+	inputs[12] = float64(clampf(s.Boid.AlignmentUp, -1, 1))
+	inputs[13] = float64(clampf(s.Boid.SeparationFwd, -1, 1))
+	inputs[14] = float64(clampf(s.Boid.SeparationUp, -1, 1))
+	inputs[15] = float64(clampf(s.Boid.SeparationMag, 0, 1))
+	inputs[16] = float64(clampf(s.Boid.DensitySame, 0, 1))
 
-	// [12] Energy ratio
-	if s.MaxEnergy > 0 {
-		inputs[12] = float64(clampf(s.Energy/s.MaxEnergy, 0, 1))
-	} else {
-		inputs[12] = 0.5
-	}
+	// [17-22] Food fields
+	inputs[17] = float64(clampf(s.Food.PlantFwd, -1, 1))
+	inputs[18] = float64(clampf(s.Food.PlantUp, -1, 1))
+	inputs[19] = float64(clampf(s.Food.PlantMag, 0, 1))
+	inputs[20] = float64(clampf(s.Food.MeatFwd, -1, 1))
+	inputs[21] = float64(clampf(s.Food.MeatUp, -1, 1))
+	inputs[22] = float64(clampf(s.Food.MeatMag, 0, 1))
 
-	// [13] Light level (already 0-1)
-	inputs[13] = float64(clampf(s.LightLevel, 0, 1))
+	// [23-24] Threat info
+	inputs[23] = float64(clampf(s.Threat.Proximity, 0, 1))
+	inputs[24] = float64(clampf(s.Threat.ClosingSpeed, -1, 1))
 
-	// [14] Flow alignment - range [-1, 1]
-	// Positive = flow helping (pushing in direction of heading)
-	// Negative = flow hindering (pushing against heading)
-	inputs[14] = float64(clampf(s.FlowAlignment, -1, 1))
-
-	// [15-16] Light gradients - range [-1, 1]
-	inputs[15] = float64(clampf(s.LightFB, -1, 1))
-	inputs[16] = float64(clampf(s.LightLR, -1, 1))
-
-	// [17] Being eaten (damage awareness) - range [0, 1]
-	inputs[17] = float64(clampf(s.BeingEaten, 0, 1))
-
-	// [18] Bias (always 1.0)
-	inputs[18] = 1.0
+	// [25] Bias
+	inputs[25] = 1.0
 
 	return inputs
 }
 
-// FromPolarVision populates cone inputs from a PolarVision scan result.
-// Normalizes the values for neural network input.
-// Phase 3b: Also extracts directional light gradients.
-func (s *SensoryInputs) FromPolarVision(pv *PolarVision) {
-	normalized := pv.NormalizeForBrain()
-	s.ConeFood = normalized.Food
-	s.ConeThreat = normalized.Threat
-	s.ConeFriend = normalized.Friend
-
-	// Phase 3b: Extract light gradients
-	s.LightFB, s.LightLR = pv.LightGradients()
-}
-
 // BehaviorOutputs holds the decoded outputs from the brain network.
-// Phase 5: Intent-based system with 6 outputs.
+// Simplified to 4 outputs: movement vector + action gates.
 type BehaviorOutputs struct {
-	// Movement intent (Phase 4)
-	DesireAngle    float32 // -π to +π: where to go relative to heading
-	DesireDistance float32 // 0 to 1: urgency (0 = stay, 1 = max pursuit)
+	// Movement as local velocity (body-limited by pathfinding layer)
+	UFwd float32 // Desired forward velocity [-1,1]
+	UUp  float32 // Desired lateral velocity [-1,1]
 
-	// Action intents
-	Eat   float32 // 0 to 1: feeding intent (>0.5 = try to eat)
-	Grow  float32 // 0 to 1: growth intent (allocate energy to new cells)
-	Breed float32 // 0 to 1: reproduction intent (>0.5 = try to reproduce)
-	Glow  float32 // 0 to 1: bioluminescence intent (Phase 5b)
+	// Action gates
+	AttackIntent float32 // Predation gate [0,1], >0.5 = attack
+	MateIntent   float32 // Mating gate [0,1], >0.5 = ready to mate
+
+	// Legacy fields for compatibility (computed from UFwd/UUp)
+	DesireAngle    float32 // Computed: angle from UFwd/UUp
+	DesireDistance float32 // Computed: magnitude from UFwd/UUp
 }
 
 // DecodeOutputs converts raw network outputs to intent values.
 // Raw outputs are in [0, 1] range from sigmoid activation.
-// Phase 5 layout: [DesireAngle, DesireDistance, Eat, Grow, Breed, Glow]
+// Layout: [UFwd, UUp, AttackIntent, MateIntent]
 func DecodeOutputs(raw []float64) BehaviorOutputs {
 	if len(raw) < BrainOutputs {
-		// Return defaults if not enough outputs
 		return DefaultOutputs()
 	}
 
+	// Convert sigmoid [0,1] to [-1,1] for velocity outputs
+	uFwd := float32(raw[0])*2.0 - 1.0
+	uUp := float32(raw[1])*2.0 - 1.0
+
+	// Compute legacy angle/distance from velocity
+	angle, distance := LocalVelocityToDesire(uFwd, uUp)
+
 	return BehaviorOutputs{
-		// DesireAngle: sigmoid [0,1] -> [-π, π]
-		DesireAngle: (float32(raw[0]) - 0.5) * 2.0 * math.Pi,
-		// DesireDistance: sigmoid [0,1] -> [0,1]
-		DesireDistance: float32(raw[1]),
-		// Eat: sigmoid [0,1] -> [0,1]
-		Eat: float32(raw[2]),
-		// Grow: sigmoid [0,1] -> [0,1]
-		Grow: float32(raw[3]),
-		// Breed: sigmoid [0,1] -> [0,1]
-		Breed: float32(raw[4]),
-		// Glow: sigmoid [0,1] -> [0,1]
-		Glow: float32(raw[5]),
+		UFwd:           uFwd,
+		UUp:            uUp,
+		AttackIntent:   float32(raw[2]),
+		MateIntent:     float32(raw[3]),
+		DesireAngle:    angle,
+		DesireDistance: distance,
 	}
+}
+
+// LocalVelocityToDesire converts local velocity (uFwd, uUp) to angle and distance.
+// Used for compatibility with existing pathfinding layer.
+func LocalVelocityToDesire(uFwd, uUp float32) (angle, distance float32) {
+	if uFwd < -0.1 {
+		// Backward: turn around
+		angle = float32(math.Atan2(float64(-uUp), float64(-uFwd))) + math.Pi
+		angle = normalizeAngleInputs(angle)
+	} else {
+		angle = float32(math.Atan2(float64(uUp), float64(uFwd)))
+	}
+	distance = clampf(float32(math.Sqrt(float64(uFwd*uFwd+uUp*uUp))), 0, 1)
+	return angle, distance
+}
+
+// normalizeAngleInputs wraps angle to [-π, π].
+func normalizeAngleInputs(angle float32) float32 {
+	for angle > math.Pi {
+		angle -= 2 * math.Pi
+	}
+	for angle < -math.Pi {
+		angle += 2 * math.Pi
+	}
+	return angle
 }
 
 // DefaultOutputs returns sensible default outputs for organisms without brains
 // or when brain evaluation fails.
 func DefaultOutputs() BehaviorOutputs {
 	return BehaviorOutputs{
-		DesireAngle:    0.0, // No change in direction
-		DesireDistance: 0.5, // Medium urgency
-		Eat:            0.5, // Neutral eating intent
-		Grow:           0.3, // Low growth intent
-		Breed:          0.3, // Low breeding intent
-		Glow:           0.0, // No glow by default (saves energy)
+		UFwd:           0.0,
+		UUp:            0.0,
+		AttackIntent:   0.0,
+		MateIntent:     0.0,
+		DesireAngle:    0.0,
+		DesireDistance: 0.0,
 	}
 }
 

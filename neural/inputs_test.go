@@ -6,17 +6,41 @@ import (
 )
 
 func TestSensoryInputsToInputs(t *testing.T) {
-	// Phase 4b: Test cone-based sensory inputs with flow alignment and openness
+	// Test new boid-field based sensory inputs (26 inputs)
 	sensory := SensoryInputs{
-		ConeFood:      [4]float32{0.8, 0.2, 0.1, 0.3},
-		ConeThreat:    [4]float32{0.1, 0.0, 0.5, 0.0},
-		ConeFriend:    [4]float32{0.4, 0.4, 0.2, 0.3},
-		LightLevel:    0.7,
-		FlowAlignment: 0.3,
-		LightFB:       0.2,
-		LightLR:       -0.1,
-		Energy:        75,
-		MaxEnergy:     100,
+		SpeedNorm:  0.5,
+		EnergyNorm: 0.75,
+		Body: BodyDescriptor{
+			SizeNorm:      0.5,
+			SpeedCapacity: 0.6,
+			AgilityNorm:   0.7,
+			SenseStrength: 0.4,
+			BiteStrength:  0.3,
+			ArmorLevel:    0.2,
+		},
+		Boid: BoidFields{
+			CohesionFwd:   0.5,
+			CohesionUp:    -0.3,
+			CohesionMag:   0.4,
+			AlignmentFwd:  0.8,
+			AlignmentUp:   0.2,
+			SeparationFwd: -0.4,
+			SeparationUp:  0.1,
+			SeparationMag: 0.3,
+			DensitySame:   0.5,
+		},
+		Food: FoodFields{
+			PlantFwd: 0.6,
+			PlantUp:  0.2,
+			PlantMag: 0.5,
+			MeatFwd:  -0.3,
+			MeatUp:   0.7,
+			MeatMag:  0.2,
+		},
+		Threat: ThreatInfo{
+			Proximity:    0.3,
+			ClosingSpeed: -0.2,
+		},
 	}
 
 	inputs := sensory.ToInputs()
@@ -25,173 +49,141 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		t.Errorf("expected %d inputs, got %d", BrainInputs, len(inputs))
 	}
 
-	// Check food cones [0-3]
-	for i := 0; i < NumCones; i++ {
-		expected := float64(sensory.ConeFood[i])
-		if math.Abs(inputs[i]-expected) > 0.01 {
-			t.Errorf("food cone %d: expected %f, got %f", i, expected, inputs[i])
-		}
+	// Check self state [0-1]
+	if math.Abs(inputs[0]-0.5) > 0.01 {
+		t.Errorf("speed norm: expected 0.5, got %f", inputs[0])
+	}
+	if math.Abs(inputs[1]-0.75) > 0.01 {
+		t.Errorf("energy norm: expected 0.75, got %f", inputs[1])
 	}
 
-	// Check threat cones [4-7]
-	for i := 0; i < NumCones; i++ {
-		expected := float64(sensory.ConeThreat[i])
-		if math.Abs(inputs[4+i]-expected) > 0.01 {
-			t.Errorf("threat cone %d: expected %f, got %f", i, expected, inputs[4+i])
-		}
+	// Check body descriptor [2-7]
+	if math.Abs(inputs[2]-0.5) > 0.01 {
+		t.Errorf("size norm: expected 0.5, got %f", inputs[2])
+	}
+	if math.Abs(inputs[3]-0.6) > 0.01 {
+		t.Errorf("speed capacity: expected 0.6, got %f", inputs[3])
 	}
 
-	// Check friend cones [8-11]
-	for i := 0; i < NumCones; i++ {
-		expected := float64(sensory.ConeFriend[i])
-		if math.Abs(inputs[8+i]-expected) > 0.01 {
-			t.Errorf("friend cone %d: expected %f, got %f", i, expected, inputs[8+i])
-		}
+	// Check boid fields [8-16]
+	if math.Abs(inputs[8]-0.5) > 0.01 {
+		t.Errorf("cohesion fwd: expected 0.5, got %f", inputs[8])
+	}
+	if math.Abs(inputs[9]-(-0.3)) > 0.01 {
+		t.Errorf("cohesion up: expected -0.3, got %f", inputs[9])
 	}
 
-	// Check energy ratio [12]
-	expectedEnergy := 75.0 / 100.0
-	if math.Abs(inputs[12]-expectedEnergy) > 0.01 {
-		t.Errorf("energy ratio: expected %f, got %f", expectedEnergy, inputs[12])
+	// Check food fields [17-22]
+	if math.Abs(inputs[17]-0.6) > 0.01 {
+		t.Errorf("plant fwd: expected 0.6, got %f", inputs[17])
 	}
 
-	// Check light level [13]
-	if math.Abs(inputs[13]-0.7) > 0.01 {
-		t.Errorf("light level: expected 0.7, got %f", inputs[13])
+	// Check threat [23-24]
+	if math.Abs(inputs[23]-0.3) > 0.01 {
+		t.Errorf("threat proximity: expected 0.3, got %f", inputs[23])
+	}
+	if math.Abs(inputs[24]-(-0.2)) > 0.01 {
+		t.Errorf("closing speed: expected -0.2, got %f", inputs[24])
 	}
 
-	// Check flow alignment [14]
-	if math.Abs(inputs[14]-0.3) > 0.01 {
-		t.Errorf("flow alignment: expected 0.3, got %f", inputs[14])
-	}
-
-	// Check light gradients [15-16]
-	if math.Abs(inputs[15]-0.2) > 0.01 {
-		t.Errorf("light FB: expected 0.2, got %f", inputs[15])
-	}
-	if math.Abs(inputs[16]-(-0.1)) > 0.01 {
-		t.Errorf("light LR: expected -0.1, got %f", inputs[16])
-	}
-
-	// Check bias [18]
-	if inputs[18] != 1.0 {
-		t.Errorf("bias: expected 1.0, got %f", inputs[18])
+	// Check bias [25]
+	if inputs[25] != 1.0 {
+		t.Errorf("bias: expected 1.0, got %f", inputs[25])
 	}
 
 	t.Logf("Inputs: %v", inputs)
 }
 
-func TestSensoryInputsZeroCones(t *testing.T) {
-	// Test with zero cone values (no nearby entities)
-	sensory := SensoryInputs{
-		ConeFood:   [4]float32{0, 0, 0, 0},
-		ConeThreat: [4]float32{0, 0, 0, 0},
-		ConeFriend: [4]float32{0, 0, 0, 0},
-		Energy:     50,
-		MaxEnergy:  100,
-	}
+func TestSensoryInputsZeroValues(t *testing.T) {
+	// Test with zero values
+	sensory := SensoryInputs{}
 
 	inputs := sensory.ToInputs()
 
-	// All cone values should be zero
-	for i := 0; i < 12; i++ {
+	// All values should be zero except bias
+	for i := 0; i < BrainInputs-1; i++ {
 		if inputs[i] != 0.0 {
 			t.Errorf("input %d should be 0, got %f", i, inputs[i])
 		}
+	}
+
+	// Bias should be 1
+	if inputs[BrainInputs-1] != 1.0 {
+		t.Errorf("bias should be 1.0, got %f", inputs[BrainInputs-1])
 	}
 }
 
 func TestSensoryInputsNormalization(t *testing.T) {
 	// Test clamping of extreme values
 	sensory := SensoryInputs{
-		ConeFood:      [4]float32{1.5, -0.1, 0.5, 2.0}, // Some out of range
-		ConeThreat:    [4]float32{0.5, 0.5, 1.5, -0.5},
-		ConeFriend:    [4]float32{0, 0, 0, 0},
-		LightLevel:    1.5, // Beyond 1.0
-		FlowAlignment: 2.0, // Beyond expected range
-		Energy:        150, // Beyond max
-		MaxEnergy:     100,
+		SpeedNorm:  1.5, // Beyond 1.0
+		EnergyNorm: -0.1, // Below 0.0
+		Body: BodyDescriptor{
+			SizeNorm:      2.0, // Beyond 1.0
+			SpeedCapacity: 0.5,
+			AgilityNorm:   0.5,
+			SenseStrength: 0.5,
+			BiteStrength:  0.5,
+			ArmorLevel:    0.5,
+		},
+		Boid: BoidFields{
+			CohesionFwd: 2.0, // Beyond 1.0 for [-1,1] range
+		},
 	}
 
 	inputs := sensory.ToInputs()
 
-	// All cone values should be clamped to [0, 1]
-	for i := 0; i < 12; i++ {
-		if inputs[i] < 0 || inputs[i] > 1 {
-			t.Errorf("cone input %d out of range [0,1]: %f", i, inputs[i])
-		}
+	// Self state should be clamped to [0, 1]
+	if inputs[0] > 1.0 || inputs[0] < 0 {
+		t.Errorf("speed norm not clamped: got %f", inputs[0])
+	}
+	if inputs[1] > 1.0 || inputs[1] < 0 {
+		t.Errorf("energy norm not clamped: got %f", inputs[1])
 	}
 
-	// Light level should be clamped to 1.0
-	if inputs[13] > 1.0 {
-		t.Errorf("light level not clamped: got %f", inputs[13])
+	// Body descriptor should be clamped
+	if inputs[2] > 1.0 {
+		t.Errorf("size norm not clamped: got %f", inputs[2])
 	}
 
-	// Flow alignment should be clamped to 1.0
-	if inputs[14] > 1.0 {
-		t.Errorf("flow alignment not clamped: got %f", inputs[14])
-	}
-
-	// Energy ratio should be clamped
-	if inputs[12] > 1.0 {
-		t.Errorf("energy ratio not clamped: got %f", inputs[12])
-	}
-}
-
-func TestFromPolarVision(t *testing.T) {
-	// Create a polar vision result
-	pv := PolarVision{
-		Food:   [4]float32{1.0, 0.5, 0.1, 0.2},
-		Threat: [4]float32{0.0, 0.8, 0.0, 0.3},
-		Friend: [4]float32{0.5, 0.5, 0.5, 0.5},
-	}
-
-	var sensory SensoryInputs
-	sensory.FromPolarVision(&pv)
-
-	// Values should be normalized
-	for i := 0; i < NumCones; i++ {
-		if sensory.ConeFood[i] < 0 || sensory.ConeFood[i] > 1 {
-			t.Errorf("food cone %d out of normalized range: %f", i, sensory.ConeFood[i])
-		}
+	// Boid fields [-1, 1] should be clamped
+	if inputs[8] > 1.0 || inputs[8] < -1.0 {
+		t.Errorf("cohesion fwd not clamped: got %f", inputs[8])
 	}
 }
 
 func TestDecodeOutputs(t *testing.T) {
-	// Phase 5: Simulate sigmoid outputs (0-1 range) - 6 outputs: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7, 0.4}
+	// Test new 4-output structure: [UFwd, UUp, AttackIntent, MateIntent]
+	// Raw outputs are in [0, 1] range from sigmoid
+	raw := []float64{0.75, 0.25, 0.8, 0.3}
 
 	outputs := DecodeOutputs(raw)
 
-	// Check DesireAngle (0.5 sigmoid -> 0.0 angle)
-	expectedAngle := float32((0.5 - 0.5) * 2.0 * math.Pi) // 0.0
-	if math.Abs(float64(outputs.DesireAngle-expectedAngle)) > 0.01 {
-		t.Errorf("desire angle: expected %f, got %f", expectedAngle, outputs.DesireAngle)
+	// UFwd: 0.75 sigmoid -> (0.75 * 2 - 1) = 0.5
+	expectedUFwd := float32(0.75*2.0 - 1.0) // 0.5
+	if math.Abs(float64(outputs.UFwd-expectedUFwd)) > 0.01 {
+		t.Errorf("UFwd: expected %f, got %f", expectedUFwd, outputs.UFwd)
 	}
 
-	// Check DesireDistance (0.8 sigmoid -> 0.8)
-	if math.Abs(float64(outputs.DesireDistance-0.8)) > 0.01 {
-		t.Errorf("desire distance: expected 0.8, got %f", outputs.DesireDistance)
+	// UUp: 0.25 sigmoid -> (0.25 * 2 - 1) = -0.5
+	expectedUUp := float32(0.25*2.0 - 1.0) // -0.5
+	if math.Abs(float64(outputs.UUp-expectedUUp)) > 0.01 {
+		t.Errorf("UUp: expected %f, got %f", expectedUUp, outputs.UUp)
 	}
 
-	// Check Eat (0.3 sigmoid -> 0.3 eat)
-	if math.Abs(float64(outputs.Eat-0.3)) > 0.01 {
-		t.Errorf("eat: expected 0.3, got %f", outputs.Eat)
+	// AttackIntent: 0.8 raw
+	if math.Abs(float64(outputs.AttackIntent-0.8)) > 0.01 {
+		t.Errorf("AttackIntent: expected 0.8, got %f", outputs.AttackIntent)
 	}
 
-	// Check Grow (0.6 sigmoid -> 0.6 grow)
-	if math.Abs(float64(outputs.Grow-0.6)) > 0.01 {
-		t.Errorf("grow: expected 0.6, got %f", outputs.Grow)
+	// MateIntent: 0.3 raw
+	if math.Abs(float64(outputs.MateIntent-0.3)) > 0.01 {
+		t.Errorf("MateIntent: expected 0.3, got %f", outputs.MateIntent)
 	}
 
-	// Check Breed (0.7 sigmoid -> 0.7 breed)
-	if math.Abs(float64(outputs.Breed-0.7)) > 0.01 {
-		t.Errorf("breed: expected 0.7, got %f", outputs.Breed)
-	}
-
-	// Check Glow (0.4 sigmoid -> 0.4 glow)
-	if math.Abs(float64(outputs.Glow-0.4)) > 0.01 {
-		t.Errorf("glow: expected 0.4, got %f", outputs.Glow)
+	// Check legacy fields are computed
+	if outputs.DesireDistance < 0 || outputs.DesireDistance > 1 {
+		t.Errorf("DesireDistance out of range: %f", outputs.DesireDistance)
 	}
 
 	t.Logf("Outputs: %+v", outputs)
@@ -204,7 +196,7 @@ func TestDecodeOutputsShortInput(t *testing.T) {
 	outputs := DecodeOutputs(raw)
 	defaults := DefaultOutputs()
 
-	if outputs.DesireAngle != defaults.DesireAngle {
+	if outputs.UFwd != defaults.UFwd {
 		t.Errorf("short input should return defaults")
 	}
 }
@@ -212,88 +204,78 @@ func TestDecodeOutputsShortInput(t *testing.T) {
 func TestDefaultOutputs(t *testing.T) {
 	outputs := DefaultOutputs()
 
-	// DesireAngle should be 0 (no change in direction)
-	if outputs.DesireAngle != 0 {
-		t.Errorf("default desire angle should be 0, got %f", outputs.DesireAngle)
+	// All outputs should be 0 for defaults
+	if outputs.UFwd != 0 {
+		t.Errorf("default UFwd should be 0, got %f", outputs.UFwd)
 	}
-
-	// DesireDistance should be positive
-	if outputs.DesireDistance <= 0 {
-		t.Error("default desire distance should be positive")
+	if outputs.UUp != 0 {
+		t.Errorf("default UUp should be 0, got %f", outputs.UUp)
 	}
-
-	// Eat, Grow, Breed should be in valid range
-	if outputs.Eat < 0 || outputs.Eat > 1 {
-		t.Errorf("default eat out of range: %f", outputs.Eat)
+	if outputs.AttackIntent != 0 {
+		t.Errorf("default AttackIntent should be 0, got %f", outputs.AttackIntent)
 	}
-	if outputs.Grow < 0 || outputs.Grow > 1 {
-		t.Errorf("default grow out of range: %f", outputs.Grow)
-	}
-	if outputs.Breed < 0 || outputs.Breed > 1 {
-		t.Errorf("default breed out of range: %f", outputs.Breed)
+	if outputs.MateIntent != 0 {
+		t.Errorf("default MateIntent should be 0, got %f", outputs.MateIntent)
 	}
 
 	t.Logf("Default outputs: %+v", outputs)
 }
 
-// Phase 4b: Test light gradient inputs (updated indices)
-func TestSensoryInputsLightGradients(t *testing.T) {
-	sensory := SensoryInputs{
-		ConeFood:   [4]float32{0.5, 0.5, 0.5, 0.5},
-		ConeThreat: [4]float32{0, 0, 0, 0},
-		ConeFriend: [4]float32{0, 0, 0, 0},
-		LightLevel: 0.6,
-		LightFB:    0.3,  // Brighter ahead
-		LightLR:    -0.5, // Brighter to the left
-		Energy:     50,
-		MaxEnergy:  100,
+func TestLocalVelocityToDesire(t *testing.T) {
+	// Forward motion
+	angle, distance := LocalVelocityToDesire(1.0, 0.0)
+	if math.Abs(float64(angle)) > 0.01 {
+		t.Errorf("forward: angle should be ~0, got %f", angle)
+	}
+	if math.Abs(float64(distance-1.0)) > 0.01 {
+		t.Errorf("forward: distance should be ~1, got %f", distance)
 	}
 
-	inputs := sensory.ToInputs()
-
-	// Check light gradients [15-16]
-	if math.Abs(inputs[15]-0.3) > 0.01 {
-		t.Errorf("light FB: expected 0.3, got %f", inputs[15])
-	}
-	if math.Abs(inputs[16]-(-0.5)) > 0.01 {
-		t.Errorf("light LR: expected -0.5, got %f", inputs[16])
-	}
-}
-
-func TestFromPolarVisionWithLight(t *testing.T) {
-	// Create polar vision with directional light
-	pv := PolarVision{
-		Food:   [4]float32{0.5, 0.5, 0.5, 0.5},
-		Threat: [4]float32{0, 0, 0, 0},
-		Friend: [4]float32{0, 0, 0, 0},
-		Light:  [4]float32{0.8, 0.5, 0.2, 0.5}, // Brighter front, dimmer back
+	// Right strafe
+	angle, distance = LocalVelocityToDesire(0.0, 1.0)
+	expectedAngle := float32(math.Pi / 2)
+	if math.Abs(float64(angle-expectedAngle)) > 0.01 {
+		t.Errorf("right: angle should be ~π/2, got %f", angle)
 	}
 
-	var sensory SensoryInputs
-	sensory.FromPolarVision(&pv)
-
-	// Light gradients should be computed
-	// FB = (front - back) / (front + back + eps) = (0.8 - 0.2) / (0.8 + 0.2 + eps) ≈ 0.6
-	expectedFB := float32(0.6) / float32(1.0+LightGradientEpsilon)
-	if math.Abs(float64(sensory.LightFB-expectedFB)) > 0.01 {
-		t.Errorf("light FB: expected ~%f, got %f", expectedFB, sensory.LightFB)
+	// Left strafe
+	angle, distance = LocalVelocityToDesire(0.0, -1.0)
+	expectedAngle = float32(-math.Pi / 2)
+	if math.Abs(float64(angle-expectedAngle)) > 0.01 {
+		t.Errorf("left: angle should be ~-π/2, got %f", angle)
 	}
 
-	// LR = (right - left) / (right + left + eps) = (0.5 - 0.5) / (0.5 + 0.5 + eps) ≈ 0
-	if math.Abs(float64(sensory.LightLR)) > 0.01 {
-		t.Errorf("light LR: expected ~0, got %f", sensory.LightLR)
+	// Backward motion (should turn around)
+	angle, distance = LocalVelocityToDesire(-1.0, 0.0)
+	// When going backward, we turn 180 degrees
+	if math.Abs(float64(angle)) < 2.0 {
+		t.Errorf("backward: angle should be ~π or ~-π, got %f", angle)
 	}
 }
 
 func BenchmarkSensoryToInputs(b *testing.B) {
 	sensory := SensoryInputs{
-		ConeFood:      [4]float32{0.8, 0.2, 0.1, 0.3},
-		ConeThreat:    [4]float32{0.1, 0.0, 0.5, 0.0},
-		ConeFriend:    [4]float32{0.4, 0.4, 0.2, 0.3},
-		LightLevel:    0.7,
-		FlowAlignment: 0.3,
-		Energy:        75,
-		MaxEnergy:     100,
+		SpeedNorm:  0.5,
+		EnergyNorm: 0.75,
+		Body: BodyDescriptor{
+			SizeNorm:      0.5,
+			SpeedCapacity: 0.6,
+			AgilityNorm:   0.7,
+			SenseStrength: 0.4,
+			BiteStrength:  0.3,
+			ArmorLevel:    0.2,
+		},
+		Boid: BoidFields{
+			CohesionFwd:   0.5,
+			CohesionUp:    -0.3,
+			CohesionMag:   0.4,
+			AlignmentFwd:  0.8,
+			AlignmentUp:   0.2,
+			SeparationFwd: -0.4,
+			SeparationUp:  0.1,
+			SeparationMag: 0.3,
+			DensitySame:   0.5,
+		},
 	}
 
 	b.ResetTimer()
@@ -303,7 +285,7 @@ func BenchmarkSensoryToInputs(b *testing.B) {
 }
 
 func BenchmarkDecodeOutputs(b *testing.B) {
-	raw := []float64{0.5, 0.8, 0.3, 0.6, 0.7, 0.4} // Phase 5: 6 outputs
+	raw := []float64{0.5, 0.8, 0.3, 0.6} // 4 outputs
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

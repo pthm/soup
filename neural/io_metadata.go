@@ -15,35 +15,42 @@ type IODescriptor struct {
 // Order matches the indices used in SensoryInputs.ToInputs().
 func BrainInputDescriptors() []IODescriptor {
 	return []IODescriptor{
-		// Vision cones: Food (indices 0-3)
-		{ID: "cone_food_front", Label: "Food Front", Description: "Food intensity ahead", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_food_right", Label: "Food Right", Description: "Food intensity to right", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_food_back", Label: "Food Back", Description: "Food intensity behind", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_food_left", Label: "Food Left", Description: "Food intensity to left", Min: 0, Max: 1, Group: "vision"},
+		// Self state (indices 0-1)
+		{ID: "speed_norm", Label: "Speed", Description: "Current speed / max speed", Min: 0, Max: 1, Group: "self"},
+		{ID: "energy_norm", Label: "Energy", Description: "Current energy / max energy", Min: 0, Max: 1, Group: "self"},
 
-		// Vision cones: Threat (indices 4-7)
-		{ID: "cone_threat_front", Label: "Threat Front", Description: "Threat intensity ahead", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_threat_right", Label: "Threat Right", Description: "Threat intensity to right", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_threat_back", Label: "Threat Back", Description: "Threat intensity behind", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_threat_left", Label: "Threat Left", Description: "Threat intensity to left", Min: 0, Max: 1, Group: "vision"},
+		// Body descriptor (indices 2-7)
+		{ID: "size_norm", Label: "Size", Description: "Body radius normalized", Min: 0, Max: 1, Group: "body"},
+		{ID: "speed_capacity", Label: "Speed Cap", Description: "Movement capability", Min: 0, Max: 1, Group: "body"},
+		{ID: "agility_norm", Label: "Agility", Description: "Turn rate capability", Min: 0, Max: 1, Group: "body"},
+		{ID: "sense_strength", Label: "Sense", Description: "Perception quality", Min: 0, Max: 1, Group: "body"},
+		{ID: "bite_strength", Label: "Bite", Description: "Attack capability", Min: 0, Max: 1, Group: "body"},
+		{ID: "armor_level", Label: "Armor", Description: "Damage resistance", Min: 0, Max: 1, Group: "body"},
 
-		// Vision cones: Friend (indices 8-11)
-		{ID: "cone_friend_front", Label: "Friend Front", Description: "Friend (kin) intensity ahead", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_friend_right", Label: "Friend Right", Description: "Friend intensity to right", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_friend_back", Label: "Friend Back", Description: "Friend intensity behind", Min: 0, Max: 1, Group: "vision"},
-		{ID: "cone_friend_left", Label: "Friend Left", Description: "Friend intensity to left", Min: 0, Max: 1, Group: "vision"},
+		// Boid fields (indices 8-16)
+		{ID: "cohesion_fwd", Label: "Coh Fwd", Description: "Flock center forward component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "cohesion_up", Label: "Coh Up", Description: "Flock center lateral component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "cohesion_mag", Label: "Coh Mag", Description: "Flock center distance", Min: 0, Max: 1, Group: "boid"},
+		{ID: "alignment_fwd", Label: "Align Fwd", Description: "Flock heading forward component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "alignment_up", Label: "Align Up", Description: "Flock heading lateral component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "separation_fwd", Label: "Sep Fwd", Description: "Repulsion forward component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "separation_up", Label: "Sep Up", Description: "Repulsion lateral component", Min: -1, Max: 1, IsCentered: true, Group: "boid"},
+		{ID: "separation_mag", Label: "Sep Mag", Description: "Separation urgency", Min: 0, Max: 1, Group: "boid"},
+		{ID: "density_same", Label: "Density", Description: "Local same-species density", Min: 0, Max: 1, Group: "boid"},
 
-		// Environment (indices 12-16)
-		{ID: "energy_ratio", Label: "Energy", Description: "Current energy / max energy", Min: 0, Max: 1, Group: "internal"},
-		{ID: "light_level", Label: "Light", Description: "Ambient light level from shadowmap", Min: 0, Max: 1, Group: "environment"},
-		{ID: "flow_alignment", Label: "Flow Align", Description: "Alignment with flow field (-1=against, +1=with)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
-		{ID: "light_fb", Label: "Light F/B", Description: "Light gradient front-back (>0=brighter ahead)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
-		{ID: "light_lr", Label: "Light L/R", Description: "Light gradient left-right (>0=brighter right)", Min: -1, Max: 1, IsCentered: true, Group: "environment"},
+		// Food fields (indices 17-22)
+		{ID: "plant_fwd", Label: "Plant Fwd", Description: "Plant direction forward", Min: -1, Max: 1, IsCentered: true, Group: "food"},
+		{ID: "plant_up", Label: "Plant Up", Description: "Plant direction lateral", Min: -1, Max: 1, IsCentered: true, Group: "food"},
+		{ID: "plant_mag", Label: "Plant Mag", Description: "Plant attraction strength", Min: 0, Max: 1, Group: "food"},
+		{ID: "meat_fwd", Label: "Meat Fwd", Description: "Prey direction forward", Min: -1, Max: 1, IsCentered: true, Group: "food"},
+		{ID: "meat_up", Label: "Meat Up", Description: "Prey direction lateral", Min: -1, Max: 1, IsCentered: true, Group: "food"},
+		{ID: "meat_mag", Label: "Meat Mag", Description: "Prey attraction strength", Min: 0, Max: 1, Group: "food"},
 
-		// Damage awareness (index 17)
-		{ID: "being_eaten", Label: "Attacked", Description: "Currently being eaten (0=safe, 1=heavy attack)", Min: 0, Max: 1, Group: "internal"},
+		// Threat info (indices 23-24)
+		{ID: "threat_proximity", Label: "Threat Dist", Description: "Nearest predator distance (0=far, 1=close)", Min: 0, Max: 1, Group: "threat"},
+		{ID: "threat_closing", Label: "Threat Speed", Description: "Predator approach rate", Min: -1, Max: 1, IsCentered: true, Group: "threat"},
 
-		// Bias (index 18)
+		// Bias (index 25)
 		{ID: "bias", Label: "Bias", Description: "Constant bias input (always 1.0)", Min: 0, Max: 1, Group: "internal"},
 	}
 }
@@ -52,18 +59,16 @@ func BrainInputDescriptors() []IODescriptor {
 // Order matches the indices used in DecodeOutputs().
 func BrainOutputDescriptors() []IODescriptor {
 	return []IODescriptor{
-		{ID: "desire_angle", Label: "Turn", Description: "Desired turn angle (-π to +π)", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
-		{ID: "desire_distance", Label: "Thrust", Description: "Movement urgency (0=stay, 1=max)", Min: 0, Max: 1, Group: "movement"},
-		{ID: "eat", Label: "Eat", Description: "Feeding intent (>0.5=try to eat)", Min: 0, Max: 1, Group: "action"},
-		{ID: "grow", Label: "Grow", Description: "Growth intent (allocate to new cells)", Min: 0, Max: 1, Group: "action"},
-		{ID: "breed", Label: "Breed", Description: "Reproduction intent (>0.5=try to breed)", Min: 0, Max: 1, Group: "action"},
-		{ID: "glow", Label: "Glow", Description: "Bioluminescence intensity", Min: 0, Max: 1, Group: "action"},
+		{ID: "u_fwd", Label: "U Fwd", Description: "Desired forward velocity", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
+		{ID: "u_up", Label: "U Up", Description: "Desired lateral velocity", Min: -1, Max: 1, IsCentered: true, Group: "movement"},
+		{ID: "attack_intent", Label: "Attack", Description: "Predation gate (>0.5=attack)", Min: 0, Max: 1, Group: "action"},
+		{ID: "mate_intent", Label: "Mate", Description: "Mating gate (>0.5=ready)", Min: 0, Max: 1, Group: "action"},
 	}
 }
 
 // InputGroups returns the logical groupings for inputs.
 func InputGroups() []string {
-	return []string{"vision", "environment", "internal"}
+	return []string{"self", "body", "boid", "food", "threat", "internal"}
 }
 
 // OutputGroups returns the logical groupings for outputs.

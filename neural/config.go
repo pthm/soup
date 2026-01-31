@@ -5,12 +5,41 @@ import (
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
-// 12 cone inputs + 4 environment + 2 light gradients + 1 being eaten = 19 total
-const BrainInputs = 19
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
+const BrainInputs = 26
 
 // BrainOutputs is the number of outputs from the brain network.
-// Phase 5: DesireAngle, DesireDistance, Eat, Grow, Breed, Glow (intent-based)
-const BrainOutputs = 6
+// Layout: UFwd, UUp, AttackIntent, MateIntent
+const BrainOutputs = 4
+
+// Body descriptor normalization constants
+const (
+	MaxBodySize     = 6.0 // sqrt(16 cells) * typical cellSize
+	MaxSensorWeight = 4.0 // ~4 strong sensor cells
+	MaxMouthSize    = 2.0 // ~2 strong mouth cells
+)
+
+// Boid field parameters
+const (
+	ExpectedNeighbors  = 10.0 // Expected number of neighbors for density normalization
+	SeparationRadius   = 3.0  // Separation radius in body lengths
+	BaseCellSize       = 6.0  // Reference cell size for normalization
+)
+
+// Attack parameters
+const (
+	BaseAttackRange  = 12.0 // Base attack range in world units
+	BaseAttackCost   = 5.0  // Base energy cost for attacking
+	BaseAttackDamage = 0.08 // Base damage fraction per attack
+	AttackCooldown   = 30   // Ticks between attacks
+)
+
+// Mating parameters
+const (
+	MateContactMargin = 5.0  // Extra margin for mating proximity
+	MateDwellTime     = 60   // Ticks required in contact to mate
+	MateEnergyRatio   = 0.35 // Minimum energy ratio for mating
+)
 
 // CPPNInputs is the number of inputs to the CPPN.
 // Inputs: x, y, distance, angle, bias
