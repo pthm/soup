@@ -182,6 +182,7 @@ func NewGame(cfg GameConfig) *Game {
 
 	// Wire up FloraSystem to systems that need it
 	g.feeding.SetFloraSystem(g.floraSystem)
+	g.feeding.SetSpatialGrid(g.spatialGrid)
 	g.behavior.SetFloraSystem(g.floraSystem)
 	g.allocation.SetFloraSystem(g.floraSystem)
 

@@ -142,7 +142,7 @@ func (p *Pathfinder) computeAttraction(posX, posY, targetX, targetY, desireDista
 }
 
 // computeRepulsion calculates repulsion force from nearby obstacles.
-// Samples 4 cardinal points around the organism for fast obstacle detection.
+// Uses center gradient plus perimeter sampling for robust obstacle detection.
 func (p *Pathfinder) computeRepulsion(posX, posY, organismRadius float32) (float32, float32) {
 	// First check center - if far from terrain, skip detailed sampling
 	centerDist := p.terrain.DistanceToSolid(posX, posY)
@@ -152,9 +152,23 @@ func (p *Pathfinder) computeRepulsion(posX, posY, organismRadius float32) (float
 
 	var repX, repY float32
 
-	// Sample 4 cardinal points (reduced from 8 for performance)
+	// Use center gradient for nearby/overlapping obstacles (catches small islands)
+	// This is critical when organism is larger than the obstacle
+	if centerDist < p.params.RepulsionRadius {
+		gx, gy := p.terrain.GetGradient(posX, posY)
+		normalizedDist := (p.params.RepulsionRadius - centerDist) / p.params.RepulsionRadius
+		gradMag := p.params.RepulsionStrength * 1.5 * float32(math.Pow(float64(normalizedDist), float64(p.params.RepulsionFalloff)))
+		repX += gx * gradMag
+		repY += gy * gradMag
+	}
+
+	// Sample 8 directions (cardinals + diagonals) for perimeter obstacle detection
 	sampleDist := organismRadius + p.params.RepulsionRadius*0.5
-	directions := [4][2]float32{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
+	diag := float32(0.7071) // 1/sqrt(2)
+	directions := [8][2]float32{
+		{1, 0}, {diag, diag}, {0, 1}, {-diag, diag},
+		{-1, 0}, {-diag, -diag}, {0, -1}, {diag, -diag},
+	}
 
 	for _, dir := range directions {
 		sampleX := posX + dir[0]*sampleDist

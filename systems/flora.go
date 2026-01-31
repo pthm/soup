@@ -3,6 +3,7 @@ package systems
 import (
 	"math"
 	"math/rand"
+	"sync"
 )
 
 // Flora constants
@@ -80,6 +81,12 @@ func NewFloraSystem(bounds Bounds, terrain *TerrainSystem, shadowMap *ShadowMap,
 	}
 }
 
+// sporeRequest holds data for deferred spore spawning.
+type sporeRequest struct {
+	x, y     float32
+	isRooted bool
+}
+
 // Update processes photosynthesis, drift, spore timers, and death for all flora.
 // spawnSpore callback is called when a flora is ready to release a spore.
 func (fs *FloraSystem) Update(tick int32, spawnSpore func(x, y float32, isRooted bool)) {
@@ -90,6 +97,127 @@ func (fs *FloraSystem) Update(tick int32, spawnSpore func(x, y float32, isRooted
 
 	// Update floating flora
 	fs.updateFloating(spawnSpore)
+}
+
+// minFloraForParallel is the minimum flora count to use parallel processing.
+// Below this threshold, goroutine overhead exceeds benefits.
+const minFloraForParallel = 200
+
+// UpdateParallel processes flora with parallel rooted/floating updates.
+func (fs *FloraSystem) UpdateParallel(tick int32, spawnSpore func(x, y float32, isRooted bool)) {
+	fs.tick = tick
+
+	// Use sequential for small populations (goroutine overhead not worth it)
+	if len(fs.Rooted)+len(fs.Floating) < minFloraForParallel {
+		fs.updateRooted(spawnSpore)
+		fs.updateFloating(spawnSpore)
+		return
+	}
+
+	var wg sync.WaitGroup
+	var rootedSpores, floatingSpores []sporeRequest
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		rootedSpores = fs.updateRootedParallel()
+	}()
+	go func() {
+		defer wg.Done()
+		floatingSpores = fs.updateFloatingParallel()
+	}()
+	wg.Wait()
+
+	// Spawn spores sequentially (callback may not be thread-safe)
+	if spawnSpore != nil {
+		for _, s := range rootedSpores {
+			spawnSpore(s.x, s.y, s.isRooted)
+		}
+		for _, s := range floatingSpores {
+			spawnSpore(s.x, s.y, s.isRooted)
+		}
+	}
+}
+
+func (fs *FloraSystem) updateRootedParallel() []sporeRequest {
+	var spores []sporeRequest
+	alive := 0
+	for i := range fs.Rooted {
+		f := &fs.Rooted[i]
+
+		if f.Dead {
+			continue
+		}
+
+		// Photosynthesis
+		light := fs.shadowMap.SampleLight(f.X, f.Y)
+		if light < floraRootedMinLight {
+			light = floraRootedMinLight
+		}
+		f.Energy += floraBasePhotoRate * light
+
+		if f.Energy > f.MaxEnergy {
+			f.Energy = f.MaxEnergy
+		}
+
+		if f.Energy < f.MaxEnergy*floraDeathThreshold {
+			f.Dead = true
+			continue
+		}
+
+		f.SporeTimer++
+		if f.SporeTimer >= floraSporeInterval && f.Energy > 40 {
+			f.SporeTimer = 0
+			f.Energy -= 15
+			spores = append(spores, sporeRequest{f.X, f.Y - f.Size, true})
+		}
+
+		fs.Rooted[alive] = fs.Rooted[i]
+		alive++
+	}
+	fs.Rooted = fs.Rooted[:alive]
+	return spores
+}
+
+func (fs *FloraSystem) updateFloatingParallel() []sporeRequest {
+	var spores []sporeRequest
+	alive := 0
+	for i := range fs.Floating {
+		f := &fs.Floating[i]
+
+		if f.Dead {
+			continue
+		}
+
+		light := fs.shadowMap.SampleLight(f.X, f.Y)
+		if light < floraFloatMinLight {
+			light = floraFloatMinLight
+		}
+		f.Energy += floraBasePhotoRate * light
+
+		if f.Energy > f.MaxEnergy {
+			f.Energy = f.MaxEnergy
+		}
+
+		if f.Energy < f.MaxEnergy*floraDeathThreshold {
+			f.Dead = true
+			continue
+		}
+
+		fs.applyFloatDrift(f)
+
+		f.SporeTimer++
+		if f.SporeTimer >= floraSporeInterval && f.Energy > 40 {
+			f.SporeTimer = 0
+			f.Energy -= 15
+			spores = append(spores, sporeRequest{f.X, f.Y - f.Size, false})
+		}
+
+		fs.Floating[alive] = fs.Floating[i]
+		alive++
+	}
+	fs.Floating = fs.Floating[:alive]
+	return spores
 }
 
 func (fs *FloraSystem) updateRooted(spawnSpore func(x, y float32, isRooted bool)) {

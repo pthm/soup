@@ -46,6 +46,7 @@ type FeedingSystem struct {
 	faunaFilter ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
 	neuralMap   *ecs.Map[components.NeuralGenome]
 	floraSystem *FloraSystem // Lightweight flora system (set via SetFloraSystem)
+	spatialGrid *SpatialGrid // Spatial grid for O(1) lookups (set via SetSpatialGrid)
 }
 
 // NewFeedingSystem creates a new feeding system.
@@ -61,6 +62,11 @@ func (s *FeedingSystem) SetFloraSystem(fs *FloraSystem) {
 	s.floraSystem = fs
 }
 
+// SetSpatialGrid sets the spatial grid for O(1) neighbor lookups.
+func (s *FeedingSystem) SetSpatialGrid(grid *SpatialGrid) {
+	s.spatialGrid = grid
+}
+
 // entityData holds data needed for capability matching.
 type entityData struct {
 	pos         *components.Position
@@ -73,7 +79,171 @@ type entityData struct {
 }
 
 // Update processes feeding for all fauna using capability matching.
+// Uses spatial grid for O(1) neighbor lookups when available.
 func (s *FeedingSystem) Update() {
+	// Use optimized spatial version if grid is available
+	if s.spatialGrid != nil {
+		s.updateWithSpatialGrid()
+		return
+	}
+
+	// Fallback to O(n²) version
+	s.updateLegacy()
+}
+
+// updateWithSpatialGrid uses spatial queries for efficient neighbor lookup.
+func (s *FeedingSystem) updateWithSpatialGrid() {
+	// Pre-collect fauna data for spatial lookups
+	var faunaPos []components.Position
+	var faunaOrgs []*components.Organism
+	var faunaCells []*components.CellBuffer
+	var faunaSpecies []int
+
+	faunaQuery := s.faunaFilter.Query()
+	for faunaQuery.Next() {
+		entity := faunaQuery.Entity()
+		pos, _, org, cells := faunaQuery.Get()
+
+		faunaPos = append(faunaPos, *pos)
+		faunaOrgs = append(faunaOrgs, org)
+		faunaCells = append(faunaCells, cells)
+
+		speciesID := 0
+		if s.neuralMap.Has(entity) {
+			if ng := s.neuralMap.Get(entity); ng != nil {
+				speciesID = ng.SpeciesID
+			}
+		}
+		faunaSpecies = append(faunaSpecies, speciesID)
+	}
+
+	// Process each fauna's feeding with spatial lookup
+	for i := range faunaOrgs {
+		org := faunaOrgs[i]
+		if org.Dead || org.EatIntent < 0.5 {
+			continue
+		}
+
+		pos := &faunaPos[i]
+		cells := faunaCells[i]
+		myCaps := cells.ComputeCapabilities()
+		mySpeciesID := faunaSpecies[i]
+		myDigestive := myCaps.DigestiveSpectrum()
+
+		s.tryFeedSpatial(pos, org, myCaps, myDigestive, mySpeciesID, i, faunaPos, faunaOrgs, faunaCells, faunaSpecies)
+	}
+}
+
+// tryFeedSpatial finds and eats nearby targets using spatial grid.
+func (s *FeedingSystem) tryFeedSpatial(
+	pos *components.Position,
+	org *components.Organism,
+	myCaps components.Capabilities,
+	myDigestive float32,
+	mySpeciesID int,
+	myIdx int,
+	faunaPos []components.Position,
+	faunaOrgs []*components.Organism,
+	faunaCells []*components.CellBuffer,
+	faunaSpecies []int,
+) {
+	const feedDistSq = feedingDistance * feedingDistance
+	const kinAvoidanceProb = 0.70
+
+	var bestTarget *entityData
+	var bestPenetration float32
+	var bestDistSq float32 = feedDistSq + 1
+
+	// Check nearby flora using FloraSystem's spatial query
+	if s.floraSystem != nil {
+		nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, feedingDistance)
+		for _, ref := range nearbyFlora {
+			dSq := distanceSq(pos.X, pos.Y, ref.X, ref.Y)
+			if dSq > feedDistSq {
+				continue
+			}
+
+			// Flora edibility
+			edibility := neural.Edibility(myDigestive, 1.0) // Flora composition = 1.0
+			penetration := neural.Penetration(edibility, DefaultFloraArmor())
+
+			if penetration <= 0 {
+				continue
+			}
+
+			if penetration > bestPenetration || (penetration == bestPenetration && dSq < bestDistSq) {
+				caps := components.Capabilities{
+					PhotoWeight:     1.0,
+					ActuatorWeight:  0.0,
+					StructuralArmor: DefaultFloraArmor(),
+				}
+				bestTarget = &entityData{
+					pos:      &components.Position{X: ref.X, Y: ref.Y},
+					org:      &components.Organism{Energy: ref.Energy, MaxEnergy: 150, Dead: false},
+					caps:     caps,
+					isFlora:  true,
+					floraRef: ref,
+				}
+				bestPenetration = penetration
+				bestDistSq = dSq
+			}
+		}
+	}
+
+	// Check nearby fauna using spatial grid
+	nearbyFauna := s.spatialGrid.GetNearbyFauna(pos.X, pos.Y, feedingDistance)
+	for _, idx := range nearbyFauna {
+		if idx == myIdx || faunaOrgs[idx].Dead {
+			continue
+		}
+
+		targetPos := &faunaPos[idx]
+		dSq := distanceSq(pos.X, pos.Y, targetPos.X, targetPos.Y)
+		if dSq > feedDistSq {
+			continue
+		}
+
+		targetOrg := faunaOrgs[idx]
+		targetCells := faunaCells[idx]
+		targetCaps := targetCells.ComputeCapabilities()
+
+		edibility := neural.Edibility(myDigestive, targetCaps.Composition())
+		penetration := neural.Penetration(edibility, targetCaps.StructuralArmor)
+
+		if penetration <= 0 {
+			continue
+		}
+
+		// Kin avoidance
+		targetSpeciesID := faunaSpecies[idx]
+		isKin := mySpeciesID > 0 && targetSpeciesID == mySpeciesID
+		if isKin && rand.Float32() < kinAvoidanceProb {
+			continue
+		}
+
+		if penetration > bestPenetration || (penetration == bestPenetration && dSq < bestDistSq) {
+			bestTarget = &entityData{
+				pos:       targetPos,
+				org:       targetOrg,
+				cells:     targetCells,
+				caps:      targetCaps,
+				speciesID: targetSpeciesID,
+				isFlora:   false,
+			}
+			bestPenetration = penetration
+			bestDistSq = dSq
+		}
+	}
+
+	if bestTarget == nil {
+		return
+	}
+
+	s.executeFeed(org, myCaps, bestTarget, bestPenetration)
+}
+
+// updateLegacy is the original O(n²) implementation for when spatial grid is unavailable.
+func (s *FeedingSystem) updateLegacy() {
 	// Collect all potential food sources with their capabilities
 	var targets []entityData
 

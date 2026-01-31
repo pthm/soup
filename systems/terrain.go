@@ -80,7 +80,7 @@ func NewTerrainSystem(screenWidth, screenHeight float32, seed int64) *TerrainSys
 	return t
 }
 
-// Generate creates procedural terrain using Perlin noise.
+// Generate creates procedural terrain - currently just a sea floor.
 func (t *TerrainSystem) Generate(seed int64) {
 	// Clear grid
 	for y := 0; y < t.gridHeight; y++ {
@@ -89,142 +89,32 @@ func (t *TerrainSystem) Generate(seed int64) {
 		}
 	}
 
-	// 1. Sea floor: 1D Perlin along X, fills bottom 10-20%
+	// Sea floor only for now
 	t.generateSeaFloor()
-
-	// 2. Floating islands: 2D Perlin (threshold > 0.55), Y range 150-550px
-	t.generateFloatingIslands()
-
-	// 3. Coral outcrops: High-freq Perlin, small features near floor
-	t.generateCoralOutcrops()
-
-	// 4. Cave carving: Inverse Perlin pass removes cells for connectivity
-	t.carveCaves()
-
-	// Ensure edges remain open for organism movement
-	t.clearEdges()
 }
 
 // generateSeaFloor creates the bottom terrain layer.
 func (t *TerrainSystem) generateSeaFloor() {
-	const noiseScale = 0.08
-
 	for x := 0; x < t.gridWidth; x++ {
-		// Sample 1D noise along X
-		noiseVal := t.noise.Noise2D(float64(x)*noiseScale, 0)
-		// Map noise [-1,1] to height variation [10%, 20%] of grid height
-		heightRatio := 0.10 + (noiseVal+1)*0.05 // 10-20%
+		// Use noise for varied floor height
+		noiseVal := t.noise.Noise2D(float64(x)*0.05, 0)
+		// Map to height: 10-20% of grid height
+		heightRatio := 0.12 + (noiseVal+1)*0.04
 		floorHeight := int(float64(t.gridHeight) * heightRatio)
 
 		for y := t.gridHeight - 1; y >= t.gridHeight-floorHeight; y-- {
-			// Deeper cells are rock, shallow cells can be coral
-			if y > t.gridHeight-floorHeight/2 {
+			// Bottom half is rock, top half can be coral
+			depth := t.gridHeight - y
+			if depth > floorHeight/2 {
 				t.grid[y][x] = TerrainRock
 			} else {
-				// Random coral patches on top of floor
-				coralNoise := t.noise.Noise2D(float64(x)*0.2, float64(y)*0.2+100)
+				coralNoise := t.noise.Noise2D(float64(x)*0.15, float64(y)*0.15+100)
 				if coralNoise > 0.3 {
 					t.grid[y][x] = TerrainCoral
 				} else {
 					t.grid[y][x] = TerrainRock
 				}
 			}
-		}
-	}
-}
-
-// generateFloatingIslands creates islands in the mid-water region.
-func (t *TerrainSystem) generateFloatingIslands() {
-	const noiseScale = 0.06
-	const threshold = 0.55
-
-	// Y range in grid cells: approximately 150-550px mapped to grid
-	minY := int(150 / t.cellSize)
-	maxY := int(550 / t.cellSize)
-	if minY < 2 {
-		minY = 2
-	}
-	if maxY >= t.gridHeight-2 {
-		maxY = t.gridHeight - 3
-	}
-
-	for y := minY; y <= maxY; y++ {
-		for x := 0; x < t.gridWidth; x++ {
-			// Sample 2D Perlin noise
-			noiseVal := t.noise.Noise2D(float64(x)*noiseScale, float64(y)*noiseScale+50)
-
-			// Higher threshold creates smaller, more separated islands
-			if noiseVal > threshold {
-				// Make islands more rock-like
-				t.grid[y][x] = TerrainRock
-			}
-		}
-	}
-}
-
-// generateCoralOutcrops adds small coral features near the sea floor.
-func (t *TerrainSystem) generateCoralOutcrops() {
-	const noiseScale = 0.15 // Higher frequency
-	const threshold = 0.6
-
-	// Only in bottom 30% of screen
-	startY := t.gridHeight * 7 / 10
-
-	for y := startY; y < t.gridHeight; y++ {
-		for x := 0; x < t.gridWidth; x++ {
-			if t.grid[y][x] != TerrainEmpty {
-				continue // Already has terrain
-			}
-
-			// High-frequency noise for small features
-			noiseVal := t.noise.Noise2D(float64(x)*noiseScale+200, float64(y)*noiseScale)
-
-			if noiseVal > threshold {
-				t.grid[y][x] = TerrainCoral
-			}
-		}
-	}
-}
-
-// carveCaves removes some terrain cells to create caves and passages.
-func (t *TerrainSystem) carveCaves() {
-	const noiseScale = 0.1
-	const threshold = 0.65
-
-	for y := 0; y < t.gridHeight; y++ {
-		for x := 0; x < t.gridWidth; x++ {
-			if t.grid[y][x] == TerrainEmpty {
-				continue
-			}
-
-			// Inverse Perlin - high values carve out caves
-			noiseVal := t.noise.Noise2D(float64(x)*noiseScale+300, float64(y)*noiseScale+300)
-
-			if noiseVal > threshold {
-				t.grid[y][x] = TerrainEmpty
-			}
-		}
-	}
-}
-
-// clearEdges ensures screen edges have some open space for organism movement.
-func (t *TerrainSystem) clearEdges() {
-	// Clear top 2 rows (but not bottom - keep seabed intact)
-	for y := 0; y < 2; y++ {
-		for x := 0; x < t.gridWidth; x++ {
-			t.grid[y][x] = TerrainEmpty
-		}
-	}
-
-	// Clear left and right edges only in the upper portion (above seabed)
-	// Don't clear the bottom 15% where the seabed is
-	seabedStartY := t.gridHeight * 85 / 100
-	for y := 0; y < seabedStartY; y++ {
-		for x := 0; x < 2; x++ {
-			t.grid[y][x] = TerrainEmpty
-		}
-		for x := t.gridWidth - 2; x < t.gridWidth; x++ {
-			t.grid[y][x] = TerrainEmpty
 		}
 	}
 }

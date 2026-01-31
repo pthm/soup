@@ -3,6 +3,8 @@ package systems
 import (
 	"math"
 	"math/rand"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/mlange-42/ark/ecs"
@@ -34,6 +36,9 @@ const (
 	minSensorGain    = float32(0.1)
 	minActuatorGain  = float32(0.1)
 	capabilityScale  = 4.0 // Denominator for capability scaling
+
+	// Parallel processing threshold
+	minOrganismsForParallel = 100 // Below this, goroutine overhead exceeds benefits
 )
 
 // BehaviorPerfStats tracks subsystem timings within the behavior system.
@@ -44,6 +49,29 @@ type BehaviorPerfStats struct {
 	PathfindingNs int64 // Time in pathfinding
 	ActuatorNs    int64 // Time in actuator calculations
 	Count         int   // Number of organisms processed
+}
+
+// organismTask holds data needed for parallel brain evaluation.
+type organismTask struct {
+	// Input data (read-only during parallel phase)
+	entity           ecs.Entity
+	posX, posY       float32
+	heading          float32
+	energy           float32
+	maxEnergy        float32
+	perceptionRadius float32
+	maxSpeed         float32
+	cellSize         float32
+	shapeMetrics     components.ShapeMetrics
+	obb              components.CollisionOBB
+	brain            *neural.BrainController
+	cells            *components.CellBuffer
+	faunaIdx         int // Index in faunaPos/faunaOrgs arrays
+
+	// Output data (written during parallel phase)
+	outputs      neural.BehaviorOutputs
+	flowX, flowY float32
+	hasBrain     bool
 }
 
 // BehaviorSystem handles organism steering behaviors using direct neural control.
@@ -61,6 +89,11 @@ type BehaviorSystem struct {
 	// Pre-allocated buffer to reduce allocations in hot path
 	entityBuffer []neural.EntityInfo
 
+	// Parallel processing
+	numWorkers   int
+	taskBuffer   []organismTask
+	floraEntities []neural.EntityInfo // Pre-built flora list for parallel workers
+
 	// Performance tracking
 	perfEnabled bool
 	perfStats   BehaviorPerfStats
@@ -68,6 +101,10 @@ type BehaviorSystem struct {
 
 // NewBehaviorSystem creates a new behavior system.
 func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSystem) *BehaviorSystem {
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
 	return &BehaviorSystem{
 		filter:     *ecs.NewFilter3[components.Position, components.Velocity, components.Organism](w),
 		brainMap:   ecs.NewMap[components.Brain](w),
@@ -76,6 +113,7 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap, terrain *TerrainSyste
 		shadowMap:  shadowMap,
 		terrain:    terrain,
 		pathfinder: NewPathfinder(terrain),
+		numWorkers: numWorkers,
 	}
 }
 
@@ -208,6 +246,386 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		// Track thrust magnitude for energy cost
 		org.ActiveThrust = float32(math.Sqrt(float64(thrustX*thrustX + thrustY*thrustY)))
 	}
+}
+
+// UpdateParallel runs the behavior system with parallel brain evaluation.
+// Uses a 3-phase approach: collect data, parallel compute, apply results.
+func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
+	s.tick++
+
+	// Phase 1: Build flora entity list once (shared read-only data)
+	s.floraEntities = s.floraEntities[:0]
+	if s.floraSystem != nil {
+		nearbyFlora := s.floraSystem.GetAllFlora()
+		for _, ref := range nearbyFlora {
+			s.floraEntities = append(s.floraEntities, neural.EntityInfo{
+				X:               ref.X,
+				Y:               ref.Y,
+				Composition:     1.0,
+				DigestiveSpec:   0.0,
+				StructuralArmor: DefaultFloraArmor(),
+				GeneticDistance: -1,
+				IsFlora:         true,
+			})
+		}
+	}
+
+	// Phase 2: Collect organism data into tasks
+	s.taskBuffer = s.taskBuffer[:0]
+	deadTasks := make([]struct {
+		vel *components.Velocity
+		org *components.Organism
+		pos *components.Position
+	}, 0)
+
+	query := s.filter.Query()
+	faunaIdx := 0
+	for query.Next() {
+		entity := query.Entity()
+		pos, vel, org := query.Get()
+
+		if org.Dead {
+			deadTasks = append(deadTasks, struct {
+				vel *components.Velocity
+				org *components.Organism
+				pos *components.Position
+			}{vel, org, pos})
+			faunaIdx++
+			continue
+		}
+
+		var brain *neural.BrainController
+		hasBrain := false
+		if s.brainMap.Has(entity) {
+			b := s.brainMap.Get(entity)
+			if b != nil && b.Controller != nil {
+				brain = b.Controller
+				hasBrain = true
+			}
+		}
+
+		var cells *components.CellBuffer
+		if s.cellsMap.Has(entity) {
+			cells = s.cellsMap.Get(entity)
+		}
+
+		s.taskBuffer = append(s.taskBuffer, organismTask{
+			entity:           entity,
+			posX:             pos.X,
+			posY:             pos.Y,
+			heading:          org.Heading,
+			energy:           org.Energy,
+			maxEnergy:        org.MaxEnergy,
+			perceptionRadius: org.PerceptionRadius,
+			maxSpeed:         org.MaxSpeed,
+			cellSize:         org.CellSize,
+			shapeMetrics:     org.ShapeMetrics,
+			obb:              org.OBB,
+			brain:            brain,
+			cells:            cells,
+			faunaIdx:         faunaIdx,
+			hasBrain:         hasBrain,
+		})
+		faunaIdx++
+	}
+
+	// Process dead organisms (no parallelization needed - simple flow calculation)
+	for _, d := range deadTasks {
+		flowX, flowY := s.getFlowFieldForce(d.pos.X, d.pos.Y, d.org, bounds)
+		d.vel.X += flowX * deadFlowMultiplier
+		d.vel.Y += flowY * deadFlowMultiplier
+		d.vel.Y += deadSinkRate
+	}
+
+	if len(s.taskBuffer) == 0 {
+		return
+	}
+
+	// For small populations, skip parallel overhead
+	if len(s.taskBuffer) < minOrganismsForParallel {
+		for i := range s.taskBuffer {
+			s.processTaskRange(i, i+1, faunaPositions, faunaOrgs, grid, bounds)
+		}
+	} else {
+		// Phase 3: Parallel brain evaluation
+		numTasks := len(s.taskBuffer)
+		numWorkers := s.numWorkers
+		if numWorkers > numTasks {
+			numWorkers = numTasks
+		}
+
+		var wg sync.WaitGroup
+		chunkSize := (numTasks + numWorkers - 1) / numWorkers
+
+		for w := 0; w < numWorkers; w++ {
+			start := w * chunkSize
+			end := start + chunkSize
+			if end > numTasks {
+				end = numTasks
+			}
+			if start >= end {
+				break
+			}
+
+			wg.Add(1)
+			go func(start, end int) {
+				defer wg.Done()
+				s.processTaskRange(start, end, faunaPositions, faunaOrgs, grid, bounds)
+			}(start, end)
+		}
+		wg.Wait()
+	}
+
+	// Phase 4: Apply results back to ECS components
+	query2 := s.filter.Query()
+	taskIdx := 0
+	for query2.Next() {
+		entity := query2.Entity()
+		pos, vel, org := query2.Get()
+
+		if org.Dead {
+			continue
+		}
+
+		// Find matching task (entities should be in same order)
+		for taskIdx < len(s.taskBuffer) && s.taskBuffer[taskIdx].entity != entity {
+			taskIdx++
+		}
+		if taskIdx >= len(s.taskBuffer) {
+			break
+		}
+		task := &s.taskBuffer[taskIdx]
+		taskIdx++
+
+		// Apply brain outputs
+		outputs := task.outputs
+		org.DesireAngle = outputs.DesireAngle
+		org.DesireDistance = outputs.DesireDistance
+		org.EatIntent = outputs.Eat
+		org.GrowIntent = outputs.Grow
+		org.BreedIntent = outputs.Breed
+		org.GlowIntent = outputs.Glow
+
+		// Compute emitted light
+		if task.cells != nil && outputs.Glow > 0 {
+			caps := task.cells.ComputeCapabilities()
+			org.EmittedLight = outputs.Glow * caps.BioluminescentCap
+		} else {
+			org.EmittedLight = 0
+		}
+
+		// Pathfinding (still sequential - uses shared pathfinder state)
+		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
+		navResult := s.pathfinder.Navigate(
+			pos.X, pos.Y,
+			org.Heading,
+			outputs.DesireAngle, outputs.DesireDistance,
+			task.flowX, task.flowY,
+			organismRadius,
+		)
+
+		org.TurnOutput = navResult.Turn
+		org.ThrustOutput = navResult.Thrust
+
+		// Calculate actuator forces
+		thrust, torque := calculateActuatorForces(task.cells, org.Heading, navResult.Thrust, navResult.Turn)
+
+		// Apply movement
+		org.Heading = normalizeHeading(org.Heading + torque)
+		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, task.cells)
+
+		thrustX := float32(math.Cos(float64(org.Heading))) * thrust * thrustScale
+		thrustY := float32(math.Sin(float64(org.Heading))) * thrust * thrustScale
+
+		vel.X += thrustX + task.flowX
+		vel.Y += thrustY + task.flowY
+
+		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		if speed > effectiveMaxSpeed {
+			scale := effectiveMaxSpeed / speed
+			vel.X *= scale
+			vel.Y *= scale
+		}
+
+		org.ActiveThrust = float32(math.Sqrt(float64(thrustX*thrustX + thrustY*thrustY)))
+	}
+}
+
+// processTaskRange evaluates brains for a range of tasks (called by worker goroutines).
+func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid, bounds Bounds) {
+	for i := start; i < end; i++ {
+		task := &s.taskBuffer[i]
+
+		// Calculate flow field (thread-safe - uses Perlin noise)
+		flowX, flowY := s.getFlowFieldForceParallel(task.posX, task.posY, task.shapeMetrics, task.energy, task.maxEnergy, bounds)
+		task.flowX = flowX
+		task.flowY = flowY
+
+		if !task.hasBrain {
+			task.outputs = neural.DefaultOutputs()
+			continue
+		}
+
+		// Build entity list for this organism
+		entities := s.buildEntityListParallel(task, faunaPos, faunaOrgs, grid)
+
+		// Calculate effective perception radius
+		effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
+
+		// Get capabilities
+		var myComposition, myDigestiveSpec, myArmor float32
+		if task.cells != nil {
+			caps := task.cells.ComputeCapabilities()
+			myComposition = caps.Composition()
+			myDigestiveSpec = caps.DigestiveSpectrum()
+			myArmor = caps.StructuralArmor
+		}
+
+		// Get light level
+		var lightLevel float32 = 0.5
+		if s.shadowMap != nil {
+			lightLevel = s.shadowMap.SampleLight(task.posX, task.posY)
+		}
+
+		// Build sensor cells
+		sensorCells := buildSensorCells(task.cells)
+
+		// Vision parameters
+		visionParams := neural.VisionParams{
+			PosX:            task.posX,
+			PosY:            task.posY,
+			Heading:         task.heading,
+			MyComposition:   myComposition,
+			MyDigestiveSpec: myDigestiveSpec,
+			MyArmor:         myArmor,
+			EffectiveRadius: effectiveRadius,
+			LightLevel:      lightLevel,
+			Sensors:         sensorCells,
+		}
+
+		// Polar vision scan
+		var pv neural.PolarVision
+		pv.ScanEntities(visionParams, entities)
+
+		// Sample directional light
+		var lightSampler func(x, y float32) float32
+		if s.shadowMap != nil {
+			lightSampler = s.shadowMap.SampleLight
+		}
+		pv.SampleDirectionalLight(task.posX, task.posY, task.heading, effectiveRadius, lightSampler)
+
+		// Build sensory inputs
+		sensory := neural.SensoryInputs{
+			PerceptionRadius: effectiveRadius,
+			Energy:           task.energy,
+			MaxEnergy:        task.maxEnergy,
+			MaxCells:         16,
+			SensorCount:      getSensorCount(task.cells),
+			TotalSensorGain:  getTotalSensorGain(task.cells),
+			ActuatorCount:    getActuatorCount(task.cells),
+			TotalActuatorStr: getTotalActuatorStrength(task.cells),
+		}
+
+		if task.cells != nil {
+			sensory.CellCount = int(task.cells.Count)
+		} else {
+			sensory.CellCount = int((task.maxEnergy - 100) / 50)
+			if sensory.CellCount < 1 {
+				sensory.CellCount = 1
+			}
+		}
+
+		sensory.FromPolarVision(&pv)
+		sensory.LightLevel = lightLevel
+
+		// Flow alignment
+		headingX := float32(math.Cos(float64(task.heading)))
+		headingY := float32(math.Sin(float64(task.heading)))
+		flowMag := float32(math.Sqrt(float64(flowX*flowX + flowY*flowY)))
+		if flowMag > 0.001 {
+			sensory.FlowAlignment = (flowX*headingX + flowY*headingY) / flowMag
+		}
+
+		// Openness
+		if s.terrain != nil {
+			terrainDist := s.terrain.DistanceToSolid(task.posX, task.posY)
+			if terrainDist < effectiveRadius {
+				sensory.Openness = terrainDist / effectiveRadius
+			} else {
+				sensory.Openness = 1.0
+			}
+		} else {
+			sensory.Openness = 1.0
+		}
+
+		// Run brain
+		inputs := sensory.ToInputs()
+		rawOutputs, err := task.brain.Think(inputs)
+		if err != nil {
+			task.outputs = neural.DefaultOutputs()
+		} else {
+			task.outputs = neural.DecodeOutputs(rawOutputs)
+		}
+	}
+}
+
+// buildEntityListParallel creates entity list for parallel processing (no shared buffer).
+func (s *BehaviorSystem) buildEntityListParallel(task *organismTask, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) []neural.EntityInfo {
+	effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
+
+	// Start with pre-built flora list, filtered by distance
+	entities := make([]neural.EntityInfo, 0, 32)
+	radiusSq := effectiveRadius * effectiveRadius
+	for _, flora := range s.floraEntities {
+		dx := flora.X - task.posX
+		dy := flora.Y - task.posY
+		if dx*dx+dy*dy <= radiusSq {
+			entities = append(entities, flora)
+		}
+	}
+
+	// Add nearby fauna
+	nearbyFauna := grid.GetNearbyFauna(task.posX, task.posY, effectiveRadius*1.5)
+	for _, i := range nearbyFauna {
+		if i == task.faunaIdx || faunaOrgs[i].Dead {
+			continue
+		}
+
+		other := faunaOrgs[i]
+		entities = append(entities, neural.EntityInfo{
+			X:               faunaPos[i].X,
+			Y:               faunaPos[i].Y,
+			Composition:     0.0,
+			DigestiveSpec:   0.5,
+			StructuralArmor: 0.0,
+			GeneticDistance: 1.0,
+			IsFlora:         false,
+			EmittedLight:    other.EmittedLight,
+		})
+	}
+
+	return entities
+}
+
+// getFlowFieldForceParallel calculates flow field without organism pointer (thread-safe).
+func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics components.ShapeMetrics, energy, maxEnergy float32, _ Bounds) (float32, float32) {
+	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*flowTimeScale)
+	noiseY := s.noise.Noise3D(float64(x)*flowScale+100, float64(y)*flowScale+100, float64(s.tick)*flowTimeScale)
+
+	flowAngle := noiseX * math.Pi * 2
+	flowMagnitude := (noiseY + 1) * 0.5
+	flowX := float32(math.Cos(flowAngle) * flowMagnitude * flowStrength)
+	flowY := float32(math.Sin(flowAngle) * flowMagnitude * flowStrength)
+
+	flowY += flowDriftY
+	flowX += float32(math.Sin(float64(s.tick)*flowTimeScale*2)) * flowSideEffect
+
+	shapeResistance := shapeMetrics.Streamlining * 0.4
+	massResistance := float32(math.Min(float64(energy/maxEnergy)/3, 1))
+	totalResistance := shapeResistance + massResistance*0.6
+	factor := 1 - totalResistance*0.7
+
+	return flowX * factor, flowY * factor
 }
 
 // getBrainOutputs gathers sensory inputs using polar vision and runs the brain network.

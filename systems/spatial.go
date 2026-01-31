@@ -79,6 +79,11 @@ func (sg *SpatialGrid) GetNearbyFauna(x, y, radius float32) []int {
 	return sg.getNearby(x, y, radius, false)
 }
 
+// GetNearbyFlora returns indices of flora within radius of position.
+func (sg *SpatialGrid) GetNearbyFlora(x, y, radius float32) []int {
+	return sg.getNearby(x, y, radius, true)
+}
+
 func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 	// Calculate grid cell range to check
 	cellRadius := int(radius/sg.cellWidth) + 1

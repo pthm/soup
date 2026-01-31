@@ -146,12 +146,12 @@ func (g *Game) runSimulationStep() {
 	// Update allocation modes (determines how organisms spend energy)
 	measure("allocation", func() { g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs) })
 
-	// Run systems
-	measure("behavior", func() { g.behavior.Update(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
+	// Run systems (parallel brain evaluation)
+	measure("behavior", func() { g.behavior.UpdateParallel(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
 	measure("physics", func() { g.physics.Update(g.world) })
 	measure("feeding", func() { g.feeding.Update() })
 	measure("floraSystem", func() {
-		g.floraSystem.Update(g.tick, func(x, y float32, isRooted bool) {
+		g.floraSystem.UpdateParallel(g.tick, func(x, y float32, isRooted bool) {
 			g.spores.SpawnSpore(x, y, isRooted)
 		})
 	})
