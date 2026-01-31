@@ -153,6 +153,11 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 	// Compute capabilities for color
 	caps := cells.ComputeCapabilities()
 
+	// Draw bioluminescence glow effect (behind cells)
+	if org.EmittedLight > 0.05 {
+		g.drawBioluminescentGlow(pos, org)
+	}
+
 	// Use species color if enabled and organism has neural genome
 	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
 		neuralGenome := g.neuralGenomeMap.Get(entity)
@@ -226,6 +231,27 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 			cellColor,
 		)
 	}
+}
+
+// drawBioluminescentGlow renders a subtle glow around glowing organisms.
+func (g *Game) drawBioluminescentGlow(pos *components.Position, org *components.Organism) {
+	// Small glow radius - just a hint beyond the organism
+	glowRadius := org.CellSize * 2.5
+
+	// Subtle intensity
+	intensity := org.EmittedLight * 0.4
+	if intensity > 0.4 {
+		intensity = 0.4
+	}
+
+	// Gentle pulse
+	pulse := float32(math.Sin(float64(g.tick)*0.06+float64(pos.X)*0.02)) * 0.1
+	intensity *= (1.0 + pulse)
+
+	// Single subtle cyan glow
+	alpha := uint8(intensity * 60)
+	rl.DrawCircle(int32(pos.X), int32(pos.Y), glowRadius,
+		rl.Color{R: 140, G: 220, B: 255, A: alpha})
 }
 
 // drawSpores draws all active spores.

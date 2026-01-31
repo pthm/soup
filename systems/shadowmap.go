@@ -126,8 +126,14 @@ func (sm *ShadowMap) Update(tick int32, sunX, sunY float32, occluders []Occluder
 			// Vertical gradient - light attenuates with depth (darker at bottom)
 			// normalizedY: 0 = top (bright), 1 = bottom (dark)
 			normalizedY := worldY / sm.height
-			// Depth attenuation: top gets full light, bottom gets ~40% of base light
-			depthFactor := 1.0 - normalizedY*0.6
+			// Depth attenuation with power curve for harsh underwater-style falloff
+			// Top gets full light, bottom gets ~10% of base light
+			// Power of 2.5 creates rapid falloff in upper depths, very dark at bottom
+			depthFactor := float32(math.Pow(float64(1.0-normalizedY), 2.5))
+			// Ensure minimum ambient light of 10%
+			if depthFactor < 0.1 {
+				depthFactor = 0.1
+			}
 			light *= depthFactor
 
 			// Only check occluders in cells that the ray passes through
