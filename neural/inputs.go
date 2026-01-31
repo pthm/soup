@@ -42,8 +42,17 @@ type ThreatInfo struct {
 	ClosingSpeed float32 // Rate of approach [-1,1] (negative=approaching, positive=retreating)
 }
 
+// ApproachInfo holds geometry for close-range pursuit/interception.
+// These inputs help brains learn arrival behavior to avoid circling.
+type ApproachInfo struct {
+	NearestFoodDist    float32 // Distance to nearest edible food [0,1] (1=touching, 0=far/none)
+	NearestFoodBearing float32 // Angle to nearest food [-1,1] (0=ahead, ±1=behind)
+	NearestMateDist    float32 // Distance to nearest same-species [0,1] (1=touching, 0=far/none)
+	NearestMateBearing float32 // Angle to nearest same-species [-1,1] (0=ahead, ±1=behind)
+}
+
 // SensoryInputs holds the raw sensory data before normalization.
-// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + approach (4) + bias (1) = 30 total
 type SensoryInputs struct {
 	// Self state (2 inputs)
 	SpeedNorm  float32 // current speed / max speed [0,1]
@@ -61,6 +70,9 @@ type SensoryInputs struct {
 	// Threat info (2 inputs) - predator awareness
 	Threat ThreatInfo
 
+	// Approach info (4 inputs) - close-range pursuit geometry
+	Approach ApproachInfo
+
 	// Metadata (not inputs)
 	MaxSpeed         float32
 	MaxEnergy        float32
@@ -68,7 +80,7 @@ type SensoryInputs struct {
 }
 
 // ToInputs converts sensory data to normalized neural network inputs.
-// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + approach (4) + bias (1) = 30 total
 //
 // Input mapping:
 //
@@ -97,7 +109,11 @@ type SensoryInputs struct {
 //	[22]    meat_mag [0,1]
 //	[23]    threat_proximity [0,1]
 //	[24]    threat_closing_speed [-1,1]
-//	[25]    bias (1.0)
+//	[25]    nearest_food_dist [0,1]
+//	[26]    nearest_food_bearing [-1,1]
+//	[27]    nearest_mate_dist [0,1]
+//	[28]    nearest_mate_bearing [-1,1]
+//	[29]    bias (1.0)
 func (s *SensoryInputs) ToInputs() []float64 {
 	inputs := make([]float64, BrainInputs)
 
@@ -136,8 +152,14 @@ func (s *SensoryInputs) ToInputs() []float64 {
 	inputs[23] = float64(clampf(s.Threat.Proximity, 0, 1))
 	inputs[24] = float64(clampf(s.Threat.ClosingSpeed, -1, 1))
 
-	// [25] Bias
-	inputs[25] = 1.0
+	// [25-28] Approach info (close-range pursuit geometry)
+	inputs[25] = float64(clampf(s.Approach.NearestFoodDist, 0, 1))
+	inputs[26] = float64(clampf(s.Approach.NearestFoodBearing, -1, 1))
+	inputs[27] = float64(clampf(s.Approach.NearestMateDist, 0, 1))
+	inputs[28] = float64(clampf(s.Approach.NearestMateBearing, -1, 1))
+
+	// [29] Bias
+	inputs[29] = 1.0
 
 	return inputs
 }

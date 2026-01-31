@@ -5,8 +5,8 @@ import (
 )
 
 // BrainInputs is the number of sensory inputs to the brain network.
-// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + bias (1) = 26 total
-const BrainInputs = 26
+// Layout: self (2) + body (6) + boid (9) + food (6) + threat (2) + approach (4) + bias (1) = 30 total
+const BrainInputs = 30
 
 // BrainOutputs is the number of outputs from the brain network.
 // Layout: UTurn, UThrottle, AttackIntent, MateIntent

@@ -74,7 +74,7 @@ type organismTask struct {
 
 	// Output data (written during parallel phase)
 	outputs      neural.BehaviorOutputs
-	lastInputs   [26]float32 // Store inputs for debugging
+	lastInputs   [30]float32 // Store inputs for debugging
 	flowX, flowY float32
 	hasBrain     bool
 }
@@ -177,9 +177,13 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 
 		// HEADING-AS-STATE: Integrate heading from turn rate
 		// Turn rate is scaled by morphology - asymmetric actuators affect turning
-		// Turning requires forward motion (like a rudder) - scale by throttle
+		// Allow some turning even at low throttle to enable arrival behavior
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, cells)
-		org.Heading += outputs.UTurn * effectiveTurnRate * outputs.UThrottle
+		turnThrottle := outputs.UThrottle
+		if turnThrottle < minTurnThrottle {
+			turnThrottle = minTurnThrottle
+		}
+		org.Heading += outputs.UTurn * effectiveTurnRate * turnThrottle
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -437,9 +441,13 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 
 		// HEADING-AS-STATE: Integrate heading from turn rate
 		// Turn rate is scaled by morphology - asymmetric actuators affect turning
-		// Turning requires forward motion (like a rudder) - scale by throttle
+		// Allow some turning even at low throttle to enable arrival behavior
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, task.cells)
-		org.Heading += outputs.UTurn * effectiveTurnRate * outputs.UThrottle
+		turnThrottle := outputs.UThrottle
+		if turnThrottle < minTurnThrottle {
+			turnThrottle = minTurnThrottle
+		}
+		org.Heading += outputs.UTurn * effectiveTurnRate * turnThrottle
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -591,6 +599,16 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			task.structuralArmor,
 		)
 
+		approachInfo := computeApproachInfo(
+			centerX, centerY,
+			task.heading,
+			task.bodyRadius,
+			effectiveRadius,
+			task.digestiveSpectrum,
+			foodTargets,
+			neighbors,
+		)
+
 		// Build sensory inputs with aggregated fields
 		sensory := neural.SensoryInputs{
 			SpeedNorm:  speedNorm,
@@ -602,6 +620,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			Boid:             boidFields,
 			Food:             foodFields,
 			Threat:           threatInfo,
+			Approach:         approachInfo,
 			MaxSpeed:         task.maxSpeed,
 			MaxEnergy:        task.maxEnergy,
 			PerceptionRadius: effectiveRadius,
@@ -611,7 +630,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		inputs := sensory.ToInputs()
 
 		// Store inputs for debugging (convert float64 to float32)
-		for i := 0; i < len(inputs) && i < 26; i++ {
+		for i := 0; i < len(inputs) && i < 30; i++ {
 			task.lastInputs[i] = float32(inputs[i])
 		}
 
@@ -821,6 +840,16 @@ func (s *BehaviorSystem) getBrainOutputs(
 		caps.StructuralArmor,
 	)
 
+	approachInfo := computeApproachInfo(
+		centerX, centerY,
+		org.Heading,
+		bodyRadius,
+		effectiveRadius,
+		caps.DigestiveSpectrum(),
+		foodTargets,
+		neighbors,
+	)
+
 	if s.perfEnabled {
 		s.perfStats.VisionNs += time.Since(visionStart).Nanoseconds()
 	}
@@ -833,6 +862,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 		Boid:             boidFields,
 		Food:             foodFields,
 		Threat:           threatInfo,
+		Approach:         approachInfo,
 		MaxSpeed:         org.MaxSpeed,
 		MaxEnergy:        org.MaxEnergy,
 		PerceptionRadius: effectiveRadius,
@@ -846,7 +876,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 	inputs := sensory.ToInputs()
 
 	// Store inputs for debugging (convert float64 to float32)
-	for i := 0; i < len(inputs) && i < 26; i++ {
+	for i := 0; i < len(inputs) && i < 30; i++ {
 		org.LastInputs[i] = float32(inputs[i])
 	}
 
@@ -989,8 +1019,9 @@ func getMaxAcceleration(cells *components.CellBuffer, drag float32) float32 {
 
 // Morphology-based movement constants
 const (
-	turnBiasScale   = 0.5 // How much turn bias affects turn rate (0.5 = ±50% at max bias)
-	thrustBiasScale = 0.4 // How much thrust bias affects forward speed (0.4 = ±40% at max bias)
+	turnBiasScale    = 0.5  // How much turn bias affects turn rate (0.5 = ±50% at max bias)
+	thrustBiasScale  = 0.4  // How much thrust bias affects forward speed (0.4 = ±40% at max bias)
+	minTurnThrottle  = 0.3  // Minimum throttle factor for turning (allows turning while slowing down)
 )
 
 // getEffectiveTurnRate computes the turn rate scaled by morphology.
@@ -1477,6 +1508,122 @@ func computeThreatInfo(
 			// Closing speed is our velocity dotted with direction to threat
 			closingSpeed := (velX*dirX + velY*dirY)
 			info.ClosingSpeed = clampFloat(closingSpeed/maxSpeed, -1, 1)
+		}
+	}
+
+	return info
+}
+
+// computeApproachInfo computes close-range pursuit geometry for nearest food and mate.
+// Returns approach info with distance (1=close, 0=far) and bearing (0=ahead, ±1=behind).
+func computeApproachInfo(
+	centerX, centerY float32,
+	heading float32,
+	bodyRadius float32,
+	perceptionRadius float32,
+	digestiveSpectrum float32,
+	foods []FoodTarget,
+	neighbors []NeighborInfo,
+) neural.ApproachInfo {
+	var info neural.ApproachInfo
+
+	// Find nearest edible food
+	// Herbivores prefer plants (composition > 0.5), carnivores prefer meat (composition < 0.5)
+	var nearestFoodDist float32 = perceptionRadius + 1
+	var nearestFoodDx, nearestFoodDy float32
+	foundFood := false
+
+	for _, f := range foods {
+		// Check diet compatibility
+		isPlant := f.Composition > 0.5
+		plantPreference := 1.0 - digestiveSpectrum // 1 for herbivore, 0 for carnivore
+		meatPreference := digestiveSpectrum        // 0 for herbivore, 1 for carnivore
+
+		var compatibility float32
+		if isPlant {
+			compatibility = plantPreference
+		} else {
+			compatibility = meatPreference
+		}
+
+		// Skip foods we can't eat well (< 30% compatibility)
+		if compatibility < 0.3 {
+			continue
+		}
+
+		dx := f.PosX - centerX
+		dy := f.PosY - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+		if dist < nearestFoodDist {
+			nearestFoodDist = dist
+			nearestFoodDx = dx
+			nearestFoodDy = dy
+			foundFood = true
+		}
+	}
+
+	if foundFood {
+		// Normalize distance: 1 when touching (dist <= bodyRadius), 0 at perception edge
+		surfaceDist := nearestFoodDist - bodyRadius
+		if surfaceDist < 0 {
+			surfaceDist = 0
+		}
+		info.NearestFoodDist = 1.0 - clampFloat(surfaceDist/perceptionRadius, 0, 1)
+
+		// Compute bearing: angle between heading and direction to food
+		// 0 = directly ahead, ±1 = directly behind
+		if nearestFoodDist > 0.1 {
+			dirX := nearestFoodDx / nearestFoodDist
+			dirY := nearestFoodDy / nearestFoodDist
+			// Heading vector
+			headX := float32(math.Cos(float64(heading)))
+			headY := float32(math.Sin(float64(heading)))
+			// Dot product gives cos(angle): 1=ahead, -1=behind
+			dot := dirX*headX + dirY*headY
+			// Cross product sign gives turn direction
+			cross := headX*dirY - headY*dirX
+			// Convert to bearing: 0=ahead, positive=right, negative=left
+			// Scale so ±1 = directly behind (dot = -1)
+			info.NearestFoodBearing = clampFloat(-cross*(1.0-dot*0.5), -1, 1)
+		}
+	}
+
+	// Find nearest same-species neighbor (potential mate)
+	var nearestMateDist float32 = perceptionRadius + 1
+	var nearestMateDx, nearestMateDy float32
+	foundMate := false
+
+	for _, n := range neighbors {
+		dx := n.PosX - centerX
+		dy := n.PosY - centerY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+		if dist < nearestMateDist {
+			nearestMateDist = dist
+			nearestMateDx = dx
+			nearestMateDy = dy
+			foundMate = true
+		}
+	}
+
+	if foundMate {
+		// Normalize distance: surface-to-surface
+		surfaceDist := nearestMateDist - bodyRadius*2 // Both organisms have body radius
+		if surfaceDist < 0 {
+			surfaceDist = 0
+		}
+		info.NearestMateDist = 1.0 - clampFloat(surfaceDist/perceptionRadius, 0, 1)
+
+		// Compute bearing
+		if nearestMateDist > 0.1 {
+			dirX := nearestMateDx / nearestMateDist
+			dirY := nearestMateDy / nearestMateDist
+			headX := float32(math.Cos(float64(heading)))
+			headY := float32(math.Sin(float64(heading)))
+			dot := dirX*headX + dirY*headY
+			cross := headX*dirY - headY*dirX
+			info.NearestMateBearing = clampFloat(-cross*(1.0-dot*0.5), -1, 1)
 		}
 	}
 

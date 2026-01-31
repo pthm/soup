@@ -6,7 +6,7 @@ import (
 )
 
 func TestSensoryInputsToInputs(t *testing.T) {
-	// Test new boid-field based sensory inputs (26 inputs)
+	// Test boid-field based sensory inputs with approach geometry (30 inputs)
 	sensory := SensoryInputs{
 		SpeedNorm:  0.5,
 		EnergyNorm: 0.75,
@@ -40,6 +40,12 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		Threat: ThreatInfo{
 			Proximity:    0.3,
 			ClosingSpeed: -0.2,
+		},
+		Approach: ApproachInfo{
+			NearestFoodDist:    0.8,
+			NearestFoodBearing: 0.2,
+			NearestMateDist:    0.6,
+			NearestMateBearing: -0.4,
 		},
 	}
 
@@ -86,9 +92,23 @@ func TestSensoryInputsToInputs(t *testing.T) {
 		t.Errorf("closing speed: expected -0.2, got %f", inputs[24])
 	}
 
-	// Check bias [25]
-	if inputs[25] != 1.0 {
-		t.Errorf("bias: expected 1.0, got %f", inputs[25])
+	// Check approach [25-28]
+	if math.Abs(inputs[25]-0.8) > 0.01 {
+		t.Errorf("nearest food dist: expected 0.8, got %f", inputs[25])
+	}
+	if math.Abs(inputs[26]-0.2) > 0.01 {
+		t.Errorf("nearest food bearing: expected 0.2, got %f", inputs[26])
+	}
+	if math.Abs(inputs[27]-0.6) > 0.01 {
+		t.Errorf("nearest mate dist: expected 0.6, got %f", inputs[27])
+	}
+	if math.Abs(inputs[28]-(-0.4)) > 0.01 {
+		t.Errorf("nearest mate bearing: expected -0.4, got %f", inputs[28])
+	}
+
+	// Check bias [29]
+	if inputs[29] != 1.0 {
+		t.Errorf("bias: expected 1.0, got %f", inputs[29])
 	}
 
 	t.Logf("Inputs: %v", inputs)

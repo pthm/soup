@@ -42,10 +42,11 @@ for query.Next() {
 - Outputs (12): presence, sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, armor, storage, reproductive, brain_weight, brain_leo
 
 **Brain** (queried every tick via `BrainController.Think()`):
-- Inputs (26): self (2) + body descriptor (6) + boid fields (9) + food fields (6) + threat (2) + bias (1)
+- Inputs (30): self (2) + body descriptor (6) + boid fields (9) + food fields (6) + threat (2) + approach (4) + bias (1)
 - Outputs (4): UTurn, UThrottle, AttackIntent, MateIntent
+- Hidden layer: 16 nodes (4x4 grid), CPPN-determined connectivity
 
-**Input Structure (26 inputs)**:
+**Input Structure (30 inputs)**:
 | Index | Name | Range | Description |
 |-------|------|-------|-------------|
 | 0-1 | Self | [0,1] | speed_norm, energy_norm |
@@ -53,7 +54,8 @@ for query.Next() {
 | 8-16 | Boid Fields | varies | cohesion (3), alignment (2), separation (3), density (1) |
 | 17-22 | Food Fields | varies | plant (3), meat (3) |
 | 23-24 | Threat | varies | proximity, closing_speed |
-| 25 | Bias | 1.0 | constant |
+| 25-28 | Approach | varies | nearest_food_dist, nearest_food_bearing, nearest_mate_dist, nearest_mate_bearing |
+| 29 | Bias | 1.0 | constant |
 
 **Output Structure (4 outputs)**:
 | Index | Name | Range | Description |
@@ -65,8 +67,8 @@ for query.Next() {
 
 **Heading-as-State Model**:
 - Heading is brain-controlled state, not derived from velocity
-- `heading += UTurn * TurnRateMax * UThrottle` (TurnRateMax = 0.15 rad/tick)
-- Turning requires forward motion (like a rudder) - no throttle = no turning
+- `heading += UTurn * TurnRateMax * max(UThrottle, 0.3)` (TurnRateMax = 0.15 rad/tick)
+- Minimum turn rate (30%) even at zero throttle enables arrival behavior
 - Desired velocity = `(cos(heading), sin(heading)) * UThrottle * maxSpeed`
 - Eliminates velocity-heading feedback loop that caused jittering
 

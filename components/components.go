@@ -81,7 +81,7 @@ type Organism struct {
 	PrevUThrottle float32
 
 	// Last brain inputs (for debugging/inspection)
-	LastInputs [26]float32 // Last sensory inputs fed to brain
+	LastInputs [30]float32 // Last sensory inputs fed to brain
 
 	// Legacy brain outputs (for compatibility with systems that haven't been updated)
 	EatIntent   float32 // Derived: implicit from mouth proximity

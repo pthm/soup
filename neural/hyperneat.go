@@ -49,12 +49,14 @@ func BuildSubstrateFromMorphology(morph *MorphologyResult) *Substrate {
 		})
 	}
 
-	// Fixed hidden layer in a grid pattern for intermediate processing
+	// Fixed hidden layer in a 4x4 grid pattern for intermediate processing
 	// This provides a fixed-size layer that can learn spatial patterns
+	// Expanded from 3x3 (9 nodes) to 4x4 (16 nodes) to handle approach inputs
 	hiddenPositions := []struct{ x, y float64 }{
-		{-0.5, 0.5}, {0, 0.5}, {0.5, 0.5},   // Top row
-		{-0.5, 0}, {0, 0}, {0.5, 0},          // Middle row
-		{-0.5, -0.5}, {0, -0.5}, {0.5, -0.5}, // Bottom row
+		{-0.75, 0.75}, {-0.25, 0.75}, {0.25, 0.75}, {0.75, 0.75}, // Top row
+		{-0.75, 0.25}, {-0.25, 0.25}, {0.25, 0.25}, {0.75, 0.25}, // Upper-middle row
+		{-0.75, -0.25}, {-0.25, -0.25}, {0.25, -0.25}, {0.75, -0.25}, // Lower-middle row
+		{-0.75, -0.75}, {-0.25, -0.75}, {0.25, -0.75}, {0.75, -0.75}, // Bottom row
 	}
 	for i, pos := range hiddenPositions {
 		s.HiddenNodes = append(s.HiddenNodes, SubstrateNode{
