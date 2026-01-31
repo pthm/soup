@@ -23,15 +23,12 @@ type Game struct {
 	flowRenderer    *renderer.FlowRenderer
 	gpuFlowField    *renderer.GPUFlowField // GPU-accelerated flow field
 	waterBackground *renderer.WaterBackground
-	sunRenderer     *renderer.SunRenderer
-	light           renderer.LightState
 	tick            int32
 	paused          bool
 	stepsPerFrame   int
 	perf            *PerfStats
 
 	// New systems
-	shadowMap        *systems.ShadowMap
 	floraSystem      *systems.FloraSystem
 	feeding          *systems.FeedingSystem
 	spores           *systems.SporeSystem
@@ -91,9 +88,6 @@ func NewGame(cfg GameConfig) *Game {
 		Height: float32(cfg.Height),
 	}
 
-	// Create shadow map first as other systems depend on it
-	shadowMap := systems.NewShadowMap(float32(cfg.Width), float32(cfg.Height))
-
 	// Neural evolution config
 	neuralConfig := neural.DefaultConfig()
 	genomeIDGen := neural.NewGenomeIDGenerator()
@@ -102,15 +96,13 @@ func NewGame(cfg GameConfig) *Game {
 		world:    world,
 		bounds:   bounds,
 		physics:  systems.NewPhysicsSystem(world, bounds),
-		energy:   systems.NewEnergySystem(world, shadowMap),
-		behavior: systems.NewBehaviorSystem(world, shadowMap),
+		energy:   systems.NewEnergySystem(world),
+		behavior: systems.NewBehaviorSystem(world),
 		flowField:     systems.NewFlowFieldSystemWithTerrain(bounds, 3000, nil), // No terrain
-		light:         renderer.LightState{PosX: 0.5, PosY: -0.15, Intensity: 1.0},
 		stepsPerFrame: 1,
 		perf:          NewPerfStats(),
 
 		// Systems
-		shadowMap:   shadowMap,
 		feeding:     systems.NewFeedingSystem(world),
 		spores:      systems.NewSporeSystemWithTerrain(bounds, nil), // No terrain
 		breeding:    systems.NewBreedingSystem(world, neuralConfig.NEAT, genomeIDGen, neuralConfig.CPPN),
@@ -153,7 +145,6 @@ func NewGame(cfg GameConfig) *Game {
 	if !cfg.Headless {
 		g.flowRenderer = renderer.NewFlowRenderer(int32(cfg.Width), int32(cfg.Height), 0.08)
 		g.waterBackground = renderer.NewWaterBackground(int32(cfg.Width), int32(cfg.Height))
-		g.sunRenderer = renderer.NewSunRenderer(int32(cfg.Width), int32(cfg.Height))
 		g.particleRenderer = renderer.NewParticleRenderer()
 
 		// UI components
@@ -165,8 +156,8 @@ func NewGame(cfg GameConfig) *Game {
 		g.uiControlsPanel = ui.NewControlsPanel(10, 100, 200)
 	}
 
-	// Create FloraSystem after other systems are initialized (needs shadowMap, flowField)
-	g.floraSystem = systems.NewFloraSystem(bounds, nil, shadowMap, g.flowField)
+	// Create FloraSystem after other systems are initialized
+	g.floraSystem = systems.NewFloraSystem(bounds, nil, g.flowField)
 
 	// Wire up FloraSystem to systems that need it
 	g.feeding.SetFloraSystem(g.floraSystem)

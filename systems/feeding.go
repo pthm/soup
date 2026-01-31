@@ -249,7 +249,7 @@ func (s *FeedingSystem) collectFeedingSpatial(
 
 			if penetration > bestFloraPenetration || (penetration == bestFloraPenetration && dSq < bestFloraDistSq) {
 				caps := components.Capabilities{
-					PhotoWeight:     1.0,
+					SensorWeight:    1.0,
 					ActuatorWeight:  0.0,
 					StructuralArmor: DefaultFloraArmor(),
 				}
@@ -433,9 +433,9 @@ func (s *FeedingSystem) updateLegacy() {
 	if s.floraSystem != nil {
 		allFlora := s.floraSystem.GetAllFlora()
 		for _, ref := range allFlora {
-			// Flora have fixed composition (photo=1, actuator=0)
+			// Flora have fixed composition (mostly sensor-like, minimal actuator)
 			caps := components.Capabilities{
-				PhotoWeight:     1.0,
+				SensorWeight:    1.0,
 				ActuatorWeight:  0.0,
 				StructuralArmor: DefaultFloraArmor(),
 			}

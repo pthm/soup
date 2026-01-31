@@ -20,7 +20,7 @@ func (g *Game) Draw() {
 	// Render timing (only measure every 120 ticks when perf logging is on)
 	measureRender := g.perfLog && g.tick%120 == 0
 	var renderStart time.Time
-	var waterTime, terrainTime, flowTime, occluderTime, sunTime, floraTime, faunaTime time.Duration
+	var waterTime, flowTime, floraTime, faunaTime time.Duration
 
 	// Draw animated water background
 	if measureRender {
@@ -31,9 +31,6 @@ func (g *Game) Draw() {
 		waterTime = time.Since(renderStart)
 	}
 
-	// Terrain removed - no terrain rendering
-	_ = terrainTime // Keep variable to avoid changing log format
-
 	// Draw flow field particles (on top of water and terrain)
 	if measureRender {
 		renderStart = time.Now()
@@ -41,24 +38,6 @@ func (g *Game) Draw() {
 	g.flowRenderer.Draw(g.flowField.Particles, g.tick)
 	if measureRender {
 		flowTime = time.Since(renderStart)
-	}
-
-	// Collect occluders from organisms for shadow casting
-	if measureRender {
-		renderStart = time.Now()
-	}
-	occluders := g.collectOccluders()
-	if measureRender {
-		occluderTime = time.Since(renderStart)
-	}
-
-	// Draw sun with shadows
-	if measureRender {
-		renderStart = time.Now()
-	}
-	g.sunRenderer.Draw(g.light, occluders)
-	if measureRender {
-		sunTime = time.Since(renderStart)
 	}
 
 	// Draw lightweight flora from FloraSystem
@@ -84,10 +63,7 @@ func (g *Game) Draw() {
 		faunaTime = time.Since(renderStart)
 		Logf("  --- Render Breakdown ---")
 		Logf("    water:    %10s", waterTime.Round(time.Microsecond))
-		Logf("    terrain:  %10s", terrainTime.Round(time.Microsecond))
 		Logf("    flow:     %10s", flowTime.Round(time.Microsecond))
-		Logf("    occluder: %10s", occluderTime.Round(time.Microsecond))
-		Logf("    sun:      %10s", sunTime.Round(time.Microsecond))
 		Logf("    flora:    %10s", floraTime.Round(time.Microsecond))
 		Logf("    fauna:    %10s", faunaTime.Round(time.Microsecond))
 	}
@@ -100,9 +76,6 @@ func (g *Game) Draw() {
 
 	// Draw effect particles
 	g.particleRenderer.Draw(g.particles.Particles)
-
-	// Draw ambient darkness overlay (based on sun intensity)
-	g.sunRenderer.DrawAmbientDarkness(g.light.Intensity)
 
 	// Draw UI
 	g.drawUI()
@@ -144,11 +117,6 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 
 	// Compute capabilities for color
 	caps := cells.ComputeCapabilities()
-
-	// Draw bioluminescence glow effect (behind cells)
-	if org.EmittedLight > 0.05 {
-		g.drawBioluminescentGlow(pos, org)
-	}
 
 	// Use species color if enabled and organism has neural genome
 	if g.showSpeciesColors && g.neuralGenomeMap.Has(entity) {
@@ -202,48 +170,15 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		cellX := pos.X + rotatedX
 		cellY := pos.Y + rotatedY
 
-		// Sample shadow map for local lighting
-		light := g.shadowMap.SampleLight(cellX, cellY)
-		// Apply global sun intensity as additional factor
-		light *= (0.3 + g.light.Intensity*0.7) // Min 30% light even at night
-
-		cellColor := baseColor
-
-		// Apply lighting to color (darken based on shadow map)
-		cellColor.R = uint8(float32(cellColor.R) * light)
-		cellColor.G = uint8(float32(cellColor.G) * light)
-		cellColor.B = uint8(float32(cellColor.B) * light)
-
 		// Draw cell with rotation matching organism heading
 		rotationDeg := org.Heading * 180 / math.Pi
 		rl.DrawRectanglePro(
 			rl.Rectangle{X: cellX, Y: cellY, Width: org.CellSize, Height: org.CellSize},
 			rl.Vector2{X: org.CellSize / 2, Y: org.CellSize / 2}, // rotate around cell center
 			rotationDeg,
-			cellColor,
+			baseColor,
 		)
 	}
-}
-
-// drawBioluminescentGlow renders a subtle glow around glowing organisms.
-func (g *Game) drawBioluminescentGlow(pos *components.Position, org *components.Organism) {
-	// Small glow radius - just a hint beyond the organism
-	glowRadius := org.CellSize * 2.5
-
-	// Subtle intensity
-	intensity := org.EmittedLight * 0.4
-	if intensity > 0.4 {
-		intensity = 0.4
-	}
-
-	// Gentle pulse
-	pulse := float32(math.Sin(float64(g.tick)*0.06+float64(pos.X)*0.02)) * 0.1
-	intensity *= (1.0 + pulse)
-
-	// Single subtle cyan glow
-	alpha := uint8(intensity * 60)
-	rl.DrawCircle(int32(pos.X), int32(pos.Y), glowRadius,
-		rl.Color{R: 140, G: 220, B: 255, A: alpha})
 }
 
 // drawSpores draws all active spores.
@@ -259,17 +194,8 @@ func (g *Game) drawSpores() {
 			alpha = uint8(fadeRatio * 180)
 		}
 
-		// Sample shadow map for local lighting
-		light := g.shadowMap.SampleLight(spore.X, spore.Y)
-		light *= (0.3 + g.light.Intensity*0.7)
-
-		// Green color for spores, adjusted for lighting
-		color := rl.Color{
-			R: uint8(80 * light),
-			G: uint8(180 * light),
-			B: uint8(100 * light),
-			A: alpha,
-		}
+		// Green color for spores
+		color := rl.Color{R: 80, G: 180, B: 100, A: alpha}
 		rl.DrawCircle(int32(spore.X), int32(spore.Y), 2, color)
 	}
 }
@@ -286,20 +212,17 @@ func (g *Game) drawLightweightFlora() {
 			continue
 		}
 
-		// Sample shadow map for local lighting
-		light := g.shadowMap.SampleLight(f.X, f.Y)
-		light *= (0.3 + g.light.Intensity*0.7)
-
-		// Energy-based alpha (dimmer when low energy)
+		// Energy-based dimming (dimmer when low energy)
 		energyRatio := f.Energy / f.MaxEnergy
+		brightness := float32(1.0)
 		if energyRatio < 0.3 {
-			light *= 0.5 + energyRatio
+			brightness = 0.5 + energyRatio
 		}
 
 		color := rl.Color{
-			R: uint8(float32(baseR) * light),
-			G: uint8(float32(baseG) * light),
-			B: uint8(float32(baseB) * light),
+			R: uint8(float32(baseR) * brightness),
+			G: uint8(float32(baseG) * brightness),
+			B: uint8(float32(baseB) * brightness),
 			A: 255,
 		}
 		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)
@@ -312,19 +235,17 @@ func (g *Game) drawLightweightFlora() {
 			continue
 		}
 
-		light := g.shadowMap.SampleLight(f.X, f.Y)
-		light *= (0.3 + g.light.Intensity*0.7)
-
 		energyRatio := f.Energy / f.MaxEnergy
+		brightness := float32(1.0)
 		if energyRatio < 0.3 {
-			light *= 0.5 + energyRatio
+			brightness = 0.5 + energyRatio
 		}
 
 		// Floating flora is slightly more cyan
 		color := rl.Color{
-			R: uint8(float32(40) * light),
-			G: uint8(float32(170) * light),
-			B: uint8(float32(100) * light),
+			R: uint8(float32(40) * brightness),
+			G: uint8(float32(170) * brightness),
+			B: uint8(float32(100) * brightness),
 			A: 240,
 		}
 		rl.DrawCircle(int32(f.X), int32(f.Y), f.Size, color)
@@ -491,9 +412,6 @@ func (g *Game) drawTooltip() {
 	}
 	if caps.StorageCapacity > 0 {
 		lines = append(lines, fmt.Sprintf("  Storage: %.2f", caps.StorageCapacity))
-	}
-	if caps.PhotoWeight > 0 {
-		lines = append(lines, fmt.Sprintf("  Photo: %.2f", caps.PhotoWeight))
 	}
 
 	// Calculate tooltip dimensions

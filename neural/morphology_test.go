@@ -117,9 +117,10 @@ func TestGenerateMorphologyDiversity(t *testing.T) {
 }
 
 func TestSelectCellFunctions(t *testing.T) {
-	// Test argmax selection
-	outputs := []float64{0.8, 0.3, 0.1, 0.2, 0.4, 0.5, 0.6} // 7 functional outputs
-	// Highest is index 0 (0.8), second is index 6 (0.6)
+	// Test argmax selection with 5 functional outputs
+	// Cell types: Sensor(0), Actuator(1), Mouth(2), Digestive(3), Reproductive(4)
+	outputs := []float64{0.8, 0.3, 0.1, 0.2, 0.6} // 5 functional outputs
+	// Highest is index 0 (0.8), second is index 4 (0.6)
 
 	primary, secondary, effP, effS := SelectCellFunctions(outputs)
 
@@ -128,14 +129,14 @@ func TestSelectCellFunctions(t *testing.T) {
 		t.Errorf("expected primary=CellTypeSensor(1), got %v", primary)
 	}
 
-	// Secondary should be index 6+1 = CellTypeReproductive
+	// Secondary should be index 4+1 = CellTypeReproductive
 	if secondary != CellTypeReproductive {
-		t.Errorf("expected secondary=CellTypeReproductive(7), got %v", secondary)
+		t.Errorf("expected secondary=CellTypeReproductive(5), got %v", secondary)
 	}
 
 	// Check effective strengths with mixed-function penalty
 	expectedPrimary := float32((outputs[0]+1.0)/2.0) * MixedPrimaryPenalty
-	expectedSecondary := float32((outputs[6]+1.0)/2.0) * MixedSecondaryScale
+	expectedSecondary := float32((outputs[4]+1.0)/2.0) * MixedSecondaryScale
 
 	if effP < expectedPrimary-0.01 || effP > expectedPrimary+0.01 {
 		t.Errorf("expected effPrimary=%.3f, got %.3f", expectedPrimary, effP)
@@ -150,7 +151,7 @@ func TestSelectCellFunctionsNoSecondary(t *testing.T) {
 	// SecondaryThreshold is 0.25 in [0,1] space
 	// So in [-1,1] space, values must be below (0.25*2 - 1) = -0.5
 	// Using values well below that to ensure no secondary
-	outputs := []float64{0.8, -0.8, -0.9, -0.95, -0.85, -0.99, -0.7} // 7 functional outputs
+	outputs := []float64{0.8, -0.8, -0.9, -0.95, -0.7} // 5 functional outputs
 	// Highest is index 0 (0.8) -> normalized = 0.9
 	// Second highest is index 6 (-0.7) -> normalized = 0.15, below 0.25 threshold
 
@@ -335,8 +336,6 @@ func TestCellTypeStrings(t *testing.T) {
 		{CellTypeActuator, "Actuator"},
 		{CellTypeMouth, "Mouth"},
 		{CellTypeDigestive, "Digestive"},
-		{CellTypePhotosynthetic, "Photosynthetic"},
-		{CellTypeBioluminescent, "Bioluminescent"},
 		{CellTypeReproductive, "Reproductive"},
 	}
 

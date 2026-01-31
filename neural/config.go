@@ -50,28 +50,25 @@ const InitialMaxCells = 4
 
 // CPPNOutputs is the number of outputs from the CPPN.
 // Outputs: presence, sensor, actuator, mouth, digestive_spectrum,
-// photosynthetic, bioluminescent, structural_armor, storage_capacity,
-// reproductive, brain_weight, brain_leo
-const CPPNOutputs = 12
+// structural_armor, storage_capacity, reproductive, brain_weight, brain_leo
+const CPPNOutputs = 10
 
 // CPPN output indices for clarity
 const (
-	CPPNOutPresence        = 0  // Cell presence threshold
-	CPPNOutSensor          = 1  // Sensor function strength
-	CPPNOutActuator        = 2  // Actuator function strength
-	CPPNOutMouth           = 3  // Mouth function strength
-	CPPNOutDigestive       = 4  // Digestive spectrum (0=herbivore, 1=carnivore)
-	CPPNOutPhotosynthetic  = 5  // Photosynthetic function strength
-	CPPNOutBioluminescent  = 6  // Bioluminescent function strength
-	CPPNOutStructuralArmor = 7  // Structural armor modifier
-	CPPNOutStorageCapacity = 8  // Storage capacity modifier
-	CPPNOutReproductive    = 9  // Reproductive function strength
-	CPPNOutBrainWeight     = 10 // HyperNEAT: connection weight
-	CPPNOutBrainLEO        = 11 // HyperNEAT: link expression output
+	CPPNOutPresence        = 0 // Cell presence threshold
+	CPPNOutSensor          = 1 // Sensor function strength
+	CPPNOutActuator        = 2 // Actuator function strength
+	CPPNOutMouth           = 3 // Mouth function strength
+	CPPNOutDigestive       = 4 // Digestive spectrum (0=herbivore, 1=carnivore)
+	CPPNOutStructuralArmor = 5 // Structural armor modifier
+	CPPNOutStorageCapacity = 6 // Storage capacity modifier
+	CPPNOutReproductive    = 7 // Reproductive function strength
+	CPPNOutBrainWeight     = 8 // HyperNEAT: connection weight
+	CPPNOutBrainLEO        = 9 // HyperNEAT: link expression output
 )
 
 // Number of functional cell type outputs (for argmax selection)
-const CPPNFunctionalOutputs = 7 // sensor, actuator, mouth, digestive, photosynthetic, bioluminescent, reproductive
+const CPPNFunctionalOutputs = 5 // sensor, actuator, mouth, digestive, reproductive
 
 // Cell function selection constants
 const (
@@ -86,14 +83,12 @@ const (
 type CellType uint8
 
 const (
-	CellTypeNone           CellType = iota // No function (sentinel for no secondary)
-	CellTypeSensor                         // Sensing cell, contributes to perception
-	CellTypeActuator                       // Motor cell, contributes to thrust
-	CellTypeMouth                          // Mouth cell, for feeding
-	CellTypeDigestive                      // Digestive cell, determines diet efficiency
-	CellTypePhotosynthetic                 // Photosynthetic cell, produces energy from light
-	CellTypeBioluminescent                 // Bioluminescent cell, emits light
-	CellTypeReproductive                   // Reproductive cell, for breeding
+	CellTypeNone        CellType = iota // No function (sentinel for no secondary)
+	CellTypeSensor                      // Sensing cell, contributes to perception
+	CellTypeActuator                    // Motor cell, contributes to thrust
+	CellTypeMouth                       // Mouth cell, for feeding
+	CellTypeDigestive                   // Digestive cell, determines diet efficiency
+	CellTypeReproductive                // Reproductive cell, for breeding
 )
 
 // CellTypeName returns a human-readable name for the cell type.
@@ -109,10 +104,6 @@ func (ct CellType) String() string {
 		return "Mouth"
 	case CellTypeDigestive:
 		return "Digestive"
-	case CellTypePhotosynthetic:
-		return "Photosynthetic"
-	case CellTypeBioluminescent:
-		return "Bioluminescent"
 	case CellTypeReproductive:
 		return "Reproductive"
 	default:
@@ -141,10 +132,6 @@ func (ct CellType) Color() (r, g, b uint8) {
 		return 255, 100, 100 // Red - feeding
 	case CellTypeDigestive:
 		return 200, 150, 100 // Tan - digestion
-	case CellTypePhotosynthetic:
-		return 100, 200, 100 // Green - photosynthesis
-	case CellTypeBioluminescent:
-		return 255, 255, 150 // Yellow - light emission
 	case CellTypeReproductive:
 		return 255, 150, 200 // Pink - reproduction
 	default:

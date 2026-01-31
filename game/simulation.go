@@ -9,7 +9,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/systems"
 )
 
 // Update handles input and runs the simulation for graphics mode.
@@ -108,9 +107,6 @@ func (g *Game) runSimulationStep() {
 		}
 	}
 
-	// Update day/night cycle
-	measure("dayNight", func() { g.updateDayNightCycle() })
-
 	// Update GPU flow field texture (if available)
 	if g.gpuFlowField != nil {
 		measure("gpuFlow", func() {
@@ -120,17 +116,6 @@ func (g *Game) runSimulationStep() {
 
 	// Update flow field particles (visual, independent)
 	measure("flowField", func() { g.flowField.Update(g.tick) })
-
-	// Update shadow map (foundation for light-based systems)
-	var occluders []systems.Occluder
-	measure("collectOccluders", func() {
-		occluders = g.collectOccluders()
-	})
-	measure("shadowMap", func() {
-		sunX := g.light.PosX * g.bounds.Width
-		sunY := g.light.PosY * g.bounds.Height
-		g.shadowMap.Update(g.tick, sunX, sunY, occluders)
-	})
 
 	// Collect position data for behavior system
 	var floraPos, faunaPos []components.Position
@@ -191,13 +176,6 @@ func (g *Game) runSimulationStep() {
 	if g.neuralLog && g.tick%500 == 0 {
 		g.logNeuralStats()
 	}
-}
-
-// updateDayNightCycle keeps light at constant intensity (day/night cycle disabled).
-func (g *Game) updateDayNightCycle() {
-	// Static sun at top center with constant full intensity
-	g.light.PosX = 0.5
-	g.light.Intensity = 1.0
 }
 
 // updateDeathParticles emits particles for dead organisms.
@@ -287,35 +265,6 @@ func (g *Game) collectPositions() ([]components.Position, []components.Position)
 	}
 
 	return floraPos, faunaPos
-}
-
-// collectOccluders collects shadow-casting occluders.
-// Note: Terrain shadows are skipped for performance - terrain is rendered with baked-in depth.
-func (g *Game) collectOccluders() []systems.Occluder {
-	// Skip terrain occluders for performance - they generate thousands of shadows
-	// Terrain already has depth-based darkening baked into its texture
-	var occluders []systems.Occluder
-
-	// Add floating flora occluders only (fauna don't cast shadows)
-	// Rooted flora don't cast shadows - they're attached to terrain which already casts shadows
-	for i := range g.floraSystem.Floating {
-		f := &g.floraSystem.Floating[i]
-		if f.Dead {
-			continue
-		}
-
-		// Simple bounding box based on flora size
-		size := f.Size * 3
-		occluders = append(occluders, systems.Occluder{
-			X:       f.X - size/2,
-			Y:       f.Y - size/2,
-			Width:   size,
-			Height:  size,
-			Density: 0.08, // Very sparse foliage - minimal shadow
-		})
-	}
-
-	return occluders
 }
 
 // collectOrganisms collects organism pointers for behavior/allocation systems.

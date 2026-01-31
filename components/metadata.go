@@ -49,13 +49,11 @@ func OrganismFieldDescriptors() []FieldDescriptor {
 func CapabilityFieldDescriptors() []FieldDescriptor {
 	return []FieldDescriptor{
 		{ID: "diet", Label: "Diet", Format: "%.2f", Min: 0, Max: 1, IsBar: true, ShowWhenZero: true, Group: "core"},
-		{ID: "photo_weight", Label: "Photo", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "actuator_weight", Label: "Actuator", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "sensor_weight", Label: "Sensor", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "mouth_size", Label: "Mouth", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "armor", Label: "Armor", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "modifier"},
 		{ID: "storage", Label: "Storage", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "modifier"},
-		{ID: "bioluminescent", Label: "Glow Cap", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "reproductive", Label: "Repro", Format: "%.2f", Min: 0, Max: 5, IsBar: true, Group: "function"},
 		{ID: "composition", Label: "Composition", Format: "%.2f", Min: 0, Max: 1, IsBar: true, ShowWhenZero: true, Group: "derived"},
 		{ID: "repro_mode", Label: "Repro Mode", Format: "%.2f", Min: 0, Max: 1, IsBar: true, ShowWhenZero: true, Group: "derived"},
@@ -77,7 +75,6 @@ func BrainOutputFieldDescriptors() []FieldDescriptor {
 		{ID: "thrust_output", Label: "Thrust", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "motor"},
 		{ID: "eat_intent", Label: "Eat", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
 		{ID: "breed_intent", Label: "Breed", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
-		{ID: "glow_intent", Label: "Glow", Format: "%.2f", Min: 0, Max: 1, IsBar: true, Group: "intent"},
 	}
 }
 
@@ -96,8 +93,6 @@ func GetCapabilityValue(caps *Capabilities, fieldID string) float32 {
 	switch fieldID {
 	case "diet":
 		return caps.DigestiveSpectrum()
-	case "photo_weight":
-		return caps.PhotoWeight
 	case "actuator_weight":
 		return caps.ActuatorWeight
 	case "sensor_weight":
@@ -108,8 +103,6 @@ func GetCapabilityValue(caps *Capabilities, fieldID string) float32 {
 		return caps.StructuralArmor
 	case "storage":
 		return caps.StorageCapacity
-	case "bioluminescent":
-		return caps.BioluminescentCap
 	case "reproductive":
 		return caps.ReproductiveWeight
 	case "composition":
@@ -146,8 +139,6 @@ func GetOrganismValue(org *Organism, fieldID string) float32 {
 		return org.EatIntent
 	case "breed_intent":
 		return org.BreedIntent
-	case "glow_intent":
-		return org.GlowIntent
 	default:
 		return 0
 	}

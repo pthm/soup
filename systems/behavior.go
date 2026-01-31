@@ -86,7 +86,6 @@ type BehaviorSystem struct {
 	neuralMap   *ecs.Map[components.NeuralGenome] // For species ID lookups
 	noise       *PerlinNoise
 	tick        int32
-	shadowMap   *ShadowMap
 	floraSystem *FloraSystem // Flora system for food field queries
 
 	// Parallel processing
@@ -102,7 +101,7 @@ type BehaviorSystem struct {
 }
 
 // NewBehaviorSystem creates a new behavior system.
-func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
+func NewBehaviorSystem(w *ecs.World) *BehaviorSystem {
 	numWorkers := runtime.NumCPU()
 	if numWorkers < 1 {
 		numWorkers = 1
@@ -113,7 +112,6 @@ func NewBehaviorSystem(w *ecs.World, shadowMap *ShadowMap) *BehaviorSystem {
 		cellsMap:   ecs.NewMap[components.CellBuffer](w),
 		neuralMap:  ecs.NewMap[components.NeuralGenome](w),
 		noise:      NewPerlinNoise(rand.Int63()),
-		shadowMap:  shadowMap,
 		numWorkers: numWorkers,
 	}
 }
@@ -175,9 +173,6 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
-
-		// Compute emitted light (placeholder - glow removed from brain)
-		org.EmittedLight = 0
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))
@@ -429,9 +424,6 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
-
-		// Compute emitted light (placeholder - glow removed from brain)
-		org.EmittedLight = 0
 
 		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
 		cosH := float32(math.Cos(float64(org.Heading)))

@@ -55,7 +55,6 @@ func TestConeBinning(t *testing.T) {
 		MyDigestiveSpec: 0.8, // Carnivore
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil, // No sensors = baseline perception
 	}
 
@@ -102,7 +101,6 @@ func TestIntensityFalloff(t *testing.T) {
 		MyDigestiveSpec: 0.8, // Carnivore
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil,
 	}
 
@@ -122,51 +120,6 @@ func TestIntensityFalloff(t *testing.T) {
 
 	if math.Abs(float64(ratio-expected)) > 0.01 {
 		t.Errorf("Intensity ratio = %v, want ~%v (inverse square)", ratio, expected)
-	}
-}
-
-// TestLightModifier verifies darkness attenuates vision.
-func TestLightModifier(t *testing.T) {
-	baseParams := VisionParams{
-		PosX:            0,
-		PosY:            0,
-		Heading:         0,
-		MyComposition:   0,
-		MyDigestiveSpec: 0.8,
-		MyArmor:         0,
-		EffectiveRadius: 100,
-		Sensors:         nil,
-	}
-
-	entity := EntityInfo{X: 10, Y: 0, Composition: 0, DigestiveSpec: 0.2, IsFlora: false}
-
-	// Full light
-	brightParams := baseParams
-	brightParams.LightLevel = 1.0
-	var pvBright PolarVision
-	pvBright.ScanEntities(brightParams, []EntityInfo{entity})
-
-	// Half light
-	dimParams := baseParams
-	dimParams.LightLevel = 0.5
-	var pvDim PolarVision
-	pvDim.ScanEntities(dimParams, []EntityInfo{entity})
-
-	// Darkness
-	darkParams := baseParams
-	darkParams.LightLevel = 0.0
-	var pvDark PolarVision
-	pvDark.ScanEntities(darkParams, []EntityInfo{entity})
-
-	// Bright should be 2x dim
-	ratio := pvBright.Food[ConeFront] / pvDim.Food[ConeFront]
-	if math.Abs(float64(ratio-2.0)) > 0.01 {
-		t.Errorf("Bright/Dim ratio = %v, want 2.0", ratio)
-	}
-
-	// Dark should be zero
-	if pvDark.Food[ConeFront] != 0 {
-		t.Errorf("Dark vision = %v, want 0", pvDark.Food[ConeFront])
 	}
 }
 
@@ -190,7 +143,6 @@ func TestSensorWeighting(t *testing.T) {
 		MyDigestiveSpec: 0.8,
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 	}
 
 	// Entity in front
@@ -226,7 +178,6 @@ func TestFoodThreatChannels(t *testing.T) {
 		MyDigestiveSpec: 0.1, // Herbivore
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil,
 	}
 
@@ -261,7 +212,6 @@ func TestFoodThreatChannels(t *testing.T) {
 		MyDigestiveSpec: 0.9, // Carnivore
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil,
 	}
 
@@ -296,7 +246,6 @@ func TestFriendChannel(t *testing.T) {
 		MyDigestiveSpec: 0.5,
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil,
 	}
 
@@ -361,7 +310,6 @@ func TestArmorReducesEdibility(t *testing.T) {
 		MyDigestiveSpec: 0.8, // Carnivore
 		MyArmor:         0,
 		EffectiveRadius: 100,
-		LightLevel:      1.0,
 		Sensors:         nil,
 	}
 
@@ -536,151 +484,5 @@ func TestLightGradientsNilSampler(t *testing.T) {
 	}
 	if math.Abs(float64(lightLR)) > 0.01 {
 		t.Errorf("Light LR gradient = %v, want ~0 with nil sampler", lightLR)
-	}
-}
-
-// Phase 5b tests: Bioluminescence
-
-// TestBioluminescenceVisibleInDarkness verifies emitted light makes entities visible in darkness.
-func TestBioluminescenceVisibleInDarkness(t *testing.T) {
-	params := VisionParams{
-		PosX:            0,
-		PosY:            0,
-		Heading:         0,
-		MyComposition:   0,
-		MyDigestiveSpec: 0.8, // Carnivore
-		MyArmor:         0,
-		EffectiveRadius: 100,
-		LightLevel:      0, // Complete darkness
-		Sensors:         nil,
-	}
-
-	// Non-glowing entity in darkness - should be invisible
-	darkEntity := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0, // No bioluminescence
-	}
-
-	// Glowing entity in darkness - should be visible
-	glowingEntity := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0.8, // Strong bioluminescence
-	}
-
-	var pvDark, pvGlowing PolarVision
-	pvDark.ScanEntities(params, []EntityInfo{darkEntity})
-	pvGlowing.ScanEntities(params, []EntityInfo{glowingEntity})
-
-	// Non-glowing entity should be invisible (effectiveLight = 0 + 0 = 0)
-	if pvDark.Food[ConeFront] != 0 {
-		t.Errorf("Non-glowing entity in darkness should be invisible, got food=%v", pvDark.Food[ConeFront])
-	}
-
-	// Glowing entity should be visible (effectiveLight = 0 + 0.8 = 0.8)
-	if pvGlowing.Food[ConeFront] <= 0 {
-		t.Errorf("Glowing entity in darkness should be visible, got food=%v", pvGlowing.Food[ConeFront])
-	}
-}
-
-// TestBioluminescenceAddsToAmbient verifies emitted light adds to ambient light.
-func TestBioluminescenceAddsToAmbient(t *testing.T) {
-	baseParams := VisionParams{
-		PosX:            0,
-		PosY:            0,
-		Heading:         0,
-		MyComposition:   0,
-		MyDigestiveSpec: 0.8,
-		MyArmor:         0,
-		EffectiveRadius: 100,
-		LightLevel:      0.5, // Half ambient light
-		Sensors:         nil,
-	}
-
-	// Entity with no glow
-	noGlow := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0,
-	}
-
-	// Entity with glow (adds to ambient)
-	withGlow := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0.3, // Will add to ambient, capped at 0.8
-	}
-
-	var pvNoGlow, pvWithGlow PolarVision
-	pvNoGlow.ScanEntities(baseParams, []EntityInfo{noGlow})
-	pvWithGlow.ScanEntities(baseParams, []EntityInfo{withGlow})
-
-	// Glowing entity should be MORE visible than non-glowing
-	// effectiveLight: noGlow = 0.5, withGlow = min(0.5 + 0.3, 1.0) = 0.8
-	// So withGlow should be ~1.6x more visible
-	if pvWithGlow.Food[ConeFront] <= pvNoGlow.Food[ConeFront] {
-		t.Errorf("Glowing entity should be more visible: glow=%v, noglow=%v",
-			pvWithGlow.Food[ConeFront], pvNoGlow.Food[ConeFront])
-	}
-}
-
-// TestBioluminescenceCappedAt1 verifies effective light caps at 1.0.
-func TestBioluminescenceCappedAt1(t *testing.T) {
-	params := VisionParams{
-		PosX:            0,
-		PosY:            0,
-		Heading:         0,
-		MyComposition:   0,
-		MyDigestiveSpec: 0.8,
-		MyArmor:         0,
-		EffectiveRadius: 100,
-		LightLevel:      0.7,
-		Sensors:         nil,
-	}
-
-	// Entity with glow that would exceed 1.0 when added to ambient
-	brightGlow := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0.5, // 0.7 + 0.5 = 1.2, should cap at 1.0
-	}
-
-	// Entity with max effective light (ambient = 1.0)
-	fullLightParams := params
-	fullLightParams.LightLevel = 1.0
-	noGlowFullLight := EntityInfo{
-		X:            10,
-		Y:            0,
-		Composition:  0,
-		DigestiveSpec: 0.1,
-		IsFlora:      false,
-		EmittedLight: 0,
-	}
-
-	var pvBrightGlow, pvFullLight PolarVision
-	pvBrightGlow.ScanEntities(params, []EntityInfo{brightGlow})
-	pvFullLight.ScanEntities(fullLightParams, []EntityInfo{noGlowFullLight})
-
-	// Both should have effectiveLight = 1.0, so food values should be equal
-	diff := math.Abs(float64(pvBrightGlow.Food[ConeFront] - pvFullLight.Food[ConeFront]))
-	if diff > 0.01 {
-		t.Errorf("Capped light should equal full light: glow=%v, fulllight=%v",
-			pvBrightGlow.Food[ConeFront], pvFullLight.Food[ConeFront])
 	}
 }

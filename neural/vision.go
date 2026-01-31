@@ -106,19 +106,17 @@ type EntityInfo struct {
 	StructuralArmor float32
 	GeneticDistance float32 // NEAT compatibility distance (lower = more similar)
 	IsFlora         bool    // True for flora entities
-	EmittedLight    float32 // Bioluminescence intensity (Phase 5b)
 }
 
 // VisionParams holds parameters for a vision scan.
 type VisionParams struct {
-	PosX, PosY       float32   // Observer position
-	Heading          float32   // Observer heading in radians
-	MyComposition    float32   // Observer's composition
-	MyDigestiveSpec  float32   // Observer's digestive spectrum
-	MyArmor          float32   // Observer's structural armor
-	EffectiveRadius  float32   // Maximum vision range
-	LightLevel       float32   // Local illumination (0-1)
-	Sensors          []SensorCell // Observer's sensor cells
+	PosX, PosY      float32      // Observer position
+	Heading         float32      // Observer heading in radians
+	MyComposition   float32      // Observer's composition
+	MyDigestiveSpec float32      // Observer's digestive spectrum
+	MyArmor         float32      // Observer's structural armor
+	EffectiveRadius float32      // Maximum vision range
+	Sensors         []SensorCell // Observer's sensor cells
 }
 
 // AngleToCone returns which cone an angle falls into.
@@ -200,15 +198,6 @@ func (pv *PolarVision) ScanEntities(params VisionParams, entities []EntityInfo) 
 		// Base intensity with inverse square falloff
 		// intensity = 1 / distance^2
 		intensity := 1.0 / distSq
-
-		// Apply light modifier (darkness attenuates vision)
-		// Phase 5b: Bioluminescent entities are visible even in darkness
-		// effectiveLight = ambient light + entity's emitted light
-		effectiveLight := params.LightLevel + entity.EmittedLight
-		if effectiveLight > 1.0 {
-			effectiveLight = 1.0 // Cap at full visibility
-		}
-		intensity *= effectiveLight
 
 		// Apply sensor weighting for this cone
 		intensity *= sensorWeights[cone]

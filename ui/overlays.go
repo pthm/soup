@@ -12,7 +12,6 @@ const (
 	OverlaySpeciesColors    OverlayID = "species_colors"
 	OverlayCapabilityColors OverlayID = "capability_colors"
 	OverlayPerceptionCones  OverlayID = "perception_cones"
-	OverlayLightMap         OverlayID = "light_map"
 	OverlayFlowField        OverlayID = "flow_field"
 	OverlayPathfinding      OverlayID = "pathfinding"
 	OverlayCellTypes        OverlayID = "cell_types"
@@ -88,15 +87,6 @@ func (r *OverlayRegistry) registerDefaults() {
 		Description: "Show perception cones for selected organism",
 		Key:         rl.KeyV,
 		KeyLabel:    "V",
-		Category:    "perception",
-	})
-
-	r.Register(OverlayDescriptor{
-		ID:          OverlayLightMap,
-		Name:        "Light Map",
-		Description: "Visualize ambient light distribution",
-		Key:         rl.KeyL,
-		KeyLabel:    "L",
 		Category:    "perception",
 	})
 

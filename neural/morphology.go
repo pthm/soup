@@ -183,28 +183,23 @@ func GenerateMorphology(genome *genetics.Genome, maxCells int, threshold float64
 	// Build CellSpecs from candidates
 	cells := make([]CellSpec, len(candidates))
 	for i, c := range candidates {
-		// Extract functional outputs explicitly (the 7 cell type functions)
-		// This fixes a bug where StructuralArmor was included instead of Reproductive
+		// Extract functional outputs explicitly (the 5 cell type functions)
 		functionalOutputs := []float64{
-			c.outputs[CPPNOutSensor],         // 0 → CellTypeSensor
-			c.outputs[CPPNOutActuator],       // 1 → CellTypeActuator
-			c.outputs[CPPNOutMouth],          // 2 → CellTypeMouth
-			c.outputs[CPPNOutDigestive],      // 3 → CellTypeDigestive
-			c.outputs[CPPNOutPhotosynthetic], // 4 → CellTypePhotosynthetic
-			c.outputs[CPPNOutBioluminescent], // 5 → CellTypeBioluminescent
-			c.outputs[CPPNOutReproductive],   // 6 → CellTypeReproductive
+			c.outputs[CPPNOutSensor],       // 0 → CellTypeSensor
+			c.outputs[CPPNOutActuator],     // 1 → CellTypeActuator
+			c.outputs[CPPNOutMouth],        // 2 → CellTypeMouth
+			c.outputs[CPPNOutDigestive],    // 3 → CellTypeDigestive
+			c.outputs[CPPNOutReproductive], // 4 → CellTypeReproductive
 		}
 		primary, secondary, effPrimary, effSecondary := SelectCellFunctions(functionalOutputs)
 
 		// Raw strengths before penalty - map CellType to CPPN output index
 		cellTypeToOutput := map[CellType]int{
-			CellTypeSensor:         CPPNOutSensor,
-			CellTypeActuator:       CPPNOutActuator,
-			CellTypeMouth:          CPPNOutMouth,
-			CellTypeDigestive:      CPPNOutDigestive,
-			CellTypePhotosynthetic: CPPNOutPhotosynthetic,
-			CellTypeBioluminescent: CPPNOutBioluminescent,
-			CellTypeReproductive:   CPPNOutReproductive,
+			CellTypeSensor:      CPPNOutSensor,
+			CellTypeActuator:    CPPNOutActuator,
+			CellTypeMouth:       CPPNOutMouth,
+			CellTypeDigestive:   CPPNOutDigestive,
+			CellTypeReproductive: CPPNOutReproductive,
 		}
 
 		var rawPrimary, rawSecondary float32

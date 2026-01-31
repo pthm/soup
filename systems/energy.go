@@ -17,18 +17,12 @@ const (
 	// Intent costs are very light - the main pressure is movement and feeding success
 	eatIntentCost   = 0.00005 // Minimal - eating is core survival
 	breedIntentCost = 0.00010 // Minimal - breeding is core to evolution
-	glowIntentCost  = 0.00050 // Slightly higher - glow is optional luxury
-	// Note: GrowIntent removed - fauna no longer grow, evolution via breeding only
 
 	// Movement costs - PRIMARY selective pressure
 	// These should be the main energy sink for active organisms
 	movementCostBase  = 0.0015 // Cost per unit of desired velocity (urgency)
 	thrustCostBase    = 0.0020 // Cost for actual acceleration/thrust
 	massScaleExponent = 0.40   // Larger organisms pay more to move
-
-	// Photosynthesis - helps organisms with photo cells survive
-	photoMaxOffset = 0.95 // Photosynthesis can offset up to 95% of base drain
-	photoRate      = 0.12 // Energy per light per photosynthetic weight (increased)
 
 	// Energy capacity
 	baseEnergy        = 100.0 // Minimum energy capacity
@@ -42,15 +36,13 @@ const (
 // EnergySystem handles organism energy updates with brain-output-driven costs.
 // This creates evolutionary pressure for efficient, context-sensitive behavior.
 type EnergySystem struct {
-	filter    ecs.Filter3[components.Position, components.Organism, components.CellBuffer]
-	shadowMap *ShadowMap
+	filter ecs.Filter3[components.Position, components.Organism, components.CellBuffer]
 }
 
 // NewEnergySystem creates a new energy system.
-func NewEnergySystem(w *ecs.World, shadowMap *ShadowMap) *EnergySystem {
+func NewEnergySystem(w *ecs.World) *EnergySystem {
 	return &EnergySystem{
-		filter:    *ecs.NewFilter3[components.Position, components.Organism, components.CellBuffer](w),
-		shadowMap: shadowMap,
+		filter: *ecs.NewFilter3[components.Position, components.Organism, components.CellBuffer](w),
 	}
 }
 
@@ -58,7 +50,7 @@ func NewEnergySystem(w *ecs.World, shadowMap *ShadowMap) *EnergySystem {
 func (s *EnergySystem) Update(w *ecs.World) {
 	query := s.filter.Query()
 	for query.Next() {
-		pos, org, cells := query.Get()
+		_, org, cells := query.Get()
 
 		if org.Dead {
 			continue
@@ -83,10 +75,6 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		// Breed intent cost - reproductive readiness requires energy
 		intentCost += org.BreedIntent * breedIntentCost * cellCount
 
-		// Glow intent cost - bioluminescence is expensive
-		// Note: GrowIntent removed - fauna born with their cells, evolution via breeding
-		intentCost += org.GlowIntent * glowIntentCost * cellCount
-
 		// === MOVEMENT COSTS ===
 		// Larger organisms pay exponentially more to move
 		massFactor := float32(math.Pow(float64(cellCount), massScaleExponent))
@@ -101,27 +89,8 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		thrustCost := org.ActiveThrust * thrustCostBase * massFactor * armorPen * org.ShapeMetrics.Drag
 		org.ActiveThrust = 0 // Reset for next tick
 
-		// === PHOTOSYNTHESIS OFFSET ===
-		// Can offset most of base drain but not activity costs
-		photoOffset := float32(0.0)
-		if caps.PhotoWeight > 0 && s.shadowMap != nil {
-			// Calculate organism center using OBB offset (offset is in local space, must be rotated)
-			cosH := float32(math.Cos(float64(org.Heading)))
-			sinH := float32(math.Sin(float64(org.Heading)))
-			centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
-			centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
-			light := s.shadowMap.SampleLight(centerX, centerY)
-			photoEnergy := photoRate * light * caps.PhotoWeight
-			// Cap at fraction of base drain only
-			maxOffset := baseDrain * photoMaxOffset
-			if photoEnergy > maxOffset {
-				photoEnergy = maxOffset
-			}
-			photoOffset = photoEnergy
-		}
-
 		// === TOTAL ENERGY DRAIN ===
-		totalDrain := baseDrain + intentCost + movementCost + thrustCost - photoOffset
+		totalDrain := baseDrain + intentCost + movementCost + thrustCost
 
 		// Minimum drain (can't gain energy from just photosynthesis without feeding)
 		if totalDrain < 0.0001 {

@@ -9,9 +9,7 @@ import (
 // Flora constants
 const (
 	// Energy/timing
-	floraBasePhotoRate  = float32(0.3)  // Base photosynthesis rate per tick
-	floraRootedMinLight = float32(0.3)  // Minimum effective light for rooted flora
-	floraFloatMinLight  = float32(0.0)  // Minimum effective light for floating flora
+	floraBaseEnergyRate = float32(0.15) // Base energy gain rate per tick (replaces photosynthesis)
 	floraSporeInterval  = int32(400)    // Ticks between spore releases
 	floraDeathThreshold = float32(0.10) // Die below 10% max energy
 	floraDefaultArmor   = float32(0.1)  // Default structural armor for feeding calc
@@ -62,20 +60,18 @@ type FloraSystem struct {
 
 	bounds    Bounds
 	terrain   *TerrainSystem
-	shadowMap *ShadowMap
 	flowField *FlowFieldSystem
 	noise     *PerlinNoise
 	tick      int32
 }
 
 // NewFloraSystem creates a new flora management system.
-func NewFloraSystem(bounds Bounds, terrain *TerrainSystem, shadowMap *ShadowMap, flowField *FlowFieldSystem) *FloraSystem {
+func NewFloraSystem(bounds Bounds, terrain *TerrainSystem, flowField *FlowFieldSystem) *FloraSystem {
 	return &FloraSystem{
 		Rooted:    make([]RootedFlora, 0, maxRootedFlora),
 		Floating:  make([]FloatingFlora, 0, maxFloatingFlora),
 		bounds:    bounds,
 		terrain:   terrain,
-		shadowMap: shadowMap,
 		flowField: flowField,
 		noise:     NewPerlinNoise(rand.Int63()),
 	}
@@ -149,12 +145,8 @@ func (fs *FloraSystem) updateRootedParallel() []sporeRequest {
 			continue
 		}
 
-		// Photosynthesis
-		light := fs.shadowMap.SampleLight(f.X, f.Y)
-		if light < floraRootedMinLight {
-			light = floraRootedMinLight
-		}
-		f.Energy += floraBasePhotoRate * light
+		// Energy gain (simplified - no light dependency)
+		f.Energy += floraBaseEnergyRate
 
 		if f.Energy > f.MaxEnergy {
 			f.Energy = f.MaxEnergy
@@ -189,11 +181,8 @@ func (fs *FloraSystem) updateFloatingParallel() []sporeRequest {
 			continue
 		}
 
-		light := fs.shadowMap.SampleLight(f.X, f.Y)
-		if light < floraFloatMinLight {
-			light = floraFloatMinLight
-		}
-		f.Energy += floraBasePhotoRate * light
+		// Energy gain (simplified - no light dependency)
+		f.Energy += floraBaseEnergyRate
 
 		if f.Energy > f.MaxEnergy {
 			f.Energy = f.MaxEnergy
@@ -229,12 +218,8 @@ func (fs *FloraSystem) updateRooted(spawnSpore func(x, y float32, isRooted bool)
 			continue
 		}
 
-		// Photosynthesis
-		light := fs.shadowMap.SampleLight(f.X, f.Y)
-		if light < floraRootedMinLight {
-			light = floraRootedMinLight // Rooted flora adapted to shade
-		}
-		f.Energy += floraBasePhotoRate * light
+		// Energy gain (simplified - no light dependency)
+		f.Energy += floraBaseEnergyRate
 
 		// Clamp energy
 		if f.Energy > f.MaxEnergy {
@@ -273,12 +258,8 @@ func (fs *FloraSystem) updateFloating(spawnSpore func(x, y float32, isRooted boo
 			continue
 		}
 
-		// Photosynthesis (no minimum light for floating flora)
-		light := fs.shadowMap.SampleLight(f.X, f.Y)
-		if light < floraFloatMinLight {
-			light = floraFloatMinLight
-		}
-		f.Energy += floraBasePhotoRate * light
+		// Energy gain (simplified - no light dependency)
+		f.Energy += floraBaseEnergyRate
 
 		// Clamp energy
 		if f.Energy > f.MaxEnergy {

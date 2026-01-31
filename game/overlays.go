@@ -31,8 +31,6 @@ func (g *Game) drawActiveOverlays() {
 		switch id {
 		case ui.OverlayPerceptionCones:
 			g.drawPerceptionCones()
-		case ui.OverlayLightMap:
-			g.drawLightMapOverlay()
 		case ui.OverlayPathfinding:
 			g.drawPathfindingOverlay()
 		case ui.OverlayCollisionBoxes:
@@ -125,24 +123,6 @@ func (g *Game) drawPerceptionCones() {
 		y2 := centerY + coneRadius*float32(math.Sin(float64(endAngle)))
 		rl.DrawLine(int32(centerX), int32(centerY), int32(x1), int32(y1), edgeColor)
 		rl.DrawLine(int32(centerX), int32(centerY), int32(x2), int32(y2), edgeColor)
-	}
-}
-
-// drawLightMapOverlay visualizes the shadow map / light distribution.
-func (g *Game) drawLightMapOverlay() {
-	// Sample light at grid points and draw colored squares
-	gridSize := int32(40) // Sample every 40 pixels
-	squareSize := int32(36)
-
-	for x := int32(0); x < int32(g.bounds.Width); x += gridSize {
-		for y := int32(0); y < int32(g.bounds.Height); y += gridSize {
-			light := g.shadowMap.SampleLight(float32(x), float32(y))
-
-			// Color: darker = less light, brighter = more light
-			brightness := uint8(light * 200)
-			color := rl.Color{R: brightness, G: brightness, B: uint8(float32(brightness) * 1.2), A: 40}
-			rl.DrawRectangle(x+2, y+2, squareSize, squareSize, color)
-		}
 	}
 }
 

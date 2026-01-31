@@ -79,10 +79,6 @@ type Organism struct {
 	// Legacy brain outputs (for compatibility with systems that haven't been updated)
 	EatIntent   float32 // Derived: implicit from mouth proximity
 	BreedIntent float32 // Alias for MateIntent
-	GlowIntent  float32 // Placeholder: can re-add later
-
-	// Bioluminescence state
-	EmittedLight float32 // Current light emission
 
 	// Attack state
 	AttackCooldown int32  // Ticks until can attack again
@@ -194,7 +190,6 @@ func (cb *CellBuffer) RemoveCell(idx uint8) {
 
 // Capabilities holds computed capability values from cells.
 type Capabilities struct {
-	PhotoWeight        float32 // Total photosynthetic strength
 	ActuatorWeight     float32 // Total actuator strength
 	SensorWeight       float32 // Total sensor strength
 	MouthSize          float32 // Total mouth strength (for feeding)
@@ -202,21 +197,20 @@ type Capabilities struct {
 	DigestiveCount     int     // Number of digestive cells
 	StructuralArmor    float32 // Average structural armor
 	StorageCapacity    float32 // Average storage capacity
-	BioluminescentCap  float32 // Total bioluminescent capability (Phase 5b)
 	ReproductiveWeight float32 // Total reproductive capability
 	ReproductiveSum    float32 // Sum of reproductive mode values from reproductive cells
 	ReproductiveCount  int     // Number of reproductive cells
 }
 
 // Composition returns the flora/fauna composition ratio.
-// 1.0 = pure photosynthetic (flora-like), 0.0 = pure actuator (fauna-like)
+// 1.0 = pure sensor (flora-like), 0.0 = pure actuator (fauna-like)
 func (c *Capabilities) Composition() float32 {
 	const epsilon = 1e-6
-	total := c.PhotoWeight + c.ActuatorWeight
+	total := c.SensorWeight + c.ActuatorWeight
 	if total < epsilon {
 		return 0.5 // Neutral for organisms with neither
 	}
-	return c.PhotoWeight / total
+	return c.SensorWeight / total
 }
 
 // DigestiveSpectrum returns the average digestive spectrum.
@@ -253,11 +247,9 @@ func (cb *CellBuffer) ComputeCapabilities() Capabilities {
 		aliveCount++
 
 		// Accumulate function strengths
-		caps.PhotoWeight += cell.GetFunctionStrength(neural.CellTypePhotosynthetic)
 		caps.ActuatorWeight += cell.GetFunctionStrength(neural.CellTypeActuator)
 		caps.SensorWeight += cell.GetFunctionStrength(neural.CellTypeSensor)
 		caps.MouthSize += cell.GetFunctionStrength(neural.CellTypeMouth)
-		caps.BioluminescentCap += cell.GetFunctionStrength(neural.CellTypeBioluminescent)
 		caps.ReproductiveWeight += cell.GetFunctionStrength(neural.CellTypeReproductive)
 
 		// Digestive cells contribute to spectrum
