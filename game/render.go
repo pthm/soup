@@ -182,9 +182,9 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 	}
 
 	// Pre-compute rotation for cell positions
-	// Add π/2 so Y-axis (forward in grid space) aligns with movement direction
-	cosH := float32(math.Cos(float64(org.Heading) + math.Pi/2))
-	sinH := float32(math.Sin(float64(org.Heading) + math.Pi/2))
+	// X+ is forward in local grid space, aligned with heading
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
 
 	// Draw each cell
 	for i := uint8(0); i < cells.Count; i++ {
@@ -218,8 +218,7 @@ func (g *Game) drawOrganism(entity ecs.Entity, pos *components.Position, org *co
 		cellColor.B = uint8(float32(cellColor.B) * light)
 
 		// Draw cell with rotation matching organism heading
-		// Add 90° so cells align with movement direction
-		rotationDeg := org.Heading*180/math.Pi + 90
+		rotationDeg := org.Heading * 180 / math.Pi
 		rl.DrawRectanglePro(
 			rl.Rectangle{X: cellX, Y: cellY, Width: org.CellSize, Height: org.CellSize},
 			rl.Vector2{X: org.CellSize / 2, Y: org.CellSize / 2}, // rotate around cell center
@@ -560,11 +559,11 @@ func (g *Game) drawSelectionIndicator() {
 				continue
 			}
 			// Rotate cell position by organism heading
-			// Add π/2 so Y-axis (forward in grid space) aligns with movement direction
+			// X+ is forward in local grid space, aligned with heading
 			localX := float32(cell.GridX) * org.CellSize
 			localY := float32(cell.GridY) * org.CellSize
-			cosH := float32(math.Cos(float64(org.Heading) + math.Pi/2))
-			sinH := float32(math.Sin(float64(org.Heading) + math.Pi/2))
+			cosH := float32(math.Cos(float64(org.Heading)))
+			sinH := float32(math.Sin(float64(org.Heading)))
 			rotatedX := localX*cosH - localY*sinH
 			rotatedY := localX*sinH + localY*cosH
 			cellX := pos.X + rotatedX

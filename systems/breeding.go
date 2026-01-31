@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/mlange-42/ark/ecs"
@@ -191,8 +192,19 @@ func (s *BreedingSystem) isCompatibleForSexual(a, b *breeder) bool {
 		return false
 	}
 
+	// Calculate organism centers using OBB offset (offset is in local space, must be rotated)
+	cosHA := float32(math.Cos(float64(a.org.Heading)))
+	sinHA := float32(math.Sin(float64(a.org.Heading)))
+	centerAX := a.pos.X + a.org.OBB.OffsetX*cosHA - a.org.OBB.OffsetY*sinHA
+	centerAY := a.pos.Y + a.org.OBB.OffsetX*sinHA + a.org.OBB.OffsetY*cosHA
+
+	cosHB := float32(math.Cos(float64(b.org.Heading)))
+	sinHB := float32(math.Sin(float64(b.org.Heading)))
+	centerBX := b.pos.X + b.org.OBB.OffsetX*cosHB - b.org.OBB.OffsetY*sinHB
+	centerBY := b.pos.Y + b.org.OBB.OffsetX*sinHB + b.org.OBB.OffsetY*cosHB
+
 	// Must be within proximity (use squared distance to avoid sqrt)
-	if distanceSq(a.pos.X, a.pos.Y, b.pos.X, b.pos.Y) > mateProximitySq {
+	if distanceSq(centerAX, centerAY, centerBX, centerBY) > mateProximitySq {
 		return false
 	}
 

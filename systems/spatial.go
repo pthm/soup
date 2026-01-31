@@ -75,13 +75,25 @@ func clampInt(v, minVal, maxVal int) int {
 }
 
 // GetNearbyFauna returns indices of fauna within radius of position.
+// NOT thread-safe - uses shared buffer. Use GetNearbyFaunaSafe for parallel code.
 func (sg *SpatialGrid) GetNearbyFauna(x, y, radius float32) []int {
 	return sg.getNearby(x, y, radius, false)
 }
 
 // GetNearbyFlora returns indices of flora within radius of position.
+// NOT thread-safe - uses shared buffer. Use GetNearbyFloraSafe for parallel code.
 func (sg *SpatialGrid) GetNearbyFlora(x, y, radius float32) []int {
 	return sg.getNearby(x, y, radius, true)
+}
+
+// GetNearbyFaunaSafe returns indices of fauna within radius (thread-safe, allocates new slice).
+func (sg *SpatialGrid) GetNearbyFaunaSafe(x, y, radius float32) []int {
+	return sg.getNearbySafe(x, y, radius, false)
+}
+
+// GetNearbyFloraSafe returns indices of flora within radius (thread-safe, allocates new slice).
+func (sg *SpatialGrid) GetNearbyFloraSafe(x, y, radius float32) []int {
+	return sg.getNearbySafe(x, y, radius, true)
 }
 
 func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
@@ -117,4 +129,30 @@ func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 	}
 
 	return *result
+}
+
+func (sg *SpatialGrid) getNearbySafe(x, y, radius float32, flora bool) []int {
+	cellRadius := int(radius/sg.cellWidth) + 1
+
+	cx, cy := sg.worldToGrid(x, y)
+
+	minX := clampInt(cx-cellRadius, 0, spatialGridSize-1)
+	maxX := clampInt(cx+cellRadius, 0, spatialGridSize-1)
+	minY := clampInt(cy-cellRadius, 0, spatialGridSize-1)
+	maxY := clampInt(cy+cellRadius, 0, spatialGridSize-1)
+
+	// Allocate new slice for thread safety
+	result := make([]int, 0, 32)
+
+	for gy := minY; gy <= maxY; gy++ {
+		for gx := minX; gx <= maxX; gx++ {
+			if flora {
+				result = append(result, sg.floraGrid[gy][gx]...)
+			} else {
+				result = append(result, sg.faunaGrid[gy][gx]...)
+			}
+		}
+	}
+
+	return result
 }

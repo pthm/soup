@@ -1,6 +1,8 @@
 package systems
 
 import (
+	"math"
+
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
@@ -87,18 +89,24 @@ func (s *AllocationSystem) hasFoodNearby(
 	floraPos, faunaPos []components.Position,
 	floraOrgs, faunaOrgs []*components.Organism,
 ) bool {
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	searchRadius := org.PerceptionRadius * 1.5
 	searchRadiusSq := searchRadius * searchRadius
 
 	// Low digestive spectrum (< 0.5) can eat flora
 	if digestiveSpectrum < 0.5 {
 		if s.floraSystem != nil {
-			if len(s.floraSystem.GetNearbyFlora(pos.X, pos.Y, searchRadius)) > 0 {
+			if len(s.floraSystem.GetNearbyFlora(centerX, centerY, searchRadius)) > 0 {
 				return true
 			}
 		} else if floraOrgs != nil {
 			for i := range floraPos {
-				if !floraOrgs[i].Dead && distanceSq(pos.X, pos.Y, floraPos[i].X, floraPos[i].Y) < searchRadiusSq {
+				if !floraOrgs[i].Dead && distanceSq(centerX, centerY, floraPos[i].X, floraPos[i].Y) < searchRadiusSq {
 					return true
 				}
 			}
@@ -111,7 +119,7 @@ func (s *AllocationSystem) hasFoodNearby(
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 				continue
 			}
-			if distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
+			if distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
 				return true
 			}
 		}
@@ -120,7 +128,7 @@ func (s *AllocationSystem) hasFoodNearby(
 	// Carrion eating: organisms with digestive spectrum > 0.3 can eat dead fauna
 	if digestiveSpectrum > 0.3 && faunaOrgs != nil {
 		for i := range faunaPos {
-			if faunaOrgs[i].Dead && distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
+			if faunaOrgs[i].Dead && distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
 				return true
 			}
 		}
@@ -141,6 +149,12 @@ func (s *AllocationSystem) hasThreatNearby(
 	}
 	// All organisms can perceive threats from larger/hungrier neighbors
 
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	threatRadius := org.PerceptionRadius * 2.0
 	threatRadiusSq := threatRadius * threatRadius
 
@@ -152,7 +166,7 @@ func (s *AllocationSystem) hasThreatNearby(
 		if other == org || other.Dead {
 			continue
 		}
-		if distanceSq(pos.X, pos.Y, faunaPos[i].X, faunaPos[i].Y) > threatRadiusSq {
+		if distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) > threatRadiusSq {
 			continue
 		}
 

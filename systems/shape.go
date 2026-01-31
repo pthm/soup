@@ -43,9 +43,9 @@ func getCellBounds(cells *components.CellBuffer, onlyAlive bool) cellBounds {
 }
 
 // CalculateShapeMetrics computes drag from the organism's actual frontal profile.
-// Y+ is the forward direction (heading). Drag is based on:
-// - Frontal area: cells at the leading edge (highest Y)
-// - Body length: extent in Y direction
+// X+ is the forward direction (heading). Drag is based on:
+// - Frontal area: cells at the leading edge (highest X)
+// - Body length: extent in X direction
 // - Taper: whether front is narrower than the widest point
 //
 // A fish shape (narrow front, long body) has low drag ~0.2-0.4
@@ -60,25 +60,25 @@ func CalculateShapeMetrics(cells *components.CellBuffer) components.ShapeMetrics
 		return components.ShapeMetrics{Drag: 1.0}
 	}
 
-	// Count cells at each Y level to analyze frontal profile
-	// Y+ is forward, so maxY is the "front" (leading edge)
-	yProfile := make(map[int8]int)
+	// Count cells at each X level to analyze frontal profile
+	// X+ is forward, so maxX is the "front" (leading edge)
+	xProfile := make(map[int8]int)
 	for i := uint8(0); i < cells.Count; i++ {
 		c := &cells.Cells[i]
-		yProfile[c.GridY]++
+		xProfile[c.GridX]++
 	}
 
 	// Find frontal width (cells at leading edge) and max width
-	frontWidth := yProfile[bounds.maxY]
+	frontWidth := xProfile[bounds.maxX]
 	maxWidth := 0
-	for _, count := range yProfile {
+	for _, count := range xProfile {
 		if count > maxWidth {
 			maxWidth = count
 		}
 	}
 
-	// Body length in Y direction
-	length := float32(bounds.maxY - bounds.minY + 1)
+	// Body length in X direction
+	length := float32(bounds.maxX - bounds.minX + 1)
 
 	// Base drag: frontal area / length
 	// Fish: front=1, length=6 -> 1/6 = 0.17

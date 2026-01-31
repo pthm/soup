@@ -149,15 +149,21 @@ func (s *FeedingSystem) tryFeedSpatial(
 	const feedDistSq = feedingDistance * feedingDistance
 	const kinAvoidanceProb = 0.92 // High kin avoidance to reduce cannibalism
 
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	var bestTarget *entityData
 	var bestPenetration float32
 	var bestDistSq float32 = feedDistSq + 1
 
-	// Check nearby flora using FloraSystem's spatial query
+	// Check nearby flora using FloraSystem's spatial query (from center)
 	if s.floraSystem != nil {
-		nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, feedingDistance)
+		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, feedingDistance)
 		for _, ref := range nearbyFlora {
-			dSq := distanceSq(pos.X, pos.Y, ref.X, ref.Y)
+			dSq := distanceSq(centerX, centerY, ref.X, ref.Y)
 			if dSq > feedDistSq {
 				continue
 			}
@@ -189,15 +195,15 @@ func (s *FeedingSystem) tryFeedSpatial(
 		}
 	}
 
-	// Check nearby fauna using spatial grid
-	nearbyFauna := s.spatialGrid.GetNearbyFauna(pos.X, pos.Y, feedingDistance)
+	// Check nearby fauna using spatial grid (from center)
+	nearbyFauna := s.spatialGrid.GetNearbyFauna(centerX, centerY, feedingDistance)
 	for _, idx := range nearbyFauna {
 		if idx == myIdx || faunaOrgs[idx].Dead {
 			continue
 		}
 
 		targetPos := &faunaPos[idx]
-		dSq := distanceSq(pos.X, pos.Y, targetPos.X, targetPos.Y)
+		dSq := distanceSq(centerX, centerY, targetPos.X, targetPos.Y)
 		if dSq > feedDistSq {
 			continue
 		}
@@ -327,6 +333,12 @@ func (s *FeedingSystem) tryFeed(
 	const feedDistSq = feedingDistance * feedingDistance
 	const kinAvoidanceProb = 0.92 // High kin avoidance to reduce cannibalism // Probability of avoiding hunting own species
 
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	var bestTarget *entityData
 	var bestPenetration float32
 	var bestDistSq float32 = feedDistSq + 1
@@ -339,8 +351,8 @@ func (s *FeedingSystem) tryFeed(
 			continue
 		}
 
-		// Check distance
-		dSq := distanceSq(pos.X, pos.Y, target.pos.X, target.pos.Y)
+		// Check distance from center
+		dSq := distanceSq(centerX, centerY, target.pos.X, target.pos.Y)
 		if dSq > feedDistSq {
 			continue
 		}

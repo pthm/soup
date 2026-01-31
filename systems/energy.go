@@ -108,7 +108,12 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		// Can offset most of base drain but not activity costs
 		photoOffset := float32(0.0)
 		if caps.PhotoWeight > 0 && s.shadowMap != nil {
-			light := s.shadowMap.SampleLight(pos.X, pos.Y)
+			// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+			cosH := float32(math.Cos(float64(org.Heading)))
+			sinH := float32(math.Sin(float64(org.Heading)))
+			centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+			centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+			light := s.shadowMap.SampleLight(centerX, centerY)
 			photoEnergy := photoRate * light * caps.PhotoWeight
 			// Cap at fraction of base drain only
 			maxOffset := baseDrain * photoMaxOffset

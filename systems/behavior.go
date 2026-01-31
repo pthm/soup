@@ -185,9 +185,15 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			org.EmittedLight = 0
 		}
 
+		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+		cosH := float32(math.Cos(float64(org.Heading)))
+		sinH := float32(math.Sin(float64(org.Heading)))
+		centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+		centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 		// Use potential-field navigation to convert desire to turn/thrust
 		// Pathfinding handles terrain avoidance so brain only learns strategy
-		flowX, flowY := s.getFlowFieldForce(pos.X, pos.Y, org, bounds)
+		flowX, flowY := s.getFlowFieldForce(centerX, centerY, org, bounds)
 
 		// Get collision radius from OBB if available, otherwise estimate
 		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
@@ -197,7 +203,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 			pathStart = time.Now()
 		}
 		navResult := s.pathfinder.Navigate(
-			pos.X, pos.Y,
+			centerX, centerY,
 			org.Heading,
 			outputs.DesireAngle, outputs.DesireDistance,
 			flowX, flowY,
@@ -416,10 +422,16 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 			org.EmittedLight = 0
 		}
 
+		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+		cosH := float32(math.Cos(float64(org.Heading)))
+		sinH := float32(math.Sin(float64(org.Heading)))
+		centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+		centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 		// Pathfinding (still sequential - uses shared pathfinder state)
 		organismRadius := GetCollisionRadius(&org.OBB, org.CellSize)
 		navResult := s.pathfinder.Navigate(
-			pos.X, pos.Y,
+			centerX, centerY,
 			org.Heading,
 			outputs.DesireAngle, outputs.DesireDistance,
 			task.flowX, task.flowY,
@@ -474,6 +486,12 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		// Calculate effective perception radius
 		effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
 
+		// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+		cosH := float32(math.Cos(float64(task.heading)))
+		sinH := float32(math.Sin(float64(task.heading)))
+		centerX := task.posX + task.obb.OffsetX*cosH - task.obb.OffsetY*sinH
+		centerY := task.posY + task.obb.OffsetX*sinH + task.obb.OffsetY*cosH
+
 		// Get capabilities
 		var myComposition, myDigestiveSpec, myArmor float32
 		if task.cells != nil {
@@ -483,19 +501,19 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			myArmor = caps.StructuralArmor
 		}
 
-		// Get light level
+		// Get light level at organism center
 		var lightLevel float32 = 0.5
 		if s.shadowMap != nil {
-			lightLevel = s.shadowMap.SampleLight(task.posX, task.posY)
+			lightLevel = s.shadowMap.SampleLight(centerX, centerY)
 		}
 
 		// Build sensor cells
 		sensorCells := buildSensorCells(task.cells)
 
-		// Vision parameters
+		// Vision parameters - use organism center, not raw position
 		visionParams := neural.VisionParams{
-			PosX:            task.posX,
-			PosY:            task.posY,
+			PosX:            centerX,
+			PosY:            centerY,
 			Heading:         task.heading,
 			MyComposition:   myComposition,
 			MyDigestiveSpec: myDigestiveSpec,
@@ -509,12 +527,12 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		var pv neural.PolarVision
 		pv.ScanEntities(visionParams, entities)
 
-		// Sample directional light
+		// Sample directional light from organism center
 		var lightSampler func(x, y float32) float32
 		if s.shadowMap != nil {
 			lightSampler = s.shadowMap.SampleLight
 		}
-		pv.SampleDirectionalLight(task.posX, task.posY, task.heading, effectiveRadius, lightSampler)
+		pv.SampleDirectionalLight(centerX, centerY, task.heading, effectiveRadius, lightSampler)
 
 		// Build sensory inputs
 		sensory := neural.SensoryInputs{
@@ -564,19 +582,26 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 func (s *BehaviorSystem) buildEntityListParallel(task *organismTask, faunaPos []components.Position, faunaOrgs []*components.Organism, grid *SpatialGrid) []neural.EntityInfo {
 	effectiveRadius := getEffectivePerceptionRadius(task.perceptionRadius, task.cells)
 
-	// Start with pre-built flora list, filtered by distance
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(task.heading)))
+	sinH := float32(math.Sin(float64(task.heading)))
+	centerX := task.posX + task.obb.OffsetX*cosH - task.obb.OffsetY*sinH
+	centerY := task.posY + task.obb.OffsetX*sinH + task.obb.OffsetY*cosH
+
+	// Start with pre-built flora list, filtered by distance from center
 	entities := make([]neural.EntityInfo, 0, 32)
 	radiusSq := effectiveRadius * effectiveRadius
 	for _, flora := range s.floraEntities {
-		dx := flora.X - task.posX
-		dy := flora.Y - task.posY
+		dx := flora.X - centerX
+		dy := flora.Y - centerY
 		if dx*dx+dy*dy <= radiusSq {
 			entities = append(entities, flora)
 		}
 	}
 
-	// Add nearby fauna
-	nearbyFauna := grid.GetNearbyFauna(task.posX, task.posY, effectiveRadius*1.5)
+	// Add nearby fauna (use center for spatial query)
+	// Use thread-safe version since this is called from parallel goroutines
+	nearbyFauna := grid.GetNearbyFaunaSafe(centerX, centerY, effectiveRadius*1.5)
 	for _, i := range nearbyFauna {
 		if i == task.faunaIdx || faunaOrgs[i].Dead {
 			continue
@@ -645,6 +670,12 @@ func (s *BehaviorSystem) getBrainOutputs(
 	// Calculate effective perception radius based on sensor capability
 	effectiveRadius := getEffectivePerceptionRadius(org.PerceptionRadius, cells)
 
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	// Get our capabilities for vision parameters
 	var myComposition, myDigestiveSpec, myArmor float32
 	if cells != nil {
@@ -659,19 +690,19 @@ func (s *BehaviorSystem) getBrainOutputs(
 		myArmor = 0.0
 	}
 
-	// Get light level for vision
+	// Get light level at organism center
 	var lightLevel float32 = 0.5
 	if s.shadowMap != nil {
-		lightLevel = s.shadowMap.SampleLight(pos.X, pos.Y)
+		lightLevel = s.shadowMap.SampleLight(centerX, centerY)
 	}
 
 	// Build sensor cells for vision weighting
 	sensorCells := buildSensorCells(cells)
 
-	// Build vision parameters
+	// Build vision parameters - use organism center, not raw position
 	visionParams := neural.VisionParams{
-		PosX:            pos.X,
-		PosY:            pos.Y,
+		PosX:            centerX,
+		PosY:            centerY,
 		Heading:         org.Heading,
 		MyComposition:   myComposition,
 		MyDigestiveSpec: myDigestiveSpec,
@@ -699,12 +730,12 @@ func (s *BehaviorSystem) getBrainOutputs(
 	var pv neural.PolarVision
 	pv.ScanEntities(visionParams, entities)
 
-	// Phase 3b: Sample directional light for gradient computation
+	// Phase 3b: Sample directional light for gradient computation from organism center
 	var lightSampler func(x, y float32) float32
 	if s.shadowMap != nil {
 		lightSampler = s.shadowMap.SampleLight
 	}
-	pv.SampleDirectionalLight(pos.X, pos.Y, org.Heading, effectiveRadius, lightSampler)
+	pv.SampleDirectionalLight(centerX, centerY, org.Heading, effectiveRadius, lightSampler)
 	if s.perfEnabled {
 		s.perfStats.VisionNs += time.Since(visionStart).Nanoseconds()
 	}
@@ -806,12 +837,18 @@ func (s *BehaviorSystem) buildEntityList(
 	faunaOrgs []*components.Organism,
 	grid *SpatialGrid,
 ) []neural.EntityInfo {
+	// Calculate organism center using OBB offset (offset is in local space, must be rotated)
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+
 	// Reset buffer (reuse underlying array)
 	s.entityBuffer = s.entityBuffer[:0]
 
-	// Add nearby flora from FloraSystem
+	// Add nearby flora from FloraSystem (use center for spatial query)
 	if s.floraSystem != nil {
-		nearbyFlora := s.floraSystem.GetNearbyFlora(pos.X, pos.Y, effectiveRadius)
+		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, effectiveRadius)
 		for _, ref := range nearbyFlora {
 			// Skip LOS check for performance - polar vision cones handle directionality
 			s.entityBuffer = append(s.entityBuffer, neural.EntityInfo{
@@ -826,8 +863,8 @@ func (s *BehaviorSystem) buildEntityList(
 		}
 	}
 
-	// Add nearby fauna
-	nearbyFauna := grid.GetNearbyFauna(pos.X, pos.Y, effectiveRadius*1.5) // Extended range for threats
+	// Add nearby fauna (use center for spatial query)
+	nearbyFauna := grid.GetNearbyFauna(centerX, centerY, effectiveRadius*1.5) // Extended range for threats
 	for _, i := range nearbyFauna {
 		if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 			continue
@@ -950,7 +987,7 @@ func getActuatorCount(cells *components.CellBuffer) int {
 // Actuators at different positions contribute differently to forward thrust vs turning.
 func calculateActuatorForces(
 	cells *components.CellBuffer,
-	heading float32,
+	_ float32, // heading - unused, lateral offset is already in local space (GridY)
 	thrustOutput float32, // 0-1 from brain
 	turnOutput float32,   // -1 to +1 from brain
 ) (thrust float32, torque float32) {
@@ -971,15 +1008,9 @@ func calculateActuatorForces(
 
 		totalStrength += strength
 
-		// Actuator position relative to center
-		dx := float32(cell.GridX)
-		dy := float32(cell.GridY)
-
-		// Calculate lateral offset (perpendicular to heading)
-		// Positive = right side, Negative = left side
-		sinH := float32(math.Sin(float64(heading)))
-		cosH := float32(math.Cos(float64(heading)))
-		lateralOffset := -dx*sinH + dy*cosH
+		// GridY is the lateral offset in local space
+		// Positive GridY = right side, Negative GridY = left side
+		lateralOffset := float32(cell.GridY)
 
 		// Actuators on opposite sides contribute to turning
 		// Turn output > 0 means turn right, so left actuators (negative offset) push harder

@@ -9,14 +9,15 @@ type OverlayID string
 
 // Standard overlay IDs.
 const (
-	OverlaySpeciesColors  OverlayID = "species_colors"
+	OverlaySpeciesColors    OverlayID = "species_colors"
 	OverlayCapabilityColors OverlayID = "capability_colors"
-	OverlayPerceptionCones OverlayID = "perception_cones"
-	OverlayLightMap       OverlayID = "light_map"
-	OverlayFlowField      OverlayID = "flow_field"
-	OverlayPathfinding    OverlayID = "pathfinding"
-	OverlayCellTypes      OverlayID = "cell_types"
-	OverlayCollisionBoxes OverlayID = "collision_boxes"
+	OverlayPerceptionCones  OverlayID = "perception_cones"
+	OverlayLightMap         OverlayID = "light_map"
+	OverlayFlowField        OverlayID = "flow_field"
+	OverlayPathfinding      OverlayID = "pathfinding"
+	OverlayCellTypes        OverlayID = "cell_types"
+	OverlayCollisionBoxes   OverlayID = "collision_boxes"
+	OverlayOrientation      OverlayID = "orientation"
 )
 
 // OverlayDescriptor defines an overlay that can be toggled.
@@ -124,6 +125,15 @@ func (r *OverlayRegistry) registerDefaults() {
 		Description: "Show organism bounding boxes",
 		Key:         rl.KeyB,
 		KeyLabel:    "B",
+		Category:    "debug",
+	})
+
+	r.Register(OverlayDescriptor{
+		ID:          OverlayOrientation,
+		Name:        "Orientation",
+		Description: "Show forward/right axes and sensor/actuator cells",
+		Key:         rl.KeyX,
+		KeyLabel:    "X",
 		Category:    "debug",
 	})
 }
