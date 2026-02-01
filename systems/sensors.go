@@ -40,6 +40,66 @@ const NumSectors = 8
 // NumInputs is the total number of neural network inputs: NumSectors*3 + 2.
 const NumInputs = NumSectors*3 + 2 // 26 for K=8
 
+// TopKPerSector is the max neighbors kept per (sector, kind) for bounded sensing.
+// Total max neighbors processed = NumSectors * 2 * TopKPerSector = 32 for k=2.
+const TopKPerSector = 2
+
+// sectorBin holds top-k nearest neighbors for one (sector, kind) pair.
+// Uses inline storage to avoid allocations.
+type sectorBin struct {
+	distSq [TopKPerSector]float32
+	weight [TopKPerSector]float32 // precomputed distance * effectiveness weight
+	count  int
+}
+
+// insert tries to add a neighbor to the bin, keeping only the k nearest.
+func (b *sectorBin) insert(distSq, weight float32) {
+	if b.count < TopKPerSector {
+		// Room available, just append
+		b.distSq[b.count] = distSq
+		b.weight[b.count] = weight
+		b.count++
+		return
+	}
+	// Find furthest and replace if this is closer
+	maxIdx := 0
+	maxDist := b.distSq[0]
+	for i := 1; i < TopKPerSector; i++ {
+		if b.distSq[i] > maxDist {
+			maxDist = b.distSq[i]
+			maxIdx = i
+		}
+	}
+	if distSq < maxDist {
+		b.distSq[maxIdx] = distSq
+		b.weight[maxIdx] = weight
+	}
+}
+
+// sum returns the total weight in this bin.
+func (b *sectorBin) sum() float32 {
+	var s float32
+	for i := 0; i < b.count; i++ {
+		s += b.weight[i]
+	}
+	return s
+}
+
+// SectorBins holds per-sector top-k bins for both prey and predators.
+// Reuse across calls to avoid allocations.
+type SectorBins struct {
+	Prey [NumSectors]sectorBin
+	Pred [NumSectors]sectorBin
+}
+
+// Clear resets all bins for reuse.
+func (s *SectorBins) Clear() {
+	for i := 0; i < NumSectors; i++ {
+		s.Prey[i].count = 0
+		s.Pred[i].count = 0
+	}
+}
+
 // SensorInputs holds the computed sensor values for one entity.
 // Total: K*3 + 2 = 17 floats for K=5 sectors.
 type SensorInputs struct {
@@ -79,9 +139,96 @@ func (s *SensorInputs) AsSlice() []float32 {
 	return s.FillSlice(result)
 }
 
+// ComputeSensorsBounded calculates sensor inputs with bounded neighbor processing.
+// Uses per-sector top-k sampling to cap work at O(NumSectors * TopKPerSector * 2).
+// bins must be provided and will be cleared before use.
+func ComputeSensorsBounded(
+	selfVel components.Velocity,
+	selfRot components.Rotation,
+	selfEnergy components.Energy,
+	selfCaps components.Capabilities,
+	selfKind components.Kind,
+	neighbors []Neighbor,
+	orgMap *ecs.Map1[components.Organism],
+	resourceField ResourceSampler,
+	selfPos components.Position,
+	bins *SectorBins,
+) SensorInputs {
+	var inputs SensorInputs
+
+	// Self-state
+	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
+	speed := fastSqrt(speedSq)
+	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
+	inputs.Energy = clamp01(selfEnergy.Value)
+
+	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
+	invVisionRange := 1.0 / selfCaps.VisionRange
+
+	// Precompute heading direction for local frame transformation
+	cosH := fastCos(selfRot.Heading)
+	sinH := fastSin(selfRot.Heading)
+
+	// Clear bins for this entity
+	bins.Clear()
+
+	// Cap candidates processed (safety rail for density spikes)
+	maxProcess := len(neighbors)
+	if maxProcess > MaxQueryResults {
+		maxProcess = MaxQueryResults
+	}
+
+	// Pass 1: Classify and insert into top-k bins
+	for i := 0; i < maxProcess; i++ {
+		n := &neighbors[i]
+
+		// Skip if too close or too far
+		if n.DistSq < 0.001 || n.DistSq > visionRangeSq {
+			continue
+		}
+
+		// Get organism kind
+		nOrg := orgMap.Get(n.E)
+		if nOrg == nil {
+			continue
+		}
+
+		// Transform to local frame
+		lx := n.DX*cosH + n.DY*sinH
+		ly := -n.DX*sinH + n.DY*cosH
+
+		// Sector classification (no trig)
+		sectorIdx := sectorFromLocal(lx, ly)
+
+		// Compute weight
+		relativeAngle := fastAtan2(ly, lx)
+		dist := fastSqrt(n.DistSq)
+		distWeight := clamp01(1.0 - dist*invVisionRange)
+		effWeight := visionEffectiveness(relativeAngle, selfKind)
+		weight := distWeight * effWeight
+
+		// Insert into appropriate top-k bin
+		if nOrg.Kind == components.KindPrey {
+			bins.Prey[sectorIdx].insert(n.DistSq, weight)
+		} else {
+			bins.Pred[sectorIdx].insert(n.DistSq, weight)
+		}
+	}
+
+	// Pass 2: Aggregate from selected neighbors
+	for i := 0; i < NumSectors; i++ {
+		inputs.Prey[i] = smoothSaturate(bins.Prey[i].sum())
+		inputs.Pred[i] = smoothSaturate(bins.Pred[i].sum())
+	}
+
+	// Resource level per sector
+	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
+
+	return inputs
+}
+
 // ComputeSensorsFromNeighbors calculates sensor inputs using precomputed neighbor data.
-// This is the optimized path that avoids recomputing distances.
-// All entities have 360° vision; effectiveness varies by angle and selfKind.
+// Deprecated: Use ComputeSensorsBounded for bounded work per entity.
 func ComputeSensorsFromNeighbors(
 	selfVel components.Velocity,
 	selfRot components.Rotation,
@@ -93,76 +240,11 @@ func ComputeSensorsFromNeighbors(
 	resourceField ResourceSampler,
 	selfPos components.Position,
 ) SensorInputs {
-	var inputs SensorInputs
-
-	// Self-state (use fast sqrt)
-	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
-	speed := fastSqrt(speedSq)
-	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
-	inputs.Energy = clamp01(selfEnergy.Value)
-
-	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
-	invVisionRange := 1.0 / selfCaps.VisionRange
-
-	// Precompute heading direction for local frame transformation (once per entity)
-	// This replaces N*M atan2 calls with 2 sin/cos + N*M simple transforms
-	cosH := fastCos(selfRot.Heading)
-	sinH := fastSin(selfRot.Heading)
-
-	// Process neighbors (already have DX, DY, DistSq from spatial query)
-	for i := range neighbors {
-		n := &neighbors[i]
-
-		// Skip if too close or too far (DistSq already computed)
-		if n.DistSq < 0.001 || n.DistSq > visionRangeSq {
-			continue
-		}
-
-		// Get organism kind early to avoid work for nil
-		nOrg := orgMap.Get(n.E)
-		if nOrg == nil {
-			continue
-		}
-
-		// Transform neighbor direction to local frame (no atan2!)
-		// lx = forward component, ly = leftward component
-		lx := n.DX*cosH + n.DY*sinH
-		ly := -n.DX*sinH + n.DY*cosH
-
-		// Determine sector using comparisons (no trig, no division)
-		sectorIdx := sectorFromLocal(lx, ly)
-
-		// Compute relative angle for vision effectiveness (still needed)
-		// But now we can use local coords: relAngle = atan2(ly, lx)
-		// Use fast approximation since we only need rough angle for effectiveness
-		relativeAngle := fastAtan2(ly, lx)
-
-		// Distance weight using fast sqrt
-		dist := fastSqrt(n.DistSq)
-		distWeight := clamp01(1.0 - dist*invVisionRange)
-
-		// Effectiveness weight based on angle and self kind
-		effWeight := visionEffectiveness(relativeAngle, selfKind)
-		weight := distWeight * effWeight
-
-		// Accumulate by kind
-		if nOrg.Kind == components.KindPrey {
-			inputs.Prey[sectorIdx] += weight
-		} else {
-			inputs.Pred[sectorIdx] += weight
-		}
-	}
-
-	// Normalize accumulated values with smooth saturation
-	for i := 0; i < NumSectors; i++ {
-		inputs.Prey[i] = smoothSaturate(inputs.Prey[i])
-		inputs.Pred[i] = smoothSaturate(inputs.Pred[i])
-	}
-
-	// Resource level per sector (full 360°)
-	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
-
-	return inputs
+	var bins SectorBins
+	return ComputeSensorsBounded(
+		selfVel, selfRot, selfEnergy, selfCaps, selfKind,
+		neighbors, orgMap, resourceField, selfPos, &bins,
+	)
 }
 
 // visionEffectiveness returns the signal effectiveness [0,1] for a given angle and entity kind.

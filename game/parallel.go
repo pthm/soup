@@ -36,8 +36,9 @@ type intent struct {
 
 // workerScratch holds per-worker reusable buffers.
 type workerScratch struct {
-	Neighbors []systems.Neighbor
-	Inputs    [systems.NumInputs]float32
+	Neighbors  []systems.Neighbor
+	Inputs     [systems.NumInputs]float32
+	SectorBins systems.SectorBins
 }
 
 // parallelState holds resources for parallel behavior computation.
@@ -166,9 +167,10 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 				snap.Pos.X, snap.Pos.Y, snap.Caps.VisionRange,
 				snap.Entity, g.posMap,
 			)
-			sensorInputs := systems.ComputeSensorsFromNeighbors(
+			sensorInputs := systems.ComputeSensorsBounded(
 				snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Kind,
 				scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
+				&scratch.SectorBins,
 			)
 			inputs := sensorInputs.FillSlice(scratch.Inputs[:])
 			_, _, _, act := snap.Brain.ForwardWithCapture(inputs)
@@ -191,10 +193,11 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 			snap.Entity, g.posMap,
 		)
 
-		// Compute sensors
-		sensorInputs := systems.ComputeSensorsFromNeighbors(
+		// Compute sensors (bounded to top-k per sector)
+		sensorInputs := systems.ComputeSensorsBounded(
 			snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Kind,
 			scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
+			&scratch.SectorBins,
 		)
 
 		// Fill input buffer and run brain

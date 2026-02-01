@@ -60,7 +60,11 @@ func (g *SpatialGrid) Insert(e ecs.Entity, x, y float32) {
 	}
 }
 
-// QueryRadiusInto finds all entities within radius and appends to dst.
+// MaxQueryResults caps the number of neighbors returned by spatial queries.
+// This prevents density spikes from causing unbounded work.
+const MaxQueryResults = 128
+
+// QueryRadiusInto finds entities within radius and appends to dst (up to MaxQueryResults).
 // Returns the updated slice. Reuse dst across calls to avoid allocations.
 // Each Neighbor includes precomputed DX, DY, DistSq for efficient sensor processing.
 func (g *SpatialGrid) QueryRadiusInto(dst []Neighbor, x, y, radius float32, exclude ecs.Entity, posMap *ecs.Map1[components.Position]) []Neighbor {
@@ -95,6 +99,10 @@ func (g *SpatialGrid) QueryRadiusInto(dst []Neighbor, x, y, radius float32, excl
 
 				if distSq <= radiusSq {
 					dst = append(dst, Neighbor{E: e, DX: dx, DY: dy, DistSq: distSq})
+					// Early exit if we hit the cap
+					if len(dst) >= MaxQueryResults {
+						return dst
+					}
 				}
 			}
 		}
