@@ -64,12 +64,13 @@ capabilities:
   drag: 1.2                  # Velocity damping factor; higher = slower stopping
   bite_range: 10.0           # Distance at which predators can bite prey (world units)
   bite_cost: 0.02            # Energy cost per bite attempt (currently unused, see energy.predator.bite_cost)
+  thrust_deadzone: 0.1       # Thrust below this value is treated as 0 (encourages dwelling)
 
 # -----------------------------------------------------------------------------
 # Population Management
 # -----------------------------------------------------------------------------
 population:
-  initial: 20                # Number of entities spawned at simulation start
+  initial: 40                # Number of entities spawned at simulation start
   max_prey: 400              # Population cap for prey; prevents runaway growth
   max_pred: 120              # Population cap for predators
   respawn_threshold: 5       # If total population drops below this, trigger respawn
@@ -82,12 +83,12 @@ population:
 # -----------------------------------------------------------------------------
 reproduction:
   prey_threshold: 0.85       # Minimum energy for prey to reproduce (0-1)
-  pred_threshold: 0.90       # Minimum energy for predators to reproduce (0-1)
+  pred_threshold: 0.85       # Minimum energy for predators to reproduce (0-1)
                              # Higher threshold = predators must be well-fed to breed
   maturity_age: 8.0          # Minimum age in seconds before entity can reproduce
                              # Prevents immediate reproduction after birth
   prey_cooldown: 8.0         # Seconds between prey reproductions
-  pred_cooldown: 10.0        # Seconds between predator reproductions
+  pred_cooldown: 12.0        # Seconds between predator reproductions
                              # Longer cooldown = slower predator population growth
   cooldown_jitter: 1.0       # Random +/- variation in initial cooldown (seconds)
                              # Prevents synchronized reproduction waves
@@ -120,16 +121,17 @@ energy:
     base_cost: 0.015         # Energy drain per second just for existing (metabolism)
     move_cost: 0.120         # Additional cost multiplier for movement (4x increase)
                              # Actual cost = move_cost * (speed/max_speed)^2 * dt
-    forage_rate: 0.035       # Energy gain per second at resource=1.0 when stationary
-                             # Moving reduces foraging efficiency linearly with speed
+    forage_rate: 0.045       # Energy gain per second at resource=1.0 at grazing speed
+    grazing_peak: 0.15       # Speed ratio for optimal foraging (~15% max speed)
+    accel_cost: 0.03         # Energy cost multiplier for thrust (acceleration penalty)
   predator:
-    base_cost: 0.016         # Higher base metabolism than prey (predator tax)
-    move_cost: 0.045         # Higher movement cost than prey
-    bite_cost: 0.010         # Energy cost per bite attempt
-    bite_reward: 0.35        # Base energy transferred per successful bite
-    transfer_efficiency: 0.8 # Fraction of taken energy predator actually receives
-                             # Models energy loss in food chain transfer
-    digest_time: 1.5         # Seconds after a kill before predator can bite again
+    base_cost: 0.008         # Low base metabolism allows survival while learning to hunt
+    move_cost: 0.025         # Reduced movement cost for chasing
+    bite_cost: 0.003         # Energy cost per bite attempt
+    bite_reward: 0.50        # Base energy transferred per successful bite
+    transfer_efficiency: 0.85 # Fraction of taken energy predator actually receives
+    digest_time: 0.8         # Seconds after a kill before predator can bite again
+    accel_cost: 0.010        # Energy cost multiplier for thrust (acceleration penalty)
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics

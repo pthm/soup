@@ -187,8 +187,9 @@ func (g *Game) updateFeeding() {
 
 				preyWasAlive := nEnergy.Alive
 
-				// Simple bite: transfer energy
-				transferred := systems.TransferEnergy(energy, nEnergy, 0.1)
+				// Simple bite: transfer energy using configured bite reward
+				biteReward := float32(cfg.Energy.Predator.BiteReward)
+				transferred := systems.TransferEnergy(energy, nEnergy, biteReward)
 
 				if transferred > 0 {
 					// Record successful bite

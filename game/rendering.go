@@ -33,7 +33,7 @@ func (g *Game) Draw() {
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Prey: %d  Pred: %d  Dead: %d", g.numPrey, g.numPred, g.deadCount), 10, 35, 20, rl.White)
-	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.speed), 10, 60, 20, rl.White)
+	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.stepsPerUpdate), 10, 60, 20, rl.White)
 	if g.paused {
 		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)
 	}

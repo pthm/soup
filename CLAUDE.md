@@ -9,7 +9,7 @@ go build . && ./soup    # Run with graphics
 go test ./...           # Run tests
 ```
 
-Controls: `Space` pause, `<`/`>` adjust speed (1-10x), click to inspect entity
+Controls: `Space` pause, `<`/`>` adjust steps-per-update (1-10x), click to inspect entity
 
 ## CLI Options
 
@@ -19,6 +19,7 @@ Controls: `Space` pause, `<`/`>` adjust speed (1-10x), click to inspect entity
 | `-headless` | false | Run without graphics (fast evolution) |
 | `-seed` | time-based | RNG seed for reproducibility |
 | `-max-ticks` | 0 | Stop after N ticks (0 = unlimited) |
+| `-steps-per-update` | 1 | Simulation ticks per update call (higher = faster) |
 | `-log-stats` | false | Output ecosystem/perf stats as JSON |
 | `-log-file` | stdout | Write logs to file |
 | `-stats-window` | 0 | Stats window size in seconds (0 = use config) |
@@ -31,6 +32,27 @@ Common patterns:
 ./soup --log-stats --snapshot-dir=./snapshots    # Save interesting moments
 ./soup --config=config.yaml                      # Custom tuning parameters
 ```
+
+## Headless Mode & Fast-Forward
+
+For evolution experiments, run headless with `--steps-per-update` to simulate faster than real time:
+
+```bash
+# Run 1 million ticks at 100x speed, log stats every 10 simulated seconds
+./soup --headless --log-stats --max-ticks=1000000 --steps-per-update=100
+
+# Quick stability check: 500k ticks (~2.3 hours sim time) at 50x
+./soup --headless --log-stats --max-ticks=500000 --steps-per-update=50 | \
+  jq -r '[.sim_time, .prey, .pred] | @csv'
+```
+
+**How it works**: The simulation uses a fixed timestep (`dt=1/60`). The `--steps-per-update` flag runs multiple fixed-timestep ticks per update call, increasing throughput without changing physics or evolutionary dynamics. This is safe fast-forward—not variable timestep.
+
+**Typical throughput** (M2 Pro):
+- `--steps-per-update=1`: ~60k ticks/sec
+- `--steps-per-update=100`: ~45k ticks/sec (batching overhead)
+
+In graphical mode, `<`/`>` keys adjust steps-per-update (1-10x) for live fast-forward.
 
 ## Project Structure
 
@@ -83,17 +105,18 @@ Unspecified values use embedded defaults.
 | `screen` | Window size, target FPS |
 | `physics` | Time step (dt), spatial grid cell size |
 | `entity` | Body radius, initial energy |
-| `capabilities` | Vision range, FOV, speed, turn rate, drag, bite range |
+| `capabilities` | Vision range, FOV, speed, turn rate, drag, bite range, thrust deadzone |
 | `population` | Initial count, max prey/pred, respawn rules |
 | `reproduction` | Energy thresholds, cooldowns, offspring energy |
 | `mutation` | Rates and sigma for neural network mutations |
-| `energy.prey` | Base cost, movement cost, forage rate |
-| `energy.predator` | Base cost, movement cost, bite cost, transfer efficiency |
+| `energy.prey` | Base cost, movement cost, accel cost, forage rate, grazing peak |
+| `energy.predator` | Base cost, movement cost, accel cost, bite cost/reward, digest time |
 | `neural` | Hidden layer size, output count |
 | `sensors` | Number of sectors, resource sample distance |
 | `gpu` | Texture sizes, update intervals |
 | `telemetry` | Stats window, bookmark history |
 | `bookmarks` | Detection thresholds for evolutionary events |
+| `refugia` | Bite success reduction in resource-rich areas |
 
 ### Accessing Config in Code
 
@@ -240,15 +263,26 @@ pos := g.posMap.Get(entity)  // returns *Position or nil
 All values configurable via `config.yaml` (defaults shown):
 
 **Prey:**
-- Base cost: 0.01/sec (metabolism)
-- Movement cost: 0.03 × (speed/maxSpeed)² per sec
-- Forage rate: 0.06/sec at resource=1.0 when stationary
+- Base cost: 0.015/sec (metabolism)
+- Movement cost: 0.12 × (speed/maxSpeed)² per sec
+- Accel cost: 0.03 × thrust² per sec (penalizes constant acceleration)
+- Forage rate: 0.045/sec at resource=1.0, peaks at ~15% max speed
+
+**Grazing curve**: Foraging efficiency = `1 - 2×|speedRatio - grazingPeak|`, clamped to [0,1]. At default `grazing_peak=0.15`:
+- Stationary: 70% efficiency
+- 15% speed: 100% efficiency (optimal grazing)
+- 50% speed: 30% efficiency
+- 65%+ speed: 0% efficiency
 
 **Predator:**
-- Base cost: 0.016/sec (higher metabolism)
-- Movement cost: 0.045 × (speed/maxSpeed)² per sec
-- Bite cost: 0.01 per attack
-- Transfer efficiency: 80% of energy taken from prey
+- Base cost: 0.008/sec (lower to allow survival while learning to hunt)
+- Movement cost: 0.025 × (speed/maxSpeed)² per sec
+- Accel cost: 0.01 × thrust² per sec
+- Bite reward: 0.50 energy per successful bite
+- Transfer efficiency: 85% of energy taken from prey
+- Digest time: 0.8 sec cooldown after a kill
+
+**Thrust deadzone**: Neural network thrust outputs below 0.1 are treated as zero, making it easier to evolve "stop and graze" behavior.
 
 **Death**: When energy ≤ 0
 

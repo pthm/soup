@@ -17,6 +17,9 @@ var (
 	cachedResourceSampleDist float32
 	cachedForageRate         float32
 	cachedTransferEfficiency float32
+	cachedGrazingPeak        float32
+	cachedPreyAccelCost      float32
+	cachedPredAccelCost      float32
 	cacheInitialized         bool
 )
 
@@ -30,6 +33,9 @@ func InitSensorCache() {
 	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
 	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
 	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)
+	cachedGrazingPeak = float32(cfg.Energy.Prey.GrazingPeak)
+	cachedPreyAccelCost = float32(cfg.Energy.Prey.AccelCost)
+	cachedPredAccelCost = float32(cfg.Energy.Predator.AccelCost)
 	cacheInitialized = true
 }
 

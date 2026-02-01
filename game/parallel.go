@@ -32,6 +32,7 @@ type intent struct {
 	NewVelY    float32
 	NewPosX    float32
 	NewPosY    float32
+	Thrust     float32 // for accel cost calculation
 }
 
 // workerScratch holds per-worker reusable buffers.
@@ -159,6 +160,12 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 		pos.X = intent.NewPosX
 		pos.Y = intent.NewPosY
 
+		// Store thrust for accel cost calculation
+		energy := g.energyMap.Get(snap.Entity)
+		if energy != nil {
+			energy.LastThrust = intent.Thrust
+		}
+
 		// Inspector capture (rare path, only for selected entity)
 		if hasSelection && snap.Entity == selectedEntity {
 			scratch := &g.parallel.scratches[0]
@@ -203,6 +210,15 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 		// Fill input buffer and run brain
 		inputs := sensorInputs.FillSlice(scratch.Inputs[:])
 		turn, thrust, _ := snap.Brain.Forward(inputs)
+
+		// Apply thrust deadzone
+		thrustDeadzone := float32(config.Cfg().Capabilities.ThrustDeadzone)
+		if thrust < thrustDeadzone {
+			thrust = 0
+		}
+
+		// Store for accel cost calculation
+		intent.Thrust = thrust
 
 		// Compute physics (pure math, no shared state)
 		caps := &snap.Caps

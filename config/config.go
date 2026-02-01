@@ -84,6 +84,7 @@ type CapabilitiesConfig struct {
 	Drag             float64                    `yaml:"drag"`
 	BiteRange        float64                    `yaml:"bite_range"`
 	BiteCost         float64                    `yaml:"bite_cost"`
+	ThrustDeadzone   float64                    `yaml:"thrust_deadzone"` // Thrust below this = 0
 }
 
 // PopulationConfig holds population management parameters.
@@ -127,9 +128,11 @@ type EnergyConfig struct {
 
 // PreyEnergyConfig holds prey energy parameters.
 type PreyEnergyConfig struct {
-	BaseCost   float64 `yaml:"base_cost"`
-	MoveCost   float64 `yaml:"move_cost"`
-	ForageRate float64 `yaml:"forage_rate"`
+	BaseCost    float64 `yaml:"base_cost"`
+	MoveCost    float64 `yaml:"move_cost"`
+	ForageRate  float64 `yaml:"forage_rate"`
+	GrazingPeak float64 `yaml:"grazing_peak"` // Speed ratio for optimal foraging
+	AccelCost   float64 `yaml:"accel_cost"`   // Energy penalty for thrust
 }
 
 // PredatorEnergyConfig holds predator energy parameters.
@@ -140,6 +143,7 @@ type PredatorEnergyConfig struct {
 	BiteReward         float64 `yaml:"bite_reward"`
 	TransferEfficiency float64 `yaml:"transfer_efficiency"`
 	DigestTime         float64 `yaml:"digest_time"`
+	AccelCost          float64 `yaml:"accel_cost"` // Energy penalty for thrust
 }
 
 // RefugiaConfig holds refugia mechanics parameters.

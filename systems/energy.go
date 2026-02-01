@@ -45,6 +45,15 @@ func UpdateEnergy(
 		energy.Value -= moveCost * speedRatio * dt
 	}
 
+	// Acceleration cost: proportional to thrust^2
+	var accelCost float32
+	if kind == components.KindPredator {
+		accelCost = cachedPredAccelCost
+	} else {
+		accelCost = cachedPreyAccelCost
+	}
+	energy.Value -= accelCost * energy.LastThrust * energy.LastThrust * dt
+
 	// Bite cost (predators attacking)
 	if biteActive {
 		energy.Value -= float32(cfg.Energy.Predator.BiteCost)
@@ -82,9 +91,14 @@ func UpdatePreyForage(
 		speedRatio = 1
 	}
 
-	// Gain is higher when slow (grazing), lower when running
+	// Peak efficiency at grazing speed, drops toward 0 and max speed
+	// eff = 1 - 2*|speedRatio - grazingPeak|, clamped to [0, 1]
+	eff := 1.0 - 2.0*absf(speedRatio-cachedGrazingPeak)
+	if eff < 0 {
+		eff = 0
+	}
 	forageRate := cachedForageRate
-	gain := resourceHere * forageRate * (1 - speedRatio) * dt
+	gain := resourceHere * forageRate * eff * dt
 	energy.Value += gain
 
 	// Clamp to max

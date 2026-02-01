@@ -10,9 +10,10 @@ const (
 
 // Energy tracks an entity's metabolic state.
 type Energy struct {
-	Value float32 `inspect:"bar"` // 0..1
-	Age   float32 `inspect:"label,fmt:%.1fs"` // seconds alive
-	Alive bool    `inspect:"bool"`
+	Value      float32 `inspect:"bar"`           // 0..1
+	Age        float32 `inspect:"label,fmt:%.1fs"` // seconds alive
+	Alive      bool    `inspect:"bool"`
+	LastThrust float32 // thrust from last tick for accel cost calculation
 }
 
 // Organism bundles identity, kind, and reproduction state.

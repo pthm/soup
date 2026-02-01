@@ -8,12 +8,12 @@ func (g *Game) handleInput() {
 		g.paused = !g.paused
 	}
 
-	// Speed control with < > keys (comma and period)
-	if rl.IsKeyPressed(rl.KeyComma) && g.speed > 1 {
-		g.speed--
+	// Steps-per-update control with < > keys (comma and period)
+	if rl.IsKeyPressed(rl.KeyComma) && g.stepsPerUpdate > 1 {
+		g.stepsPerUpdate--
 	}
-	if rl.IsKeyPressed(rl.KeyPeriod) && g.speed < 10 {
-		g.speed++
+	if rl.IsKeyPressed(rl.KeyPeriod) && g.stepsPerUpdate < 10 {
+		g.stepsPerUpdate++
 	}
 
 	// Debug mode toggle

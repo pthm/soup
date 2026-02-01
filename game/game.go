@@ -83,7 +83,7 @@ type Game struct {
 	deadCount  int
 	numPrey    int
 	numPred    int
-	speed      int // simulation speed multiplier (1-10)
+	stepsPerUpdate int // simulation ticks per update call
 
 	// Debug state
 	debugMode         bool
@@ -109,6 +109,7 @@ type Options struct {
 	StatsWindowSec float64
 	SnapshotDir    string
 	Headless       bool
+	StepsPerUpdate int // simulation ticks per update call (1+), 0 = use default (1)
 }
 
 // NewGame creates a new game instance with default options.
@@ -127,12 +128,17 @@ func NewGameWithOptions(opts Options) *Game {
 
 	cfg := config.Cfg()
 
+	stepsPerUpdate := opts.StepsPerUpdate
+	if stepsPerUpdate < 1 {
+		stepsPerUpdate = 1
+	}
+
 	g := &Game{
-		world:  world,
-		rng:    rand.New(rand.NewSource(opts.Seed)),
-		width:  float32(cfg.Screen.Width),
-		height: float32(cfg.Screen.Height),
-		speed:  1,
+		world:          world,
+		rng:            rand.New(rand.NewSource(opts.Seed)),
+		width:          float32(cfg.Screen.Width),
+		height:         float32(cfg.Screen.Height),
+		stepsPerUpdate: stepsPerUpdate,
 		brains: make(map[uint32]*neural.FFNN),
 		entityMapper: ecs.NewMap7[
 			components.Position,
@@ -207,8 +213,8 @@ func (g *Game) Update() {
 		return
 	}
 
-	// Run multiple simulation steps based on speed
-	for i := 0; i < g.speed; i++ {
+	// Run multiple simulation steps based on stepsPerUpdate
+	for i := 0; i < g.stepsPerUpdate; i++ {
 		g.simulationStep()
 	}
 }
@@ -268,9 +274,11 @@ func (g *Game) Tick() int32 {
 	return g.tick
 }
 
-// UpdateHeadless runs a single simulation step without rendering.
+// UpdateHeadless runs simulation steps without rendering, respecting stepsPerUpdate setting.
 func (g *Game) UpdateHeadless() {
-	g.simulationStep()
+	for i := 0; i < g.stepsPerUpdate; i++ {
+		g.simulationStep()
+	}
 }
 
 // ResourceField returns the resource sampler.

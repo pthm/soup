@@ -24,6 +24,7 @@ func main() {
 	snapshotDir := flag.String("snapshot-dir", "", "Directory for snapshot files")
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
 	maxTicks := flag.Int("max-ticks", 0, "Stop after N ticks (0 = unlimited)")
+	stepsPerUpdate := flag.Int("steps-per-update", 1, "Simulation ticks per update call (higher = faster headless runs)")
 
 	flag.Parse()
 
@@ -71,6 +72,7 @@ func main() {
 		StatsWindowSec: statsWindowSec,
 		SnapshotDir:    *snapshotDir,
 		Headless:       *headless,
+		StepsPerUpdate: *stepsPerUpdate,
 	}
 
 	if *headless {
@@ -86,6 +88,7 @@ func main() {
 			"seed", rngSeed,
 			"stats_window", *statsWindow,
 			"max_ticks", *maxTicks,
+			"steps_per_update", *stepsPerUpdate,
 		)
 
 		for {
@@ -93,7 +96,7 @@ func main() {
 
 			if *maxTicks > 0 && int(g.Tick()) >= *maxTicks {
 				slog.Info("max ticks reached", "tick", g.Tick())
-				break
+				return
 			}
 		}
 	} else {
