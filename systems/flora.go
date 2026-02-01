@@ -218,17 +218,17 @@ func (fs *FloraSystem) applyFlowField(f *Flora) {
 	f.X += f.VelX
 	f.Y += f.VelY
 
-	// Wrap around edges (toroidal space)
-	if f.X < 0 {
+	// Wrap around edges (toroidal space) into [0, width) / [0, height)
+	for f.X < 0 {
 		f.X += fs.bounds.Width
 	}
-	if f.X > fs.bounds.Width {
+	for f.X >= fs.bounds.Width {
 		f.X -= fs.bounds.Width
 	}
-	if f.Y < 0 {
+	for f.Y < 0 {
 		f.Y += fs.bounds.Height
 	}
-	if f.Y > fs.bounds.Height {
+	for f.Y >= fs.bounds.Height {
 		f.Y -= fs.bounds.Height
 	}
 }

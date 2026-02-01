@@ -154,22 +154,22 @@ func (s *FlowFieldSystem) Update(tick int32) {
 			p.TrailLen = 0
 		}
 
-		// Wrap at edges (always, cheap)
+		// Wrap at edges (always, cheap) into [0, width) / [0, height)
 		wrapped := false
-		if p.X < 0 {
-			p.X = s.bounds.Width
+		for p.X < 0 {
+			p.X += s.bounds.Width
 			wrapped = true
 		}
-		if p.X > s.bounds.Width {
-			p.X = 0
+		for p.X >= s.bounds.Width {
+			p.X -= s.bounds.Width
 			wrapped = true
 		}
-		if p.Y < 0 {
-			p.Y = s.bounds.Height
+		for p.Y < 0 {
+			p.Y += s.bounds.Height
 			wrapped = true
 		}
-		if p.Y > s.bounds.Height {
-			p.Y = 0
+		for p.Y >= s.bounds.Height {
+			p.Y -= s.bounds.Height
 			wrapped = true
 		}
 		if wrapped {

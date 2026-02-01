@@ -20,17 +20,18 @@ const (
 
 	// Movement costs - PRIMARY selective pressure (NON-LINEAR)
 	// Quadratic cost curve: efficient cruising, expensive bursting
-	movementCostBase  = 0.003  // Base cost coefficient (quadratic: speed² * base)
-	thrustCostBase    = 0.003  // Cost for actual acceleration/thrust
+	movementCostBase  = 0.008  // Base cost coefficient (quadratic: speed² * base)
+	thrustCostBase    = 0.010  // Cost for actual acceleration/thrust
 	massScaleExponent = 0.5    // Larger organisms pay more to move (was 0.4)
 
 	// Jitter penalty - penalizes rapid direction changes
 	// Encourages smooth movement, discourages oscillation
-	jitterCostBase = 0.002 // Cost per unit of direction change
+	jitterCostBase = 0.004 // Cost per unit of direction change
 
 	// Turn penalty - sharp turns while moving cost more
 	// Multiplier: 1.0 (straight) to 1.0 + turnCostMultiplier (max turn)
-	turnCostMultiplier = 0.3 // 30% extra cost at maximum turn rate
+	turnCostMultiplier = 0.8 // 80% extra cost at maximum turn rate
+	turnCostBase       = 0.004 // Base cost for turning, even at low throttle
 
 	// Energy capacity
 	baseEnergy        = 100.0 // Minimum energy capacity
@@ -95,6 +96,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		throttleSquared := org.UThrottle * org.UThrottle
 		turnPenalty := 1.0 + float32(math.Abs(float64(org.UTurn)))*turnCostMultiplier
 		movementCost := throttleSquared * turnPenalty * movementCostBase * massFactor * armorPen
+		turnCost := float32(math.Abs(float64(org.UTurn))) * turnCostBase * massFactor * armorPen
 
 		// JITTER PENALTY: penalize rapid turn/throttle changes
 		// Discourages oscillating, rewards smooth trajectories
@@ -113,7 +115,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		org.ActiveThrust = 0 // Reset for next tick
 
 		// === TOTAL ENERGY DRAIN ===
-		totalDrain := baseDrain + intentCost + movementCost + jitterCost + thrustCost
+		totalDrain := baseDrain + intentCost + movementCost + turnCost + jitterCost + thrustCost
 
 		// Minimum drain (can't gain energy from just photosynthesis without feeding)
 		if totalDrain < 0.0001 {

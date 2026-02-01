@@ -58,8 +58,30 @@ func (sg *SpatialGrid) Update(floraPos, faunaPos []components.Position) {
 }
 
 func (sg *SpatialGrid) worldToGrid(x, y float32) (int, int) {
-	gx := clampInt(int(x/sg.cellWidth), 0, spatialGridSize-1)
-	gy := clampInt(int(y/sg.cellHeight), 0, spatialGridSize-1)
+	// Wrap position to [0, width) and [0, height) first for toroidal geometry
+	for x < 0 {
+		x += sg.width
+	}
+	for x >= sg.width {
+		x -= sg.width
+	}
+	for y < 0 {
+		y += sg.height
+	}
+	for y >= sg.height {
+		y -= sg.height
+	}
+
+	gx := int(x / sg.cellWidth)
+	gy := int(y / sg.cellHeight)
+
+	// Safety clamp for edge cases (floating point)
+	if gx >= spatialGridSize {
+		gx = spatialGridSize - 1
+	}
+	if gy >= spatialGridSize {
+		gy = spatialGridSize - 1
+	}
 	return gx, gy
 }
 

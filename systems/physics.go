@@ -87,17 +87,17 @@ func (s *PhysicsSystem) Update(w *ecs.World) {
 		// No longer derived from velocity - this eliminates the feedback loop
 		// that caused jittering with constant UFwd/UUp outputs
 
-		// Toroidal wrap-around (all edges)
-		if pos.X < 0 {
+		// Toroidal wrap-around (all edges) into [0, width) / [0, height)
+		for pos.X < 0 {
 			pos.X += s.bounds.Width
 		}
-		if pos.X > s.bounds.Width {
+		for pos.X >= s.bounds.Width {
 			pos.X -= s.bounds.Width
 		}
-		if pos.Y < 0 {
+		for pos.Y < 0 {
 			pos.Y += s.bounds.Height
 		}
-		if pos.Y > s.bounds.Height {
+		for pos.Y >= s.bounds.Height {
 			pos.Y -= s.bounds.Height
 		}
 	}

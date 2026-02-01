@@ -313,6 +313,14 @@ func (s *BreedingSystem) canStartHandshake(a, b *breeder) bool {
 		return false
 	}
 
+	// Must be same species (species 0 = non-neural, can't breed sexually)
+	if a.speciesID == 0 || b.speciesID == 0 {
+		return false
+	}
+	if a.speciesID != b.speciesID {
+		return false
+	}
+
 	// Both must have MateIntent above threshold
 	if a.org.MateIntent < BreedIntentThreshold || b.org.MateIntent < BreedIntentThreshold {
 		return false

@@ -137,17 +137,17 @@ func (s *SporeSystem) updateDrift(spore *SporeEntity, tick int32) {
 	spore.X += spore.VelX
 	spore.Y += spore.VelY
 
-	// Toroidal wrap-around (all edges)
-	if spore.X < 0 {
+	// Toroidal wrap-around (all edges) into [0, width) / [0, height)
+	for spore.X < 0 {
 		spore.X += s.bounds.Width
 	}
-	if spore.X > s.bounds.Width {
+	for spore.X >= s.bounds.Width {
 		spore.X -= s.bounds.Width
 	}
-	if spore.Y < 0 {
+	for spore.Y < 0 {
 		spore.Y += s.bounds.Height
 	}
-	if spore.Y > s.bounds.Height {
+	for spore.Y >= s.bounds.Height {
 		spore.Y -= s.bounds.Height
 	}
 }

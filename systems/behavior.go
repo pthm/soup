@@ -1403,6 +1403,7 @@ func computeFoodFields(
 	// Accumulators for weighted direction
 	var plantX, plantY, plantTotal float32
 	var meatX, meatY, meatTotal float32
+	var plantCount, meatCount int
 
 	// Plant preference for herbivores, meat preference for carnivores
 	plantWeight := 1.0 - digestiveSpectrum // Herbivores prefer plants
@@ -1424,29 +1425,31 @@ func computeFoodFields(
 			plantX += dx * intensity * plantWeight
 			plantY += dy * intensity * plantWeight
 			plantTotal += intensity * plantWeight
+			plantCount++
 		} else {
 			// Meat
 			meatX += dx * intensity * meatWeight
 			meatY += dy * intensity * meatWeight
 			meatTotal += intensity * meatWeight
+			meatCount++
 		}
 	}
 
-	// Normalize and convert to local space
-	if plantTotal > 0.01 {
+	// Normalize and convert to local space (normalize by type-specific count)
+	if plantCount > 0 && plantTotal > 0.01 {
 		localFwd, localUp := worldToLocal(plantX, plantY, heading)
 		nx, ny, _ := normalizeVector(localFwd, localUp)
 		fields.PlantFwd = nx
 		fields.PlantUp = ny
-		fields.PlantMag = clampFloat(plantTotal/float32(len(foods)), 0, 1)
+		fields.PlantMag = clampFloat(plantTotal/float32(plantCount), 0, 1)
 	}
 
-	if meatTotal > 0.01 {
+	if meatCount > 0 && meatTotal > 0.01 {
 		localFwd, localUp := worldToLocal(meatX, meatY, heading)
 		nx, ny, _ := normalizeVector(localFwd, localUp)
 		fields.MeatFwd = nx
 		fields.MeatUp = ny
-		fields.MeatMag = clampFloat(meatTotal/float32(len(foods)), 0, 1)
+		fields.MeatMag = clampFloat(meatTotal/float32(meatCount), 0, 1)
 	}
 
 	return fields
@@ -1572,27 +1575,27 @@ func computeApproachInfo(
 		}
 		info.NearestFoodDist = 1.0 - clampFloat(surfaceDist/perceptionRadius, 0, 1)
 
-		// Compute bearing: angle between heading and direction to food
-		// 0 = directly ahead, ±1 = directly behind
+		// Compute bearing using atan2 for linear angle encoding
+		// 0 = directly ahead, +0.5 = 90° right, -0.5 = 90° left, ±1 = behind
 		if nearestFoodDist > 0.1 {
 			dirX := nearestFoodDx / nearestFoodDist
 			dirY := nearestFoodDy / nearestFoodDist
 			// Heading vector
 			headX := float32(math.Cos(float64(heading)))
 			headY := float32(math.Sin(float64(heading)))
-			// Dot product gives cos(angle): 1=ahead, -1=behind
+			// Dot product gives cos(angle), cross gives sin(angle)
 			dot := dirX*headX + dirY*headY
-			// Cross product sign gives turn direction
 			cross := headX*dirY - headY*dirX
-			// Convert to bearing: 0=ahead, positive=right, negative=left
-			// Scale so ±1 = directly behind (dot = -1)
-			info.NearestFoodBearing = clampFloat(-cross*(1.0-dot*0.5), -1, 1)
+			// atan2(-cross, dot) preserves original sign convention: positive = turn right
+			relAngle := float32(math.Atan2(float64(-cross), float64(dot)))
+			info.NearestFoodBearing = clampFloat(relAngle/math.Pi, -1, 1)
 		}
 	}
 
 	// Find nearest same-species neighbor (potential mate)
 	var nearestMateDist float32 = perceptionRadius + 1
 	var nearestMateDx, nearestMateDy float32
+	var nearestMateRadius float32
 	foundMate := false
 
 	for _, n := range neighbors {
@@ -1604,19 +1607,21 @@ func computeApproachInfo(
 			nearestMateDist = dist
 			nearestMateDx = dx
 			nearestMateDy = dy
+			nearestMateRadius = n.BodyRadius
 			foundMate = true
 		}
 	}
 
 	if foundMate {
-		// Normalize distance: surface-to-surface
-		surfaceDist := nearestMateDist - bodyRadius*2 // Both organisms have body radius
+		// Normalize distance: surface-to-surface (self + neighbor radius)
+		surfaceDist := nearestMateDist - bodyRadius - nearestMateRadius
 		if surfaceDist < 0 {
 			surfaceDist = 0
 		}
 		info.NearestMateDist = 1.0 - clampFloat(surfaceDist/perceptionRadius, 0, 1)
 
-		// Compute bearing
+		// Compute bearing using atan2 for linear angle encoding
+		// 0 = directly ahead, +0.5 = 90° right, -0.5 = 90° left, ±1 = behind
 		if nearestMateDist > 0.1 {
 			dirX := nearestMateDx / nearestMateDist
 			dirY := nearestMateDy / nearestMateDist
@@ -1624,7 +1629,9 @@ func computeApproachInfo(
 			headY := float32(math.Sin(float64(heading)))
 			dot := dirX*headX + dirY*headY
 			cross := headX*dirY - headY*dirX
-			info.NearestMateBearing = clampFloat(-cross*(1.0-dot*0.5), -1, 1)
+			// atan2(-cross, dot) preserves original sign convention: positive = turn right
+			relAngle := float32(math.Atan2(float64(-cross), float64(dot)))
+			info.NearestMateBearing = clampFloat(relAngle/math.Pi, -1, 1)
 		}
 	}
 
