@@ -218,3 +218,74 @@ func tanh(x float32) float32 {
 func sigmoid(x float32) float32 {
 	return 1.0 / (1.0 + float32(math.Exp(-float64(x))))
 }
+
+// BrainWeights holds flattened network weights for serialization.
+type BrainWeights struct {
+	W1 []float32 `json:"w1"` // [NumHidden * NumInputs]
+	B1 []float32 `json:"b1"` // [NumHidden]
+	W2 []float32 `json:"w2"` // [NumOutputs * NumHidden]
+	B2 []float32 `json:"b2"` // [NumOutputs]
+}
+
+// MarshalWeights flattens the network weights for JSON serialization.
+func (nn *FFNN) MarshalWeights() BrainWeights {
+	bw := BrainWeights{
+		W1: make([]float32, NumHidden*NumInputs),
+		B1: make([]float32, NumHidden),
+		W2: make([]float32, NumOutputs*NumHidden),
+		B2: make([]float32, NumOutputs),
+	}
+
+	// Flatten W1
+	for i := 0; i < NumHidden; i++ {
+		for j := 0; j < NumInputs; j++ {
+			bw.W1[i*NumInputs+j] = nn.W1[i][j]
+		}
+	}
+
+	// Copy B1
+	copy(bw.B1, nn.B1[:])
+
+	// Flatten W2
+	for i := 0; i < NumOutputs; i++ {
+		for j := 0; j < NumHidden; j++ {
+			bw.W2[i*NumHidden+j] = nn.W2[i][j]
+		}
+	}
+
+	// Copy B2
+	copy(bw.B2, nn.B2[:])
+
+	return bw
+}
+
+// UnmarshalWeights restores network weights from flattened form.
+func (nn *FFNN) UnmarshalWeights(bw BrainWeights) {
+	// Restore W1
+	for i := 0; i < NumHidden; i++ {
+		for j := 0; j < NumInputs; j++ {
+			if i*NumInputs+j < len(bw.W1) {
+				nn.W1[i][j] = bw.W1[i*NumInputs+j]
+			}
+		}
+	}
+
+	// Restore B1
+	for i := 0; i < NumHidden && i < len(bw.B1); i++ {
+		nn.B1[i] = bw.B1[i]
+	}
+
+	// Restore W2
+	for i := 0; i < NumOutputs; i++ {
+		for j := 0; j < NumHidden; j++ {
+			if i*NumHidden+j < len(bw.W2) {
+				nn.W2[i][j] = bw.W2[i*NumHidden+j]
+			}
+		}
+	}
+
+	// Restore B2
+	for i := 0; i < NumOutputs && i < len(bw.B2); i++ {
+		nn.B2[i] = bw.B2[i]
+	}
+}

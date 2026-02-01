@@ -2,17 +2,19 @@ package game
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"math/rand"
 
-	"github.com/mlange-42/ark/ecs"
 	rl "github.com/gen2brain/raylib-go/raylib"
+	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/inspector"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
+	"github.com/pthm-cable/soup/telemetry"
 )
 
 // Screen dimensions
@@ -129,15 +131,42 @@ type Game struct {
 
 	// Window dimensions
 	width, height float32
+
+	// Telemetry
+	collector        *telemetry.Collector
+	bookmarkDetector *telemetry.BookmarkDetector
+	lifetimeTracker  *telemetry.LifetimeTracker
+	logStats         bool
+	snapshotDir      string
+	rngSeed          int64
 }
 
-// NewGame creates a new game instance.
+// Options configures game behavior.
+type Options struct {
+	Seed           int64
+	LogStats       bool
+	StatsWindowSec float64
+	SnapshotDir    string
+	Headless       bool
+}
+
+// NewGame creates a new game instance with default options.
 func NewGame() *Game {
+	return NewGameWithOptions(Options{
+		Seed:           42,
+		LogStats:       false,
+		StatsWindowSec: 10.0,
+		SnapshotDir:    "",
+	})
+}
+
+// NewGameWithOptions creates a new game instance with the given options.
+func NewGameWithOptions(opts Options) *Game {
 	world := ecs.NewWorld()
 
 	g := &Game{
 		world:  world,
-		rng:    rand.New(rand.NewSource(42)),
+		rng:    rand.New(rand.NewSource(opts.Seed)),
 		width:  float32(ScreenWidth),
 		height: float32(ScreenHeight),
 		speed:  1,
@@ -167,7 +196,17 @@ func NewGame() *Game {
 		energyMap: ecs.NewMap1[components.Energy](world),
 		capsMap:   ecs.NewMap1[components.Capabilities](world),
 		orgMap:    ecs.NewMap1[components.Organism](world),
+
+		// Telemetry
+		logStats:    opts.LogStats,
+		snapshotDir: opts.SnapshotDir,
+		rngSeed:     opts.Seed,
 	}
+
+	// Initialize telemetry
+	g.collector = telemetry.NewCollector(opts.StatsWindowSec, DT)
+	g.bookmarkDetector = telemetry.NewBookmarkDetector(10) // 10 windows of history
+	g.lifetimeTracker = telemetry.NewLifetimeTracker()
 
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
@@ -175,14 +214,17 @@ func NewGame() *Game {
 	// Resource field (12 hotspots)
 	g.resourceField = systems.NewResourceField(g.width, g.height, 12, g.rng)
 
-	// GPU flow field
-	g.flow = renderer.NewGPUFlowField(g.width, g.height)
+	// Only initialize rendering resources if not headless
+	if !opts.Headless {
+		// GPU flow field
+		g.flow = renderer.NewGPUFlowField(g.width, g.height)
 
-	// Water background
-	g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
+		// Water background
+		g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
 
-	// Inspector
-	g.inspector = inspector.NewInspector(int32(g.width), int32(g.height))
+		// Inspector
+		g.inspector = inspector.NewInspector(int32(g.width), int32(g.height))
+	}
 
 	// Spawn initial population
 	g.spawnInitialPopulation()
@@ -227,6 +269,9 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 	entity := g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
 	g.aliveCount++
 
+	// Register with lifetime tracker
+	g.lifetimeTracker.Register(id, g.tick)
+
 	// Track population by kind
 	if kind == components.KindPrey {
 		g.numPrey++
@@ -254,8 +299,10 @@ func (g *Game) Update() {
 
 // simulationStep runs a single tick of the simulation.
 func (g *Game) simulationStep() {
-	// Update flow field
-	g.flow.Update(g.tick, float32(g.tick)*0.01)
+	// Update flow field (only if available - nil in headless mode initially)
+	if g.flow != nil {
+		g.flow.Update(g.tick, float32(g.tick)*0.01)
+	}
 
 	// 1. Update spatial grid
 	g.updateSpatialGrid()
@@ -278,7 +325,141 @@ func (g *Game) simulationStep() {
 	// 7. Cleanup dead entities
 	g.cleanupDead()
 
+	// 8. Flush telemetry window if needed
+	g.flushTelemetry()
+
 	g.tick++
+}
+
+// flushTelemetry checks if the stats window should be flushed and handles bookmarks.
+func (g *Game) flushTelemetry() {
+	if !g.collector.ShouldFlush(g.tick) {
+		return
+	}
+
+	// Sample energy distributions and resource utilization
+	preyEnergies, predEnergies, meanResource := g.sampleEnergyDistributions()
+
+	// Flush the stats window
+	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource)
+
+	// Log stats if enabled
+	if g.logStats {
+		stats.LogStats()
+	}
+
+	// Check for bookmarks
+	bookmarks := g.bookmarkDetector.Check(stats)
+	for _, bm := range bookmarks {
+		if g.logStats {
+			bm.LogBookmark()
+		}
+
+		// Save snapshot on bookmark
+		if g.snapshotDir != "" {
+			g.saveSnapshot(&bm)
+		}
+	}
+}
+
+// sampleEnergyDistributions collects energy values for percentile calculation.
+func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64, meanResource float64) {
+	var resourceSum float64
+	var preyCount int
+
+	query := g.entityFilter.Query()
+	for query.Next() {
+		pos, _, _, _, energy, _, org := query.Get()
+
+		if !energy.Alive {
+			continue
+		}
+
+		if org.Kind == components.KindPrey {
+			preyEnergies = append(preyEnergies, float64(energy.Value))
+			resourceSum += float64(g.resourceField.Sample(pos.X, pos.Y))
+			preyCount++
+		} else {
+			predEnergies = append(predEnergies, float64(energy.Value))
+		}
+
+		// Update lifetime peak energy
+		g.lifetimeTracker.UpdateEnergy(org.ID, energy.Value)
+	}
+
+	if preyCount > 0 {
+		meanResource = resourceSum / float64(preyCount)
+	}
+
+	return preyEnergies, predEnergies, meanResource
+}
+
+// saveSnapshot creates and saves a snapshot to disk.
+func (g *Game) saveSnapshot(bookmark *telemetry.Bookmark) {
+	snapshot := g.createSnapshot(bookmark)
+
+	path, err := telemetry.SaveSnapshot(snapshot, g.snapshotDir)
+	if err != nil {
+		slog.Error("failed to save snapshot", "error", err)
+		return
+	}
+
+	slog.Info("snapshot saved", "path", path, "tick", g.tick)
+}
+
+// createSnapshot builds a snapshot from the current state.
+func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot {
+	snapshot := &telemetry.Snapshot{
+		Version:          telemetry.SnapshotVersion,
+		RNGSeed:          g.rngSeed,
+		WorldWidth:       g.width,
+		WorldHeight:      g.height,
+		ResourceHotspots: g.resourceField.Hotspots(),
+		ResourceSigma:    g.resourceField.Sigma(),
+		Tick:             g.tick,
+		Bookmark:         bookmark,
+	}
+
+	// Collect entity states
+	query := g.entityFilter.Query()
+	for query.Next() {
+		pos, vel, rot, _, energy, _, org := query.Get()
+
+		if !energy.Alive {
+			continue
+		}
+
+		// Get brain weights
+		brain, ok := g.brains[org.ID]
+		if !ok {
+			continue
+		}
+
+		// Get lifetime stats
+		var lifetime *telemetry.LifetimeStatsJSON
+		if ls := g.lifetimeTracker.Get(org.ID); ls != nil {
+			lifetime = ls.ToJSON()
+		}
+
+		state := telemetry.EntityState{
+			ID:            org.ID,
+			Kind:          org.Kind,
+			X:             pos.X,
+			Y:             pos.Y,
+			VelX:          vel.X,
+			VelY:          vel.Y,
+			Heading:       rot.Heading,
+			Energy:        energy.Value,
+			Age:           energy.Age,
+			ReproCooldown: org.ReproCooldown,
+			Brain:         brain.MarshalWeights(),
+			Lifetime:      lifetime,
+		}
+
+		snapshot.Entities = append(snapshot.Entities, state)
+	}
+
+	return snapshot
 }
 
 // updateSpatialGrid rebuilds the spatial index.
@@ -298,8 +479,12 @@ func (g *Game) updateSpatialGrid() {
 
 // updateBehaviorAndPhysics runs brains and applies movement.
 func (g *Game) updateBehaviorAndPhysics() {
-	// Check if we have a selected entity for inspector
-	selectedEntity, hasSelection := g.inspector.Selected()
+	// Check if we have a selected entity for inspector (headless mode has no inspector)
+	var selectedEntity ecs.Entity
+	var hasSelection bool
+	if g.inspector != nil {
+		selectedEntity, hasSelection = g.inspector.Selected()
+	}
 
 	query := g.entityFilter.Query()
 	for query.Next() {
@@ -417,8 +602,27 @@ func (g *Game) updateFeeding() {
 			// Get prey energy directly via mapper
 			nEnergy := g.energyMap.Get(neighbor)
 			if nEnergy != nil && nEnergy.Alive {
+				// Record bite attempt
+				g.collector.RecordBiteAttempt()
+				g.lifetimeTracker.RecordBiteAttempt(org.ID)
+
+				preyWasAlive := nEnergy.Alive
+
 				// Simple bite: transfer energy
-				systems.TransferEnergy(energy, nEnergy, 0.1)
+				transferred := systems.TransferEnergy(energy, nEnergy, 0.1)
+
+				if transferred > 0 {
+					// Record successful bite
+					g.collector.RecordBiteHit()
+					g.lifetimeTracker.RecordBiteHit(org.ID)
+
+					// Check for kill
+					if preyWasAlive && !nEnergy.Alive {
+						g.collector.RecordKill()
+						g.lifetimeTracker.RecordKill(org.ID)
+					}
+				}
+
 				break // one bite per tick
 			}
 		}
@@ -468,6 +672,10 @@ func (g *Game) cleanupDead() {
 
 	// Second pass: remove entities (query iteration complete)
 	for _, dead := range toRemove {
+		// Record death in telemetry
+		g.collector.RecordDeath(dead.kind)
+		g.lifetimeTracker.Remove(dead.id)
+
 		g.entityMapper.Remove(dead.entity)
 		delete(g.brains, dead.id)
 		g.aliveCount--
@@ -518,6 +726,7 @@ func (g *Game) updateReproduction() {
 		x, y, heading float32
 		kind          components.Kind
 		parentBrain   *neural.FFNN
+		parentID      uint32
 	}
 	var births []birthInfo
 
@@ -576,6 +785,7 @@ func (g *Game) updateReproduction() {
 			heading:     childHeading,
 			kind:        org.Kind,
 			parentBrain: parentBrain,
+			parentID:    org.ID,
 		})
 
 		// Store child energy temporarily (will apply after spawn)
@@ -597,6 +807,10 @@ func (g *Game) updateReproduction() {
 			// Set child energy from parent split
 			childEnergy.Value = 0.35 // Fixed starting energy for children
 			childEnergy.Age = 0
+
+			// Record birth in telemetry
+			g.collector.RecordBirth(b.kind)
+			g.lifetimeTracker.RecordChild(b.parentID)
 		}
 	}
 }
@@ -718,4 +932,14 @@ func (g *Game) Unload() {
 // Tick returns the current simulation tick.
 func (g *Game) Tick() int32 {
 	return g.tick
+}
+
+// UpdateHeadless runs a single simulation step without rendering.
+func (g *Game) UpdateHeadless() {
+	g.simulationStep()
+}
+
+// ResourceField returns the resource field for snapshot access.
+func (g *Game) ResourceField() *systems.ResourceField {
+	return g.resourceField
 }

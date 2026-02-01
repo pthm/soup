@@ -65,3 +65,36 @@ func (rf *ResourceField) Width() float32 {
 func (rf *ResourceField) Height() float32 {
 	return rf.height
 }
+
+// HotspotDef represents a hotspot for serialization.
+type HotspotDef struct {
+	X float32 `json:"x"`
+	Y float32 `json:"y"`
+}
+
+// Hotspots returns the hotspot positions for snapshot serialization.
+func (rf *ResourceField) Hotspots() []HotspotDef {
+	result := make([]HotspotDef, len(rf.centers))
+	for i, c := range rf.centers {
+		result[i] = HotspotDef{X: c.X, Y: c.Y}
+	}
+	return result
+}
+
+// Sigma returns the Gaussian sigma for snapshot reproducibility.
+func (rf *ResourceField) Sigma() float32 {
+	return rf.sigma
+}
+
+// RestoreHotspots sets hotspots from saved data.
+func (rf *ResourceField) RestoreHotspots(hotspots []HotspotDef) {
+	rf.centers = make([]hotspot, len(hotspots))
+	for i, h := range hotspots {
+		rf.centers[i] = hotspot{X: h.X, Y: h.Y}
+	}
+}
+
+// SetSigma sets the sigma value.
+func (rf *ResourceField) SetSigma(sigma float32) {
+	rf.sigma = sigma
+}
