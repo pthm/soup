@@ -226,24 +226,36 @@ GPU-accelerated visuals using raylib:
 | `water.go` | Animated Perlin noise water background |
 | `flowfield_gpu.go` | GPU-computed flow field texture for visual effects |
 
-### Resource Field (`systems/resource_field.go`)
+### Particle Resource Field (`systems/particle_resource.go`)
 
-CPU-based resource grid with depletion, regrowth, and diffusion:
+Mass-conserving resource system with particle transport:
+
+| Layer | Description |
+|-------|-------------|
+| **Potential field P** | Slow-evolving FBM that determines where new mass enters |
+| **Flow field (U,V)** | Curl noise creating divergence-free currents |
+| **Resource grid R** | Mass density that organisms consume from |
+| **Particles** | Mass-carrying packets that drift with flow and exchange mass with grid |
 
 | Feature | Description |
 |---------|-------------|
-| **Tileable FBM** | Procedural noise creates organic "patch" patterns |
+| **Mass conservation** | Mass enters via spawn, moves via deposit/pickup, exits via consumption |
+| **Curl noise flow** | Divergence-free flow field from curl of scalar FBM |
+| **RK2 advection** | Particles use midpoint integration for smooth trajectories |
+| **Deposit/pickup** | Particles gradually deposit mass to grid and entrain mass from dense regions |
 | **True depletion** | Prey grazing removes resource from grid cells |
-| **Regrowth** | Resource relaxes back toward capacity over time |
-| **Diffusion** | Resources spread between neighboring cells |
-| **Evolving patches** | Capacity field drifts over time (optional) |
-| **Energy transfer** | Prey energy gain = actual removed resource × efficiency |
+
+Key config parameters (`particles:` section):
+- `spawn_rate`: Base particles/sec (scaled by potential)
+- `deposit_rate`: Fraction of particle mass deposited to grid per sec
+- `pickup_rate`: Mass pickup rate from grid per sec
+- `flow_strength`: Flow velocity scale (world units/sec)
+- `flow_evolution`: Temporal drift rate for flow field
 
 Key config parameters (`resource:` section):
-- `regrow_rate`: Recovery speed toward capacity (0.25/sec default)
-- `diffuse`: Spreading strength (0.10/sec default)
 - `graze_radius`: Kernel size for grazing (1 = 3×3 cells)
 - `forage_efficiency`: Fraction of removed resource that becomes energy
+- `contrast`: FBM contrast exponent (higher = sparser patches)
 
 ## World Space
 

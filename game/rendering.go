@@ -120,13 +120,13 @@ func (g *Game) drawDebugMenu() {
 	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+55, 12, rl.White)
 }
 
-// drawResourceHeatmap renders the CPU resource field as a colored overlay.
+// drawResourceHeatmap renders the resource field as a colored overlay.
 func (g *Game) drawResourceHeatmap(alpha uint8) {
 	cam := g.camera
-	gridW, gridH := g.cpuResourceField.GridSize()
+	gridW, gridH := g.resourceField.GridSize()
 	cellW := g.worldWidth / float32(gridW)
 	cellH := g.worldHeight / float32(gridH)
-	res := g.cpuResourceField.ResData()
+	res := g.resourceField.ResData()
 
 	for y := 0; y < gridH; y++ {
 		for x := 0; x < gridW; x++ {

@@ -19,12 +19,10 @@ population:
   min_prey: 0                  # No artificial floor
   max_pred: 8                  # Very low cap - scarce apex predators
 
-# Resource field - the core of migration dynamics
+# Resource field - grazing parameters
 resource:
-  regrow_rate: 0.06           # Slow regrowth - 17s to full recovery (key for depletion)
   contrast: 1.8               # Lush patches - plenty of resources overall
   forage_efficiency: 0.85     # Slight inefficiency
-  diffuse: 0.02               # Moderate spreading creates gradients
   graze_radius: 2             # Larger depletion zone (5x5 kernel) - forces migration
 
 # Energy costs - moderate pressure

@@ -242,11 +242,11 @@ func (g *Game) updateEnergy() {
 			}
 
 			// Get resource level at position for grazing rate scaling
-			resourceHere := g.cpuResourceField.Sample(pos.X, pos.Y)
+			resourceHere := g.resourceField.Sample(pos.X, pos.Y)
 			grazeRate := resourceHere * forageRate * eff
 
 			// Graze: remove resource and get actual removed amount
-			removed := g.cpuResourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
+			removed := g.resourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
 
 			// Energy gain = removed * efficiency
 			gain := removed * forageEfficiency

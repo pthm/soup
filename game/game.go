@@ -61,9 +61,8 @@ type Game struct {
 	// Spatial index
 	spatialGrid *systems.SpatialGrid
 
-	// Resource field (CPU-based with depletion/regrowth)
-	resourceField    systems.ResourceSampler
-	cpuResourceField *systems.CPUResourceField
+	// Resource field (particle-based with mass transport)
+	resourceField *systems.ParticleResourceField
 
 	// Reusable buffers to avoid per-entity allocations
 	neighborBuf []systems.Neighbor         // reused each entity in behavior loop
@@ -195,7 +194,7 @@ func NewGameWithOptions(opts Options) *Game {
 	// Parallel processing
 	g.parallel = newParallelState()
 
-	// CPU resource field with depletion and regrowth (uses world dimensions)
+	// Resource field (particle-based with mass transport)
 	// Compute grid dimensions to maintain square cells matching world aspect ratio
 	baseGridSize := cfg.GPU.ResourceTextureSize
 	var gridW, gridH int
@@ -208,18 +207,7 @@ func NewGameWithOptions(opts Options) *Game {
 		gridW = baseGridSize
 		gridH = int(float32(baseGridSize) * g.worldHeight / g.worldWidth)
 	}
-	g.cpuResourceField = systems.NewCPUResourceField(gridW, gridH, g.worldWidth, g.worldHeight)
-	g.cpuResourceField.SetParams(
-		float32(cfg.Resource.RegrowRate),
-		float32(cfg.Resource.Diffuse),
-		float32(cfg.Resource.DriftX),
-		float32(cfg.Resource.DriftY),
-		float32(cfg.Resource.EvolveInterval),
-	)
-	g.cpuResourceField.Seed = uint32(opts.Seed)
-	g.cpuResourceField.Contrast = float32(cfg.Resource.Contrast)
-	g.cpuResourceField.Regenerate() // Rebuild with new contrast setting
-	g.resourceField = g.cpuResourceField
+	g.resourceField = systems.NewParticleResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed)
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
@@ -259,8 +247,8 @@ func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
 	cfg := config.Cfg()
 
-	// 0. Update CPU resource field (regrowth, diffusion, capacity evolution)
-	g.cpuResourceField.Step(cfg.Derived.DT32, true)
+	// 0. Update resource field (regrowth, diffusion, capacity evolution / particle dynamics)
+	g.resourceField.Step(cfg.Derived.DT32, true)
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)

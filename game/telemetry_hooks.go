@@ -95,16 +95,17 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 		Bookmark:    bookmark,
 	}
 
-	// Serialize CPU resource field if available
-	if g.cpuResourceField != nil {
-		w, h := g.cpuResourceField.GridSize()
+	// Serialize resource field (works with both CPU and particle systems)
+	if g.resourceField != nil {
+		w, h := g.resourceField.GridSize()
 		snapshot.ResourceGridW = w
 		snapshot.ResourceGridH = h
-		snapshot.ResourceRes = make([]float32, len(g.cpuResourceField.Res))
-		copy(snapshot.ResourceRes, g.cpuResourceField.Res)
-		snapshot.ResourceCap = make([]float32, len(g.cpuResourceField.Cap))
-		copy(snapshot.ResourceCap, g.cpuResourceField.Cap)
-		snapshot.ResourceTime = g.cpuResourceField.Time
+		resData := g.resourceField.ResData()
+		snapshot.ResourceRes = make([]float32, len(resData))
+		copy(snapshot.ResourceRes, resData)
+		// Cap and Time are only available for CPU field, particle system doesn't expose them
+		snapshot.ResourceCap = nil
+		snapshot.ResourceTime = 0
 	}
 
 	// Collect entity states

@@ -31,6 +31,7 @@ type Config struct {
 	Bookmarks    BookmarksConfig    `yaml:"bookmarks"`
 	Refugia      RefugiaConfig      `yaml:"refugia"`
 	HallOfFame   HallOfFameConfig   `yaml:"hall_of_fame"`
+	Particles    ParticleConfig     `yaml:"particles"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
@@ -135,12 +136,6 @@ type MutationConfig struct {
 
 // ResourceConfig holds resource field parameters.
 type ResourceConfig struct {
-	UpdateInterval   int     `yaml:"update_interval"`   // Ticks between resource field updates (0 = static)
-	RegrowRate       float64 `yaml:"regrow_rate"`       // Resource regrowth per second toward capacity
-	Diffuse          float64 `yaml:"diffuse"`           // Resource diffusion strength per second
-	DriftX           float64 `yaml:"drift_x"`           // Capacity drift in UV units per second (X)
-	DriftY           float64 `yaml:"drift_y"`           // Capacity drift in UV units per second (Y)
-	EvolveInterval   float64 `yaml:"evolve_interval"`   // Seconds between capacity rebuilds
 	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
 	Contrast         float64 `yaml:"contrast"`          // FBM contrast exponent (higher = sparser patches)
@@ -266,10 +261,25 @@ type HallOfFameFitnessConfig struct {
 
 // HallOfFameEntryConfig holds entry criteria thresholds.
 type HallOfFameEntryConfig struct {
-	MinChildren   int     `yaml:"min_children"`
+	MinChildren    int     `yaml:"min_children"`
 	MinSurvivalSec float64 `yaml:"min_survival_sec"`
-	MinForaging   float64 `yaml:"min_foraging"`
-	MinKills      int     `yaml:"min_kills"`
+	MinForaging    float64 `yaml:"min_foraging"`
+	MinKills       int     `yaml:"min_kills"`
+}
+
+// ParticleConfig holds particle-based resource field parameters.
+type ParticleConfig struct {
+	MaxCount      int     `yaml:"max_count"`       // Maximum particle pool size
+	SpawnRate     float64 `yaml:"spawn_rate"`      // Particles/sec (scaled by potential)
+	InitialMass   float64 `yaml:"initial_mass"`    // Mass of newly spawned particle
+	DepositRate   float64 `yaml:"deposit_rate"`    // Fraction of mass deposited to grid per sec
+	PickupRate    float64 `yaml:"pickup_rate"`     // Mass pickup rate from grid per sec
+	FlowStrength  float64 `yaml:"flow_strength"`   // Flow velocity scale (world units/sec)
+	FlowUpdateSec float64 `yaml:"flow_update_sec"` // Flow field rebuild interval
+	FlowScale     float64 `yaml:"flow_scale"`      // Curl noise frequency
+	FlowOctaves   int     `yaml:"flow_octaves"`    // FBM detail level
+	FlowEvolution float64 `yaml:"flow_evolution"`  // Temporal drift rate for flow field
+	PotUpdateSec  float64 `yaml:"pot_update_sec"`  // Potential field rebuild interval
 }
 
 // DerivedConfig holds computed values derived from the loaded config.
