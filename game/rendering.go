@@ -14,10 +14,7 @@ func (g *Game) Draw() {
 	g.perfCollector.RecordFrame()
 
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{R: 8, G: 45, B: 60, A: 255}) // Teal sea fallback
-
-	// Layer 1: Background noise texture
-	g.drawBackground()
+	rl.ClearBackground(rl.Color{R: 15, G: 30, B: 60, A: 255}) // Deep blue background
 
 	// Layer 2: Particles
 	g.drawParticles()
@@ -84,9 +81,9 @@ func (g *Game) drawEntities() {
 		}
 
 		// Color by kind
-		color := rl.Green
+		color := rl.Color{R: 140, G: 100, B: 200, A: 255} // Purple for prey
 		if org.Kind == components.KindPredator {
-			color = rl.Red
+			color = rl.Color{R: 200, G: 80, B: 50, A: 255} // Burnt orange for predators
 		}
 
 		// Dim based on energy
@@ -258,8 +255,15 @@ func (g *Game) drawFlowField() {
 	cellW := g.worldWidth / float32(pf.FlowW)
 	cellH := g.worldHeight / float32(pf.FlowH)
 
-	// Fixed hair length in screen pixels
-	const hairLen = float32(8)
+	// Get current flow data for rendering
+	flowU, flowV := pf.FlowData()
+
+	// Hair length scales with grid cell size (use smaller dimension)
+	cellSize := cellW
+	if cellH < cellW {
+		cellSize = cellH
+	}
+	hairLen := cellSize * cam.Zoom * 0.8 // 80% of cell size in screen pixels
 
 	for y := 0; y < pf.FlowH; y++ {
 		for x := 0; x < pf.FlowW; x++ {
@@ -272,8 +276,8 @@ func (g *Game) drawFlowField() {
 			}
 
 			idx := y*pf.FlowW + x
-			u := pf.FlowU[idx]
-			v := pf.FlowV[idx]
+			u := flowU[idx]
+			v := flowV[idx]
 
 			// Compute magnitude for coloring
 			mag := float32(math.Sqrt(float64(u*u + v*v)))
@@ -468,7 +472,7 @@ func (g *Game) drawParticles() {
 	g.particleRenderer.Draw(float32(g.tick) * 0.05)
 }
 
-// drawOrientedTriangle draws a triangle pointing in the heading direction.
+// drawOrientedTriangle draws a smooth rounded triangle pointing in the heading direction.
 func drawOrientedTriangle(x, y, heading, radius float32, color rl.Color) {
 	cos := float32(math.Cos(float64(heading)))
 	sin := float32(math.Sin(float64(heading)))
@@ -491,7 +495,17 @@ func drawOrientedTriangle(x, y, heading, radius float32, color rl.Color) {
 	v2 := rl.Vector2{X: backLeftX, Y: backLeftY}
 	v3 := rl.Vector2{X: backRightX, Y: backRightY}
 
-	// DrawTriangle requires counter-clockwise winding (v1, v3, v2)
+	// Draw filled triangle (counter-clockwise winding)
 	rl.DrawTriangle(v1, v3, v2, color)
-	rl.DrawTriangleLines(v1, v2, v3, rl.White)
+
+	// Round the corners with circles
+	cornerRadius := radius * 0.25
+	rl.DrawCircleV(v1, cornerRadius, color)
+	rl.DrawCircleV(v2, cornerRadius, color)
+	rl.DrawCircleV(v3, cornerRadius, color)
+
+	// Fill in edges with thick lines for smoother look
+	rl.DrawLineEx(v1, v2, cornerRadius*2, color)
+	rl.DrawLineEx(v2, v3, cornerRadius*2, color)
+	rl.DrawLineEx(v3, v1, cornerRadius*2, color)
 }

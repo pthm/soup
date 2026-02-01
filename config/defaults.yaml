@@ -282,8 +282,10 @@ particles:
   deposit_rate: 2.0          # Fraction of particle mass deposited to grid per sec
   pickup_rate: 0.5           # Mass pickup rate from grid per sec
   flow_strength: 40.0        # Flow velocity scale (world units/sec)
-  flow_update_sec: 0.5       # Flow field rebuild interval (seconds)
-  flow_scale: 3.0            # Curl noise frequency
-  flow_octaves: 3            # FBM detail level
-  flow_evolution: 0.08       # Temporal drift rate for flow field
+  flow_grid_size: 32         # Flow field resolution (independent of resource grid)
+                             # Lower = larger features, less computation
+  flow_update_sec: 30.0      # Flow field transition interval (seconds)
+  flow_scale: 2.0            # Curl noise frequency (lower = larger features)
+  flow_octaves: 2            # FBM detail level (fewer = smoother currents)
+  flow_evolution: 0.03       # Temporal drift rate for flow field (lower = slower change)
   pot_update_sec: 2.0        # Potential field rebuild interval (seconds)

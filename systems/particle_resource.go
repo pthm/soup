@@ -3,6 +3,8 @@ package systems
 import (
 	"math"
 	"math/rand"
+	"sync"
+	"sync/atomic"
 
 	"github.com/pthm-cable/soup/config"
 )
@@ -30,9 +32,21 @@ type ParticleResourceField struct {
 	Pot        []float32
 	PotW, PotH int
 
-	// Flow field (curl of scalar potential)
-	FlowU, FlowV []float32
-	FlowW, FlowH int
+	// Dual flow fields for smooth interpolation
+	FlowU0, FlowV0 []float32 // Current "from" flow field
+	FlowU1, FlowV1 []float32 // Target "to" flow field
+	FlowW, FlowH   int
+	FlowBlend      float32 // Interpolation factor: 0=from, 1=to
+
+	// Blended flow field for rendering (updated each step)
+	FlowUBlend, FlowVBlend []float32
+
+	// Async flow field generation
+	nextFlowU, nextFlowV []float32    // Buffer for async generation
+	nextFlowTime         float32      // Time value for next field
+	nextFlowReady        atomic.Bool  // Signals async generation complete
+	flowGenMu            sync.Mutex   // Protects async buffer access
+	generatingFlow       atomic.Bool  // Is generation in progress?
 
 	// Resource grid R (mass density - what organisms consume)
 	Res        []float32
@@ -42,9 +56,8 @@ type ParticleResourceField struct {
 	worldW, worldH float32
 
 	// Timing
-	Time           float32
-	lastFlowUpdate float32
-	lastPotUpdate  float32
+	Time          float32
+	lastPotUpdate float32
 
 	// Noise parameters
 	Seed       uint32
@@ -82,6 +95,12 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		maxCount = 8000
 	}
 
+	// Flow field uses separate (typically lower) resolution
+	flowSize := cfg.FlowGridSize
+	if flowSize < 1 {
+		flowSize = 32 // Default to 32x32 if not configured
+	}
+
 	pf := &ParticleResourceField{
 		// Particle arrays
 		X:        make([]float32, maxCount),
@@ -96,11 +115,21 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		PotW: gridW,
 		PotH: gridH,
 
-		// Flow field (same resolution)
-		FlowU: make([]float32, gridW*gridH),
-		FlowV: make([]float32, gridW*gridH),
-		FlowW: gridW,
-		FlowH: gridH,
+		// Dual flow fields for interpolation (lower resolution)
+		FlowU0: make([]float32, flowSize*flowSize),
+		FlowV0: make([]float32, flowSize*flowSize),
+		FlowU1: make([]float32, flowSize*flowSize),
+		FlowV1: make([]float32, flowSize*flowSize),
+		FlowW:  flowSize,
+		FlowH:  flowSize,
+
+		// Blended flow field for rendering
+		FlowUBlend: make([]float32, flowSize*flowSize),
+		FlowVBlend: make([]float32, flowSize*flowSize),
+
+		// Async generation buffers
+		nextFlowU: make([]float32, flowSize*flowSize),
+		nextFlowV: make([]float32, flowSize*flowSize),
 
 		// Resource grid
 		Res:  make([]float32, gridW*gridH),
@@ -139,7 +168,15 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 
 	// Initialize fields
 	pf.rebuildPotential(0)
-	pf.rebuildFlowField(0)
+
+	// Initialize both flow fields (from and to) for smooth start
+	pf.generateFlowFieldInto(pf.FlowU0, pf.FlowV0, 0)
+	pf.generateFlowFieldInto(pf.FlowU1, pf.FlowV1, pf.FlowUpdateSec*pf.FlowEvolution)
+	pf.FlowBlend = 0
+	pf.updateFlowBlend() // Initialize blended arrays for rendering
+
+	// Start async generation of the third field so it's ready when we transition
+	pf.startAsyncFlowGeneration(pf.FlowUpdateSec * 2)
 
 	// Initialize resource grid from potential (like CPUResourceField does with capacity)
 	for i := range pf.Res {
@@ -165,17 +202,19 @@ func (pf *ParticleResourceField) Graze(x, y float32, rate, dt float32, radiusCel
 func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.Time += dt
 
-	// Update fields periodically
 	if evolve {
-		if pf.Time-pf.lastFlowUpdate >= pf.FlowUpdateSec {
-			pf.rebuildFlowField(pf.Time)
-			pf.lastFlowUpdate = pf.Time
-		}
+		// Smoothly interpolate flow field and trigger async generation
+		pf.updateFlowInterpolation(dt)
+
+		// Update potential field periodically
 		if pf.Time-pf.lastPotUpdate >= pf.PotUpdateSec {
 			pf.rebuildPotential(pf.Time)
 			pf.lastPotUpdate = pf.Time
 		}
 	}
+
+	// Update blended flow field for rendering
+	pf.updateFlowBlend()
 
 	// Particle dynamics
 	pf.spawnParticles(dt)
@@ -193,10 +232,10 @@ func (pf *ParticleResourceField) GridSize() (int, int) {
 	return pf.ResW, pf.ResH
 }
 
-// --- Flow Field (Curl Noise) ---
+// --- Flow Field (Curl Noise with Interpolation) ---
 
-func (pf *ParticleResourceField) rebuildFlowField(t float32) {
-	tEvolved := t * pf.FlowEvolution
+// generateFlowFieldInto computes a flow field at given time into the provided buffers.
+func (pf *ParticleResourceField) generateFlowFieldInto(flowU, flowV []float32, tEvolved float32) {
 	eps := float32(0.01)
 
 	for y := 0; y < pf.FlowH; y++ {
@@ -210,16 +249,93 @@ func (pf *ParticleResourceField) rebuildFlowField(t float32) {
 			psiDv := pf.fbm3D(u, v+eps, tEvolved, pf.FlowScale, pf.FlowOctaves)
 
 			i := y*pf.FlowW + x
-			pf.FlowU[i] = (psiDv - psi0) / eps * pf.FlowStrength
-			pf.FlowV[i] = -(psiDu - psi0) / eps * pf.FlowStrength
+			flowU[i] = (psiDv - psi0) / eps * pf.FlowStrength
+			flowV[i] = -(psiDu - psi0) / eps * pf.FlowStrength
 		}
 	}
 }
 
+// startAsyncFlowGeneration spawns a goroutine to generate the next flow field.
+func (pf *ParticleResourceField) startAsyncFlowGeneration(targetTime float32) {
+	if pf.generatingFlow.Load() {
+		return // Already generating
+	}
+	pf.generatingFlow.Store(true)
+	pf.nextFlowTime = targetTime
+
+	go func() {
+		tEvolved := targetTime * pf.FlowEvolution
+
+		// Generate into temporary buffers
+		pf.flowGenMu.Lock()
+		pf.generateFlowFieldInto(pf.nextFlowU, pf.nextFlowV, tEvolved)
+		pf.flowGenMu.Unlock()
+
+		pf.nextFlowReady.Store(true)
+		pf.generatingFlow.Store(false)
+	}()
+}
+
+// updateFlowInterpolation advances flow field blending and handles transitions.
+func (pf *ParticleResourceField) updateFlowInterpolation(dt float32) {
+	// Advance blend factor
+	pf.FlowBlend += dt / pf.FlowUpdateSec
+	if pf.FlowBlend < 1.0 {
+		return
+	}
+
+	// Transition complete: swap fields
+	pf.FlowBlend = 0
+
+	// Copy "to" into "from"
+	copy(pf.FlowU0, pf.FlowU1)
+	copy(pf.FlowV0, pf.FlowV1)
+
+	// If async generation is ready, copy it to "to"
+	if pf.nextFlowReady.Load() {
+		pf.flowGenMu.Lock()
+		copy(pf.FlowU1, pf.nextFlowU)
+		copy(pf.FlowV1, pf.nextFlowV)
+		pf.flowGenMu.Unlock()
+		pf.nextFlowReady.Store(false)
+
+		// Start generating the next field
+		nextTime := pf.nextFlowTime + pf.FlowUpdateSec
+		pf.startAsyncFlowGeneration(nextTime)
+	} else {
+		// Async not ready - generate synchronously as fallback
+		// This shouldn't happen if FlowUpdateSec is long enough
+		nextTime := pf.Time + pf.FlowUpdateSec
+		tEvolved := nextTime * pf.FlowEvolution
+		pf.generateFlowFieldInto(pf.FlowU1, pf.FlowV1, tEvolved)
+		pf.startAsyncFlowGeneration(nextTime + pf.FlowUpdateSec)
+	}
+}
+
+// sampleFlow returns interpolated flow at world position.
 func (pf *ParticleResourceField) sampleFlow(x, y float32) (float32, float32) {
-	u := pf.sampleGrid(pf.FlowU, pf.FlowW, pf.FlowH, x, y)
-	v := pf.sampleGrid(pf.FlowV, pf.FlowW, pf.FlowH, x, y)
-	return u, v
+	u0 := pf.sampleGrid(pf.FlowU0, pf.FlowW, pf.FlowH, x, y)
+	v0 := pf.sampleGrid(pf.FlowV0, pf.FlowW, pf.FlowH, x, y)
+	u1 := pf.sampleGrid(pf.FlowU1, pf.FlowW, pf.FlowH, x, y)
+	v1 := pf.sampleGrid(pf.FlowV1, pf.FlowW, pf.FlowH, x, y)
+
+	// Linear interpolation for constant rate of change
+	t := pf.FlowBlend
+	return u0 + (u1-u0)*t, v0 + (v1-v0)*t
+}
+
+// updateFlowBlend computes the interpolated flow field for rendering.
+func (pf *ParticleResourceField) updateFlowBlend() {
+	t := pf.FlowBlend // Linear interpolation for constant rate of change
+	for i := range pf.FlowUBlend {
+		pf.FlowUBlend[i] = pf.FlowU0[i] + (pf.FlowU1[i]-pf.FlowU0[i])*t
+		pf.FlowVBlend[i] = pf.FlowV0[i] + (pf.FlowV1[i]-pf.FlowV0[i])*t
+	}
+}
+
+// FlowData returns the current blended flow field for rendering.
+func (pf *ParticleResourceField) FlowData() ([]float32, []float32) {
+	return pf.FlowUBlend, pf.FlowVBlend
 }
 
 // --- Potential Field ---

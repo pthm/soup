@@ -275,6 +275,7 @@ type ParticleConfig struct {
 	DepositRate   float64 `yaml:"deposit_rate"`    // Fraction of mass deposited to grid per sec
 	PickupRate    float64 `yaml:"pickup_rate"`     // Mass pickup rate from grid per sec
 	FlowStrength  float64 `yaml:"flow_strength"`   // Flow velocity scale (world units/sec)
+	FlowGridSize  int     `yaml:"flow_grid_size"`  // Flow field resolution (independent of resource)
 	FlowUpdateSec float64 `yaml:"flow_update_sec"` // Flow field rebuild interval
 	FlowScale     float64 `yaml:"flow_scale"`      // Curl noise frequency
 	FlowOctaves   int     `yaml:"flow_octaves"`    // FBM detail level
