@@ -2,6 +2,14 @@ package systems
 
 import "math"
 
+// ResourceSampler provides O(1) resource density sampling.
+// Implemented by both CPU (ResourceField) and GPU (GPUResourceField) backends.
+type ResourceSampler interface {
+	Sample(x, y float32) float32
+	Width() float32
+	Height() float32
+}
+
 // ResourceField represents a continuous food source on a torus.
 // Implemented as a sum of Gaussian hotspots.
 type ResourceField struct {

@@ -7,6 +7,14 @@ import (
 	"github.com/pthm-cable/soup/components"
 )
 
+// Neighbor holds a nearby entity with precomputed spatial data.
+// This avoids recomputing toroidal delta and distance in sensors.
+type Neighbor struct {
+	E      ecs.Entity
+	DX, DY float32 // Toroidal delta from query origin
+	DistSq float32 // Squared distance (avoid sqrt in hot path)
+}
+
 // SpatialGrid provides O(1) neighbor lookups using a cell-based grid.
 type SpatialGrid struct {
 	cellSize float32
@@ -52,11 +60,10 @@ func (g *SpatialGrid) Insert(e ecs.Entity, x, y float32) {
 	}
 }
 
-// QueryRadius returns all entities within radius of the given position.
-// Uses toroidal wrapping for edge cases.
-func (g *SpatialGrid) QueryRadius(x, y, radius float32, exclude ecs.Entity, posMap *ecs.Map1[components.Position]) []ecs.Entity {
-	result := make([]ecs.Entity, 0, 16)
-
+// QueryRadiusInto finds all entities within radius and appends to dst.
+// Returns the updated slice. Reuse dst across calls to avoid allocations.
+// Each Neighbor includes precomputed DX, DY, DistSq for efficient sensor processing.
+func (g *SpatialGrid) QueryRadiusInto(dst []Neighbor, x, y, radius float32, exclude ecs.Entity, posMap *ecs.Map1[components.Position]) []Neighbor {
 	// Determine cell range to check
 	cellRadius := int(radius/g.cellSize) + 1
 
@@ -77,20 +84,33 @@ func (g *SpatialGrid) QueryRadius(x, y, radius float32, exclude ecs.Entity, posM
 					continue
 				}
 
-				// Get position and check distance with toroidal wrapping
+				// Get position and compute delta with toroidal wrapping
 				pos := posMap.Get(e)
 				if pos == nil {
 					continue
 				}
 
-				distSq := toroidalDistanceSq(x, y, pos.X, pos.Y, g.width, g.height)
+				dx, dy := ToroidalDelta(x, y, pos.X, pos.Y, g.width, g.height)
+				distSq := dx*dx + dy*dy
+
 				if distSq <= radiusSq {
-					result = append(result, e)
+					dst = append(dst, Neighbor{E: e, DX: dx, DY: dy, DistSq: distSq})
 				}
 			}
 		}
 	}
 
+	return dst
+}
+
+// QueryRadius returns all entities within radius of the given position.
+// Deprecated: Use QueryRadiusInto to avoid allocations.
+func (g *SpatialGrid) QueryRadius(x, y, radius float32, exclude ecs.Entity, posMap *ecs.Map1[components.Position]) []ecs.Entity {
+	neighbors := g.QueryRadiusInto(nil, x, y, radius, exclude, posMap)
+	result := make([]ecs.Entity, len(neighbors))
+	for i, n := range neighbors {
+		result[i] = n.E
+	}
 	return result
 }
 

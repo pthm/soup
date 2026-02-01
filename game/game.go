@@ -111,8 +111,13 @@ type Game struct {
 	// Spatial index
 	spatialGrid *systems.SpatialGrid
 
-	// Resource field
-	resourceField *systems.ResourceField
+	// Resource field (GPU-accelerated, O(1) sampling)
+	resourceField    systems.ResourceSampler
+	gpuResourceField *renderer.GPUResourceField
+
+	// Reusable buffers to avoid per-entity allocations
+	neighborBuf []systems.Neighbor        // reused each entity in behavior loop
+	inputBuf    [systems.NumInputs]float32 // reused for neural net inputs
 
 	// Rendering
 	water     *renderer.WaterBackground
@@ -128,6 +133,10 @@ type Game struct {
 	numPrey    int
 	numPred    int
 	speed      int // simulation speed multiplier (1-10)
+
+	// Debug state
+	debugMode         bool
+	debugShowResource bool
 
 	// Window dimensions
 	width, height float32
@@ -213,12 +222,14 @@ func NewGameWithOptions(opts Options) *Game {
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
 
-	// Resource field (12 hotspots)
-	g.resourceField = systems.NewResourceField(g.width, g.height, 12, g.rng)
+	// GPU resource field (O(1) sampling via precomputed texture)
+	g.gpuResourceField = renderer.NewGPUResourceField(g.width, g.height)
+	g.gpuResourceField.Initialize(0) // Static field at time=0
+	g.resourceField = g.gpuResourceField
 
-	// Only initialize rendering resources if not headless
+	// Only initialize visual rendering if not headless
 	if !opts.Headless {
-		// GPU flow field
+		// GPU flow field (visual only, not used in simulation)
 		g.flow = renderer.NewGPUFlowField(g.width, g.height)
 
 		// Water background
@@ -425,12 +436,13 @@ func (g *Game) saveSnapshot(bookmark *telemetry.Bookmark) {
 // createSnapshot builds a snapshot from the current state.
 func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot {
 	snapshot := &telemetry.Snapshot{
-		Version:          telemetry.SnapshotVersion,
-		RNGSeed:          g.rngSeed,
-		WorldWidth:       g.width,
-		WorldHeight:      g.height,
-		ResourceHotspots: g.resourceField.Hotspots(),
-		ResourceSigma:    g.resourceField.Sigma(),
+		Version:     telemetry.SnapshotVersion,
+		RNGSeed:     g.rngSeed,
+		WorldWidth:  g.width,
+		WorldHeight: g.height,
+		// Resource field is now procedural (GPU noise), no hotspots to serialize
+		ResourceHotspots: nil,
+		ResourceSigma:    0,
 		Tick:             g.tick,
 		Bookmark:         bookmark,
 	}
@@ -516,27 +528,33 @@ func (g *Game) updateBehaviorAndPhysics() {
 			continue
 		}
 
-		// Query neighbors for sensors
-		neighbors := g.spatialGrid.QueryRadius(pos.X, pos.Y, caps.VisionRange, entity, g.posMap)
-
-		// Compute sensors
-		sensorInputs := systems.ComputeSensors(
-			*pos, *vel, *rot, *energy, *caps, org.Kind,
-			neighbors,
-			g.posMap, g.orgMap,
-			g.resourceField,
-			g.width, g.height,
+		// Query neighbors into reusable buffer (avoids allocation)
+		g.neighborBuf = g.spatialGrid.QueryRadiusInto(
+			g.neighborBuf[:0], // reset but keep capacity
+			pos.X, pos.Y, caps.VisionRange, entity, g.posMap,
 		)
+
+		// Compute sensors using precomputed neighbor data (avoids double distance calc)
+		sensorInputs := systems.ComputeSensorsFromNeighbors(
+			*vel, *rot, *energy, *caps,
+			g.neighborBuf,
+			g.orgMap,
+			g.resourceField,
+			*pos,
+		)
+
+		// Fill reusable input buffer (avoids allocation)
+		inputs := sensorInputs.FillSlice(g.inputBuf[:])
 
 		// Run brain (capture activations if this is the selected entity)
 		var turn, thrust float32
 		if hasSelection && entity == selectedEntity {
 			var act *neural.Activations
-			turn, thrust, _, act = brain.ForwardWithCapture(sensorInputs.AsSlice())
+			turn, thrust, _, act = brain.ForwardWithCapture(inputs)
 			g.inspector.SetSensorData(&sensorInputs)
 			g.inspector.SetActivations(act)
 		} else {
-			turn, thrust, _ = brain.Forward(sensorInputs.AsSlice())
+			turn, thrust, _ = brain.Forward(inputs)
 		}
 
 		// Scale outputs by capabilities
@@ -844,6 +862,21 @@ func (g *Game) handleInput() {
 		g.speed++
 	}
 
+	// Debug mode toggle
+	if rl.IsKeyPressed(rl.KeyD) {
+		g.debugMode = !g.debugMode
+		if g.debugMode {
+			g.debugShowResource = true // Default to showing resource overlay
+		}
+	}
+
+	// Debug sub-options (only when debug mode is active)
+	if g.debugMode {
+		if rl.IsKeyPressed(rl.KeyR) {
+			g.debugShowResource = !g.debugShowResource
+		}
+	}
+
 	// Inspector input
 	mousePos := rl.GetMousePosition()
 	g.inspector.HandleInput(mousePos.X, mousePos.Y, g.posMap, g.bodyMap, g.orgMap, g.entityFilter)
@@ -864,6 +897,11 @@ func (g *Game) Draw() {
 	// Water background
 	g.water.Draw(float32(g.tick) * 0.01)
 
+	// Debug overlays (drawn before entities so entities appear on top)
+	if g.debugMode && g.debugShowResource {
+		g.gpuResourceField.DrawOverlayHeatmap(180) // Heatmap with good visibility
+	}
+
 	// Draw entities
 	g.drawEntities()
 
@@ -876,6 +914,11 @@ func (g *Game) Draw() {
 	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.speed), 10, 60, 20, rl.White)
 	if g.paused {
 		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)
+	}
+
+	// Debug menu
+	if g.debugMode {
+		g.drawDebugMenu()
 	}
 
 	// Draw inspector panel
@@ -906,6 +949,34 @@ func (g *Game) drawEntities() {
 
 		drawOrientedTriangle(pos.X, pos.Y, rot.Heading, body.Radius, color)
 	}
+}
+
+// drawDebugMenu renders the debug overlay menu.
+func (g *Game) drawDebugMenu() {
+	// Semi-transparent background panel
+	panelX := int32(g.width) - 200
+	panelY := int32(10)
+	panelW := int32(190)
+	panelH := int32(80)
+
+	rl.DrawRectangle(panelX, panelY, panelW, panelH, rl.Color{R: 0, G: 0, B: 0, A: 180})
+	rl.DrawRectangleLines(panelX, panelY, panelW, panelH, rl.Yellow)
+
+	// Title
+	rl.DrawText("DEBUG [D to close]", panelX+10, panelY+8, 14, rl.Yellow)
+
+	// Resource overlay toggle
+	resourceStatus := "OFF"
+	resourceColor := rl.Gray
+	if g.debugShowResource {
+		resourceStatus = "ON"
+		resourceColor = rl.Green
+	}
+	rl.DrawText(fmt.Sprintf("[R] Resource: %s", resourceStatus), panelX+10, panelY+30, 14, resourceColor)
+
+	// Performance stats
+	stats := g.perfCollector.Stats()
+	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+55, 12, rl.White)
 }
 
 // drawOrientedTriangle draws a triangle pointing in the heading direction.
@@ -944,6 +1015,9 @@ func (g *Game) Unload() {
 	if g.flow != nil {
 		g.flow.Unload()
 	}
+	if g.gpuResourceField != nil {
+		g.gpuResourceField.Unload()
+	}
 }
 
 // Tick returns the current simulation tick.
@@ -956,8 +1030,8 @@ func (g *Game) UpdateHeadless() {
 	g.simulationStep()
 }
 
-// ResourceField returns the resource field for snapshot access.
-func (g *Game) ResourceField() *systems.ResourceField {
+// ResourceField returns the resource sampler.
+func (g *Game) ResourceField() systems.ResourceSampler {
 	return g.resourceField
 }
 

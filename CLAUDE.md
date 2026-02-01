@@ -227,3 +227,54 @@ The simulation tick is instrumented into phases for profiling:
 | `telemetry` | Stats aggregation |
 
 Typical breakdown: `behavior_physics` ~85%, `energy` ~7%, others <2%.
+
+## Debug Tools
+
+### Shader Debug Tool
+
+Renders a fragment shader to a PNG file for offline inspection. Useful for debugging GPU shaders without running the full simulation.
+
+**Location**: `cmd/shaderdebug/main.go`
+
+**Usage**:
+```bash
+go run ./cmd/shaderdebug -shader shaders/resource.fs -out debug.png -width 512 -height 512
+```
+
+**Flags**:
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-shader` | `shaders/resource.fs` | Path to fragment shader |
+| `-out` | `debug.png` | Output PNG path |
+| `-width` | 512 | Render width in pixels |
+| `-height` | 512 | Render height in pixels |
+
+**How it works**:
+1. Creates a hidden raylib window (GPU context)
+2. Loads the fragment shader
+3. Sets `time` (float) and `resolution` (vec2) uniforms
+4. Renders a fullscreen quad to a texture
+5. Exports the texture as PNG
+
+**Example workflow**:
+```bash
+# Test a shader
+go run ./cmd/shaderdebug -shader shaders/resource.fs -out /tmp/test.png
+
+# View the result
+open /tmp/test.png  # macOS
+# or: xdg-open /tmp/test.png  # Linux
+
+# Quick iteration: edit shader, re-run, check output
+```
+
+**Debug shaders included**:
+- `shaders/debug_test.fs` - Outputs UV coordinates as colors (red=X, green=Y)
+- `shaders/debug_circle.fs` - Single circle at center
+- `shaders/debug_dist.fs` - Distance from center as brightness
+
+### In-Game Debug Mode
+
+Press `D` during graphical mode to toggle debug overlay:
+- `[R]` Toggle resource field heatmap
+- Shows tick timing and TPS stats

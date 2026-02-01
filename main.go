@@ -55,8 +55,13 @@ func main() {
 	}
 
 	if *headless {
-		// Headless mode - no graphics
+		// Headless mode - hidden window for GPU access
+		rl.SetConfigFlags(rl.FlagWindowHidden)
+		rl.InitWindow(int32(game.ScreenWidth), int32(game.ScreenHeight), "Primordial Soup (headless)")
+		defer rl.CloseWindow()
+
 		g := game.NewGameWithOptions(opts)
+		defer g.Unload()
 
 		slog.Info("starting headless simulation",
 			"seed", rngSeed,
