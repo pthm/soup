@@ -10,6 +10,7 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/inspector"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
@@ -17,48 +18,11 @@ import (
 	"github.com/pthm-cable/soup/telemetry"
 )
 
-// Screen dimensions
-const (
-	ScreenWidth  = 1280
-	ScreenHeight = 720
-)
+// ScreenWidth returns the configured screen width.
+func ScreenWidth() int { return config.Cfg().Screen.Width }
 
-// Simulation constants
-const (
-	DT           = 1.0 / 60.0 // seconds per tick
-	GridCellSize = 64.0       // spatial grid cell size
-)
-
-// Physics constants - mapped from entity Capabilities
-const (
-	DefaultMaxSpeed     = 80.0
-	DefaultAcceleration = 0.1
-	DefaultTurnRateMax  = 3.5
-)
-
-// Initial population
-const (
-	InitialPopulation = 20
-)
-
-// Reproduction constants
-const (
-	PreyReproThreshold float32 = 0.85
-	PredReproThreshold float32 = 0.90
-	MaturityAge        float32 = 8.0  // seconds
-	PreyCooldown       float32 = 8.0  // seconds between reproductions
-	PredCooldown       float32 = 10.0 // seconds between reproductions
-	MaxPrey                    = 400
-	MaxPred                    = 120
-)
-
-// Mutation parameters for sparse mutation
-const (
-	MutationRate     = 0.05
-	MutationSigma    = 0.08
-	MutationBigRate  = 0.01
-	MutationBigSigma = 0.40
-)
+// ScreenHeight returns the configured screen height.
+func ScreenHeight() int { return config.Cfg().Screen.Height }
 
 // normalizeAngle wraps angle to [-pi, pi].
 func normalizeAngle(a float32) float32 {
@@ -174,11 +138,13 @@ func NewGame() *Game {
 func NewGameWithOptions(opts Options) *Game {
 	world := ecs.NewWorld()
 
+	cfg := config.Cfg()
+
 	g := &Game{
 		world:  world,
 		rng:    rand.New(rand.NewSource(opts.Seed)),
-		width:  float32(ScreenWidth),
-		height: float32(ScreenHeight),
+		width:  float32(cfg.Screen.Width),
+		height: float32(cfg.Screen.Height),
 		speed:  1,
 		brains: make(map[uint32]*neural.FFNN),
 		entityMapper: ecs.NewMap7[
@@ -214,13 +180,13 @@ func NewGameWithOptions(opts Options) *Game {
 	}
 
 	// Initialize telemetry
-	g.collector = telemetry.NewCollector(opts.StatsWindowSec, DT)
-	g.bookmarkDetector = telemetry.NewBookmarkDetector(10) // 10 windows of history
+	g.collector = telemetry.NewCollector(opts.StatsWindowSec, cfg.Derived.DT32)
+	g.bookmarkDetector = telemetry.NewBookmarkDetector(cfg.Telemetry.BookmarkHistorySize)
 	g.lifetimeTracker = telemetry.NewLifetimeTracker()
-	g.perfCollector = telemetry.NewPerfCollector(600) // 10 seconds at 60 ticks/sec
+	g.perfCollector = telemetry.NewPerfCollector(cfg.Telemetry.PerfCollectorWindow)
 
 	// Spatial grid
-	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
+	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, float32(cfg.Physics.GridCellSize))
 
 	// GPU resource field (O(1) sampling via precomputed texture)
 	g.gpuResourceField = renderer.NewGPUResourceField(g.width, g.height)
@@ -247,7 +213,8 @@ func NewGameWithOptions(opts Options) *Game {
 
 // spawnInitialPopulation creates the starting entities.
 func (g *Game) spawnInitialPopulation() {
-	for i := 0; i < InitialPopulation; i++ {
+	cfg := config.Cfg()
+	for i := 0; i < cfg.Population.Initial; i++ {
 		x := g.rng.Float32() * g.width
 		y := g.rng.Float32() * g.height
 		heading := g.rng.Float32() * 2 * math.Pi
@@ -264,16 +231,19 @@ func (g *Game) spawnInitialPopulation() {
 
 // spawnEntity creates a new entity with a fresh brain.
 func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Entity {
+	cfg := config.Cfg()
 	id := g.nextID
 	g.nextID++
 
 	pos := components.Position{X: x, Y: y}
 	vel := components.Velocity{X: 0, Y: 0}
 	rot := components.Rotation{Heading: heading, AngVel: 0}
-	body := components.Body{Radius: 10}
-	energy := components.Energy{Value: 0.8, Age: 0, Alive: true}
+	body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
+	energy := components.Energy{Value: float32(cfg.Entity.InitialEnergy), Age: 0, Alive: true}
 	caps := components.DefaultCapabilities()
-	org := components.Organism{ID: id, Kind: kind, ReproCooldown: MaturityAge}
+	// Add jitter to desync reproduction across the population
+	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+	org := components.Organism{ID: id, Kind: kind, ReproCooldown: float32(cfg.Reproduction.MaturityAge) + cooldownJitter}
 
 	// Create brain
 	brain := neural.NewFFNN(g.rng)
@@ -506,6 +476,9 @@ func (g *Game) updateSpatialGrid() {
 
 // updateBehaviorAndPhysics runs brains and applies movement.
 func (g *Game) updateBehaviorAndPhysics() {
+	cfg := config.Cfg()
+	dt := cfg.Derived.DT32
+
 	// Check if we have a selected entity for inspector (headless mode has no inspector)
 	var selectedEntity ecs.Entity
 	var hasSelection bool
@@ -558,11 +531,11 @@ func (g *Game) updateBehaviorAndPhysics() {
 		}
 
 		// Scale outputs by capabilities
-		turnRate := turn * caps.MaxTurnRate * DT
-		if turnRate > caps.MaxTurnRate*DT {
-			turnRate = caps.MaxTurnRate * DT
-		} else if turnRate < -caps.MaxTurnRate*DT {
-			turnRate = -caps.MaxTurnRate * DT
+		turnRate := turn * caps.MaxTurnRate * dt
+		if turnRate > caps.MaxTurnRate*dt {
+			turnRate = caps.MaxTurnRate * dt
+		} else if turnRate < -caps.MaxTurnRate*dt {
+			turnRate = -caps.MaxTurnRate * dt
 		}
 
 		// Apply angular velocity to heading (heading-as-state)
@@ -572,23 +545,23 @@ func (g *Game) updateBehaviorAndPhysics() {
 		rot.Heading = normalizeAngle(rot.Heading)
 
 		// Compute desired velocity from heading
-		targetSpeed := thrust * caps.MaxSpeed * DT
+		targetSpeed := thrust * caps.MaxSpeed * dt
 		desiredVelX := float32(math.Cos(float64(rot.Heading))) * targetSpeed
 		desiredVelY := float32(math.Sin(float64(rot.Heading))) * targetSpeed
 
 		// Smooth velocity change
-		accelFactor := caps.MaxAccel * DT * 0.01
+		accelFactor := caps.MaxAccel * dt * 0.01
 		vel.X += (desiredVelX - vel.X) * accelFactor
 		vel.Y += (desiredVelY - vel.Y) * accelFactor
 
 		// Apply drag
-		dragFactor := float32(math.Exp(-float64(caps.Drag * DT)))
+		dragFactor := float32(math.Exp(-float64(caps.Drag * dt)))
 		vel.X *= dragFactor
 		vel.Y *= dragFactor
 
 		// Clamp speed
 		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
-		maxSpeed := caps.MaxSpeed * DT
+		maxSpeed := caps.MaxSpeed * dt
 		if speed > maxSpeed {
 			scale := maxSpeed / speed
 			vel.X *= scale
@@ -664,6 +637,7 @@ func (g *Game) updateFeeding() {
 
 // updateEnergy applies metabolic costs and prey foraging.
 func (g *Game) updateEnergy() {
+	dt := config.Cfg().Derived.DT32
 	query := g.entityFilter.Query()
 	for query.Next() {
 		pos, vel, _, _, energy, caps, org := query.Get()
@@ -675,11 +649,11 @@ func (g *Game) updateEnergy() {
 		// Prey gain energy from resource field
 		if org.Kind == components.KindPrey {
 			r := g.resourceField.Sample(pos.X, pos.Y)
-			systems.UpdatePreyForage(energy, *vel, *caps, r, DT)
+			systems.UpdatePreyForage(energy, *vel, *caps, r, dt)
 		}
 
 		// Apply metabolic costs (per-kind)
-		systems.UpdateEnergy(energy, *vel, *caps, org.Kind, false, DT)
+		systems.UpdateEnergy(energy, *vel, *caps, org.Kind, false, dt)
 	}
 }
 
@@ -723,13 +697,14 @@ func (g *Game) cleanupDead() {
 	}
 
 	// Respawn if population drops too low
-	if g.aliveCount < 5 && g.tick > 100 {
-		for i := 0; i < 5; i++ {
+	cfg := config.Cfg()
+	if g.aliveCount < cfg.Population.RespawnThreshold && g.tick > 100 {
+		for i := 0; i < cfg.Population.RespawnCount; i++ {
 			x := g.rng.Float32() * g.width
 			y := g.rng.Float32() * g.height
 			heading := g.rng.Float32() * 2 * math.Pi
 			kind := components.KindPrey
-			if g.rng.Float32() < 0.25 {
+			if g.rng.Float32() < float32(cfg.Population.PredatorSpawnChance) {
 				kind = components.KindPredator
 			}
 			g.spawnEntity(x, y, heading, kind)
@@ -739,12 +714,13 @@ func (g *Game) cleanupDead() {
 
 // updateCooldowns decrements reproduction cooldowns.
 func (g *Game) updateCooldowns() {
+	dt := config.Cfg().Derived.DT32
 	query := g.entityFilter.Query()
 	for query.Next() {
 		_, _, _, _, energy, _, org := query.Get()
 
 		if energy.Alive && org.ReproCooldown > 0 {
-			org.ReproCooldown -= DT
+			org.ReproCooldown -= dt
 			if org.ReproCooldown < 0 {
 				org.ReproCooldown = 0
 			}
@@ -754,6 +730,10 @@ func (g *Game) updateCooldowns() {
 
 // updateReproduction handles asexual reproduction with mutation.
 func (g *Game) updateReproduction() {
+	cfg := config.Cfg()
+	repro := &cfg.Reproduction
+	mutation := &cfg.Mutation
+
 	// Collect births to spawn after iteration
 	type birthInfo struct {
 		x, y, heading float32
@@ -772,24 +752,25 @@ func (g *Game) updateReproduction() {
 		}
 
 		// Check population caps
-		if org.Kind == components.KindPrey && g.numPrey >= MaxPrey {
+		if org.Kind == components.KindPrey && g.numPrey >= cfg.Population.MaxPrey {
 			continue
 		}
-		if org.Kind == components.KindPredator && g.numPred >= MaxPred {
+		if org.Kind == components.KindPredator && g.numPred >= cfg.Population.MaxPred {
 			continue
 		}
 
 		// Check reproduction thresholds
 		var threshold, cooldown float32
 		if org.Kind == components.KindPredator {
-			threshold = PredReproThreshold
-			cooldown = PredCooldown
+			threshold = float32(repro.PredThreshold)
+			cooldown = float32(repro.PredCooldown)
 		} else {
-			threshold = PreyReproThreshold
-			cooldown = PreyCooldown
+			threshold = float32(repro.PreyThreshold)
+			cooldown = float32(repro.PreyCooldown)
 		}
 
-		if energy.Value < threshold || energy.Age < MaturityAge || org.ReproCooldown > 0 {
+		maturityAge := float32(repro.MaturityAge)
+		if energy.Value < threshold || energy.Age < maturityAge || org.ReproCooldown > 0 {
 			continue
 		}
 
@@ -799,18 +780,19 @@ func (g *Game) updateReproduction() {
 			continue
 		}
 
-		// Energy split: parent keeps 55%, child gets 45%
-		childEnergy := energy.Value * 0.45
-		energy.Value *= 0.55
+		// Energy split
+		energy.Value *= float32(repro.ParentEnergySplit)
 
 		// Set cooldown
 		org.ReproCooldown = cooldown
 
 		// Queue child spawn
-		offset := float32(15 + g.rng.Float32()*10)
+		spawnOffset := float32(repro.SpawnOffset)
+		offset := spawnOffset + g.rng.Float32()*10
 		childX := mod(pos.X+(g.rng.Float32()-0.5)*offset*2, g.width)
 		childY := mod(pos.Y+(g.rng.Float32()-0.5)*offset*2, g.height)
-		childHeading := rot.Heading + (g.rng.Float32()-0.5)*0.5
+		headingJitter := float32(repro.HeadingJitter)
+		childHeading := rot.Heading + (g.rng.Float32()-0.5)*headingJitter*2
 
 		births = append(births, birthInfo{
 			x:           childX,
@@ -820,9 +802,6 @@ func (g *Game) updateReproduction() {
 			parentBrain: parentBrain,
 			parentID:    org.ID,
 		})
-
-		// Store child energy temporarily (will apply after spawn)
-		_ = childEnergy
 	}
 
 	// Spawn children outside query
@@ -834,11 +813,15 @@ func (g *Game) updateReproduction() {
 		if childOrg != nil && childEnergy != nil {
 			// Inherit mutated brain
 			childBrain := b.parentBrain.Clone()
-			childBrain.MutateSparse(g.rng, MutationRate, MutationSigma, MutationBigRate, MutationBigSigma)
+			childBrain.MutateSparse(g.rng,
+				float32(mutation.Rate),
+				float32(mutation.Sigma),
+				float32(mutation.BigRate),
+				float32(mutation.BigSigma))
 			g.brains[childOrg.ID] = childBrain
 
-			// Set child energy from parent split
-			childEnergy.Value = 0.35 // Fixed starting energy for children
+			// Set child energy
+			childEnergy.Value = float32(repro.ChildEnergy)
 			childEnergy.Age = 0
 
 			// Record birth in telemetry

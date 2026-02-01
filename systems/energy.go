@@ -4,21 +4,7 @@ import (
 	"math"
 
 	"github.com/pthm-cable/soup/components"
-)
-
-// Prey energy economics.
-const (
-	PreyBaseCost  = 0.010 // base metabolism per second
-	PreyMoveCost  = 0.030 // movement cost scaling
-	PreyForageRate = 0.060 // energy/sec at resource=1.0 when stationary
-)
-
-// Predator energy economics.
-const (
-	PredBaseCost  = 0.016 // higher base metabolism
-	PredMoveCost  = 0.045 // higher movement cost
-	PredBiteCost  = 0.010 // cost to attempt bite
-	PredBiteReward = 0.35  // energy gained on successful bite
+	"github.com/pthm-cable/soup/config"
 )
 
 // UpdateEnergy applies metabolic costs and checks for death.
@@ -35,17 +21,19 @@ func UpdateEnergy(
 		return
 	}
 
+	cfg := config.Cfg()
+
 	// Age
 	energy.Age += dt
 
 	// Select costs by kind
 	var baseCost, moveCost float32
 	if kind == components.KindPredator {
-		baseCost = PredBaseCost
-		moveCost = PredMoveCost
+		baseCost = float32(cfg.Energy.Predator.BaseCost)
+		moveCost = float32(cfg.Energy.Predator.MoveCost)
 	} else {
-		baseCost = PreyBaseCost
-		moveCost = PreyMoveCost
+		baseCost = float32(cfg.Energy.Prey.BaseCost)
+		moveCost = float32(cfg.Energy.Prey.MoveCost)
 	}
 
 	// Base metabolism
@@ -61,7 +49,7 @@ func UpdateEnergy(
 
 	// Bite cost (predators attacking)
 	if biteActive {
-		energy.Value -= PredBiteCost
+		energy.Value -= float32(cfg.Energy.Predator.BiteCost)
 	}
 
 	// Clamp energy
@@ -97,7 +85,8 @@ func UpdatePreyForage(
 	}
 
 	// Gain is higher when slow (grazing), lower when running
-	gain := resourceHere * PreyForageRate * (1 - speedRatio) * dt
+	forageRate := float32(config.Cfg().Energy.Prey.ForageRate)
+	gain := resourceHere * forageRate * (1 - speedRatio) * dt
 	energy.Value += gain
 
 	// Clamp to max
@@ -124,7 +113,8 @@ func TransferEnergy(
 	}
 
 	preyEnergy.Value -= actual
-	predatorEnergy.Value += actual * 0.8 // 80% efficiency
+	efficiency := float32(config.Cfg().Energy.Predator.TransferEfficiency)
+	predatorEnergy.Value += actual * efficiency
 
 	// Check prey death
 	if preyEnergy.Value <= 0 {

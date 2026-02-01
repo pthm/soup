@@ -3,6 +3,8 @@ package telemetry
 import (
 	"fmt"
 	"log/slog"
+
+	"github.com/pthm-cable/soup/config"
 )
 
 // BookmarkType identifies the type of bookmark.
@@ -123,6 +125,8 @@ func (bd *BookmarkDetector) checkHuntBreakthrough(stats WindowStats) *Bookmark {
 		return nil
 	}
 
+	cfg := config.Cfg().Bookmarks.HuntBreakthrough
+
 	// Calculate rolling average kill rate
 	var totalKills, totalHits int
 	for _, h := range history {
@@ -140,7 +144,7 @@ func (bd *BookmarkDetector) checkHuntBreakthrough(stats WindowStats) *Bookmark {
 	}
 
 	currentKillRate := stats.KillRate
-	if currentKillRate > avgKillRate*2.0 && stats.Kills >= 3 {
+	if currentKillRate > avgKillRate*cfg.Multiplier && stats.Kills >= cfg.MinKills {
 		return &Bookmark{
 			Type:        BookmarkHuntBreakthrough,
 			Tick:        stats.WindowEndTick,
@@ -157,6 +161,8 @@ func (bd *BookmarkDetector) checkForageBreakthrough(stats WindowStats) *Bookmark
 		return nil
 	}
 
+	cfg := config.Cfg().Bookmarks.ForageBreakthrough
+
 	// Calculate rolling average resource utilization
 	var totalResource float64
 	for _, h := range history {
@@ -168,7 +174,7 @@ func (bd *BookmarkDetector) checkForageBreakthrough(stats WindowStats) *Bookmark
 		return nil
 	}
 
-	if stats.MeanResourceAtPreyPos > avgResource*2.0 && stats.MeanResourceAtPreyPos > 0.3 {
+	if stats.MeanResourceAtPreyPos > avgResource*cfg.Multiplier && stats.MeanResourceAtPreyPos > cfg.MinResource {
 		return &Bookmark{
 			Type:        BookmarkForageBreakthrough,
 			Tick:        stats.WindowEndTick,
@@ -180,12 +186,14 @@ func (bd *BookmarkDetector) checkForageBreakthrough(stats WindowStats) *Bookmark
 }
 
 func (bd *BookmarkDetector) checkPredatorRecovery(stats WindowStats) *Bookmark {
-	if bd.recentPredMin == 0 || bd.recentPredMin > 3 {
+	cfg := config.Cfg().Bookmarks.PredatorRecovery
+
+	if bd.recentPredMin == 0 || bd.recentPredMin > cfg.MinPopulation {
 		return nil
 	}
 
-	threshold := bd.recentPredMin * 3
-	if stats.PredCount >= threshold && stats.PredCount >= 6 {
+	threshold := bd.recentPredMin * cfg.RecoveryMultiplier
+	if stats.PredCount >= threshold && stats.PredCount >= cfg.MinFinal {
 		// Reset the minimum after triggering
 		oldMin := bd.recentPredMin
 		bd.recentPredMin = stats.PredCount
@@ -205,8 +213,10 @@ func (bd *BookmarkDetector) checkPreyCrash(stats WindowStats) *Bookmark {
 		return nil
 	}
 
+	cfg := config.Cfg().Bookmarks.PreyCrash
+
 	dropPercent := 1.0 - float64(stats.PreyCount)/float64(bd.recentPreyPeak)
-	if dropPercent > 0.30 && stats.PreyCount < bd.recentPreyPeak-10 {
+	if dropPercent > cfg.DropPercent && stats.PreyCount < bd.recentPreyPeak-cfg.MinDrop {
 		// Reset peak after crash
 		oldPeak := bd.recentPreyPeak
 		bd.recentPreyPeak = stats.PreyCount
@@ -222,8 +232,10 @@ func (bd *BookmarkDetector) checkPreyCrash(stats WindowStats) *Bookmark {
 }
 
 func (bd *BookmarkDetector) checkStableEcosystem(stats WindowStats) *Bookmark {
+	cfg := config.Cfg().Bookmarks.StableEcosystem
+
 	// Need both populations present
-	if stats.PreyCount < 10 || stats.PredCount < 3 {
+	if stats.PreyCount < cfg.MinPrey || stats.PredCount < cfg.MinPred {
 		bd.stableWindowsCount = 0
 		return nil
 	}
@@ -252,7 +264,7 @@ func (bd *BookmarkDetector) checkStableEcosystem(stats WindowStats) *Bookmark {
 	preyVar /= 4
 	predVar /= 4
 
-	// Low variance: coefficient of variation < 20%
+	// Low variance: coefficient of variation^2 < threshold
 	preyCV := 0.0
 	if preyMean > 0 {
 		preyCV = (preyVar / (preyMean * preyMean))
@@ -262,17 +274,17 @@ func (bd *BookmarkDetector) checkStableEcosystem(stats WindowStats) *Bookmark {
 		predCV = (predVar / (predMean * predMean))
 	}
 
-	if preyCV < 0.04 && predCV < 0.04 { // CV^2 < 0.04 means CV < 0.2
+	if preyCV < cfg.CVThreshold && predCV < cfg.CVThreshold {
 		bd.stableWindowsCount++
 	} else {
 		bd.stableWindowsCount = 0
 	}
 
-	if bd.stableWindowsCount == 5 { // trigger exactly once at 5 windows
+	if bd.stableWindowsCount == cfg.StableWindows {
 		return &Bookmark{
 			Type:        BookmarkStableEcosystem,
 			Tick:        stats.WindowEndTick,
-			Description: fmt.Sprintf("Stable ecosystem with %d prey, %d predators over 5+ windows", stats.PreyCount, stats.PredCount),
+			Description: fmt.Sprintf("Stable ecosystem with %d prey, %d predators over %d+ windows", stats.PreyCount, stats.PredCount, cfg.StableWindows),
 		}
 	}
 

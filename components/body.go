@@ -1,5 +1,7 @@
 package components
 
+import "github.com/pthm-cable/soup/config"
+
 // Body holds physical properties of an entity.
 type Body struct {
 	Radius float32 `inspect:"label,fmt:%.1f"`
@@ -17,16 +19,17 @@ type Capabilities struct {
 	BiteCost    float32 `inspect:"skip"`        // energy cost per bite
 }
 
-// DefaultCapabilities returns baseline capability values.
+// DefaultCapabilities returns baseline capability values from config.
 func DefaultCapabilities() Capabilities {
+	cfg := config.Cfg().Capabilities
 	return Capabilities{
-		VisionRange: 120,
-		FOV:         2.4, // ~140 degrees
-		MaxSpeed:    80,
-		MaxAccel:    180,
-		MaxTurnRate: 3.5,
-		Drag:        1.2,
-		BiteRange:   10,
-		BiteCost:    0.02,
+		VisionRange: float32(cfg.VisionRange),
+		FOV:         float32(cfg.FOV),
+		MaxSpeed:    float32(cfg.MaxSpeed),
+		MaxAccel:    float32(cfg.MaxAccel),
+		MaxTurnRate: float32(cfg.MaxTurnRate),
+		Drag:        float32(cfg.Drag),
+		BiteRange:   float32(cfg.BiteRange),
+		BiteCost:    float32(cfg.BiteCost),
 	}
 }

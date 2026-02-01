@@ -6,12 +6,14 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/config"
 )
 
-// Number of vision sectors.
+// NumSectors is the number of vision sectors (compile-time constant for array sizing).
+// This value must match config.yaml sensors.num_sectors.
 const NumSectors = 5
 
-// NumInputs is the total number of neural network inputs.
+// NumInputs is the total number of neural network inputs: NumSectors*3 + 2.
 const NumInputs = NumSectors*3 + 2 // 17 for K=5
 
 // SensorInputs holds the computed sensor values for one entity.
@@ -229,7 +231,7 @@ func computeResourceSensors(pos components.Position, heading float32, caps compo
 
 	halfFOV := caps.FOV / 2.0
 	half := float32(NumSectors-1) / 2.0
-	sampleDist := caps.VisionRange * 0.7 // look ahead
+	sampleDist := caps.VisionRange * float32(config.Cfg().Sensors.ResourceSampleDistance)
 
 	for i := 0; i < NumSectors; i++ {
 		// Sector center angle

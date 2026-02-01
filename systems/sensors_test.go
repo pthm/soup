@@ -4,7 +4,12 @@ import (
 	"testing"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/config"
 )
+
+func init() {
+	config.MustInit("")
+}
 
 func TestSensorInputsAsSlice(t *testing.T) {
 	inputs := SensorInputs{

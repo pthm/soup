@@ -2,12 +2,8 @@ package renderer
 
 import (
 	rl "github.com/gen2brain/raylib-go/raylib"
-)
 
-const (
-	// ResourceTextureSize is the resolution of the resource field texture.
-	// 128x128 gives good quality with minimal memory.
-	ResourceTextureSize = 128
+	"github.com/pthm-cable/soup/config"
 )
 
 // GPUResourceField generates and caches a resource field texture.
@@ -31,12 +27,14 @@ type GPUResourceField struct {
 
 // NewGPUResourceField creates a GPU-accelerated resource field.
 func NewGPUResourceField(screenWidth, screenHeight float32) *GPUResourceField {
+	textureSize := config.Cfg().GPU.ResourceTextureSize
+
 	rf := &GPUResourceField{
-		width:        ResourceTextureSize,
-		height:       ResourceTextureSize,
+		width:        textureSize,
+		height:       textureSize,
 		screenWidth:  screenWidth,
 		screenHeight: screenHeight,
-		resourceData: make([]float32, ResourceTextureSize*ResourceTextureSize),
+		resourceData: make([]float32, textureSize*textureSize),
 	}
 
 	// Load the resource field shader
@@ -45,11 +43,11 @@ func NewGPUResourceField(screenWidth, screenHeight float32) *GPUResourceField {
 	rf.resolutionLoc = rl.GetShaderLocation(rf.shader, "resolution")
 
 	// Set resolution uniform to texture size (shader uses gl_FragCoord which is in texture pixels)
-	resolution := []float32{float32(ResourceTextureSize), float32(ResourceTextureSize)}
+	resolution := []float32{float32(textureSize), float32(textureSize)}
 	rl.SetShaderValue(rf.shader, rf.resolutionLoc, resolution, rl.ShaderUniformVec2)
 
 	// Create render target
-	rf.renderTarget = rl.LoadRenderTexture(int32(ResourceTextureSize), int32(ResourceTextureSize))
+	rf.renderTarget = rl.LoadRenderTexture(int32(textureSize), int32(textureSize))
 
 	return rf
 }
@@ -76,7 +74,7 @@ func (rf *GPUResourceField) Regenerate(time float32) {
 
 	// Draw fullscreen quad with shader
 	rl.BeginShaderMode(rf.shader)
-	rl.DrawRectangle(0, 0, int32(ResourceTextureSize), int32(ResourceTextureSize), rl.White)
+	rl.DrawRectangle(0, 0, int32(rf.width), int32(rf.height), rl.White)
 	rl.EndShaderMode()
 
 	rl.EndTextureMode()
@@ -94,7 +92,7 @@ func (rf *GPUResourceField) readbackData() {
 	defer rl.UnloadImageColors(colors)
 
 	// Extract resource values from R channel
-	for i := 0; i < ResourceTextureSize*ResourceTextureSize; i++ {
+	for i := 0; i < rf.width*rf.height; i++ {
 		rf.resourceData[i] = float32(colors[i].R) / 255.0
 	}
 }

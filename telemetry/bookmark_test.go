@@ -2,7 +2,13 @@ package telemetry
 
 import (
 	"testing"
+
+	"github.com/pthm-cable/soup/config"
 )
+
+func init() {
+	config.MustInit("")
+}
 
 func TestBookmarkDetector_HuntBreakthrough(t *testing.T) {
 	bd := NewBookmarkDetector(10)

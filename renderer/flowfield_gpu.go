@@ -2,13 +2,8 @@ package renderer
 
 import (
 	rl "github.com/gen2brain/raylib-go/raylib"
-)
 
-const (
-	// FlowTextureSize is the resolution of the flow field texture
-	FlowTextureSize = 128
-	// FlowUpdateInterval is how often to regenerate the flow texture (in ticks)
-	FlowUpdateInterval = 30
+	"github.com/pthm-cable/soup/config"
 )
 
 // GPUFlowField generates flow field vectors on the GPU and caches them for CPU sampling.
@@ -33,12 +28,15 @@ type GPUFlowField struct {
 
 // NewGPUFlowField creates a GPU-accelerated flow field generator.
 func NewGPUFlowField(screenWidth, screenHeight float32) *GPUFlowField {
+	cfg := config.Cfg().GPU
+	textureSize := cfg.FlowTextureSize
+
 	gf := &GPUFlowField{
-		width:        FlowTextureSize,
-		height:       FlowTextureSize,
+		width:        textureSize,
+		height:       textureSize,
 		screenWidth:  screenWidth,
 		screenHeight: screenHeight,
-		flowData:     make([]float32, FlowTextureSize*FlowTextureSize*2),
+		flowData:     make([]float32, textureSize*textureSize*2),
 	}
 
 	// Load the flow field shader
@@ -51,7 +49,7 @@ func NewGPUFlowField(screenWidth, screenHeight float32) *GPUFlowField {
 	rl.SetShaderValue(gf.shader, gf.resolutionLoc, resolution, rl.ShaderUniformVec2)
 
 	// Create render target for flow field
-	gf.flowTarget = rl.LoadRenderTexture(int32(FlowTextureSize), int32(FlowTextureSize))
+	gf.flowTarget = rl.LoadRenderTexture(int32(textureSize), int32(textureSize))
 
 	return gf
 }
@@ -59,7 +57,8 @@ func NewGPUFlowField(screenWidth, screenHeight float32) *GPUFlowField {
 // Update regenerates the flow field texture if needed and reads it back to CPU.
 func (gf *GPUFlowField) Update(tick int32, time float32) {
 	// Only update periodically
-	if tick-gf.lastUpdate < FlowUpdateInterval {
+	updateInterval := int32(config.Cfg().GPU.FlowUpdateInterval)
+	if tick-gf.lastUpdate < updateInterval {
 		return
 	}
 	gf.lastUpdate = tick
@@ -73,7 +72,7 @@ func (gf *GPUFlowField) Update(tick int32, time float32) {
 
 	// Draw fullscreen quad with shader
 	rl.BeginShaderMode(gf.shader)
-	rl.DrawRectangle(0, 0, int32(FlowTextureSize), int32(FlowTextureSize), rl.White)
+	rl.DrawRectangle(0, 0, int32(gf.width), int32(gf.height), rl.White)
 	rl.EndShaderMode()
 
 	rl.EndTextureMode()
@@ -93,7 +92,7 @@ func (gf *GPUFlowField) readbackFlowData() {
 	defer rl.UnloadImageColors(colors)
 
 	// Decode flow vectors from RGBA
-	for i := 0; i < FlowTextureSize*FlowTextureSize; i++ {
+	for i := 0; i < gf.width*gf.height; i++ {
 		c := colors[i]
 		// Decode: R,G store flow values mapped from [-0.5, 0.5] to [0, 255]
 		flowX := (float32(c.R)/255.0 - 0.5)

@@ -6,7 +6,11 @@ import (
 	"math/rand"
 )
 
-// Network dimensions for Entity v0.
+// Network dimensions (compile-time constants for array sizing).
+// These values must match the corresponding config values:
+// - NumInputs = sensors.num_sectors * 3 + 2
+// - NumHidden = neural.num_hidden
+// - NumOutputs = neural.num_outputs
 const (
 	NumInputs  = 17 // K*3 sectors + 2 self-state (K=5)
 	NumHidden  = 12

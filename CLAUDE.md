@@ -15,12 +15,13 @@ Controls: `Space` pause, `<`/`>` adjust speed (1-10x), click to inspect entity
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `-config` | "" | Path to config.yaml (empty = use embedded defaults) |
 | `-headless` | false | Run without graphics (fast evolution) |
 | `-seed` | time-based | RNG seed for reproducibility |
 | `-max-ticks` | 0 | Stop after N ticks (0 = unlimited) |
 | `-log-stats` | false | Output ecosystem/perf stats as JSON |
 | `-log-file` | stdout | Write logs to file |
-| `-stats-window` | 10.0 | Stats window size in seconds |
+| `-stats-window` | 0 | Stats window size in seconds (0 = use config) |
 | `-snapshot-dir` | "" | Save snapshots on bookmarks |
 
 Common patterns:
@@ -28,6 +29,7 @@ Common patterns:
 ./soup --headless --log-stats                    # Fast evolution with stats
 ./soup --headless --seed=42 --max-ticks=100000   # Reproducible batch run
 ./soup --log-stats --snapshot-dir=./snapshots    # Save interesting moments
+./soup --config=config.yaml                      # Custom tuning parameters
 ```
 
 ## Project Structure
@@ -35,6 +37,7 @@ Common patterns:
 ```
 soup/
 ├── main.go           # Entry point, CLI flags
+├── config/           # YAML configuration loading
 ├── game/             # Simulation orchestration
 ├── components/       # ECS data (what entities have)
 ├── systems/          # ECS logic (what happens each tick)
@@ -44,6 +47,69 @@ soup/
 ├── telemetry/        # Stats, bookmarks, snapshots, perf
 └── inspector/        # Click-to-inspect UI
 ```
+
+## Configuration (`config/`)
+
+All simulation parameters are loaded from YAML configuration. The package embeds sensible defaults at compile time, with optional override via `-config` flag.
+
+### Usage
+
+```bash
+./soup                           # Uses embedded defaults
+./soup -config=my-config.yaml    # Custom values merged with defaults
+```
+
+### Creating a Config File
+
+Copy `config/defaults.yaml` as a starting point, then modify only the values you want to change:
+
+```yaml
+# my-config.yaml - only override what you need
+population:
+  initial: 50        # Start with more entities
+  max_prey: 600      # Allow larger populations
+
+energy:
+  prey:
+    forage_rate: 0.08  # Faster foraging
+```
+
+Unspecified values use embedded defaults.
+
+### Config Sections
+
+| Section | What it controls |
+|---------|-----------------|
+| `screen` | Window size, target FPS |
+| `physics` | Time step (dt), spatial grid cell size |
+| `entity` | Body radius, initial energy |
+| `capabilities` | Vision range, FOV, speed, turn rate, drag, bite range |
+| `population` | Initial count, max prey/pred, respawn rules |
+| `reproduction` | Energy thresholds, cooldowns, offspring energy |
+| `mutation` | Rates and sigma for neural network mutations |
+| `energy.prey` | Base cost, movement cost, forage rate |
+| `energy.predator` | Base cost, movement cost, bite cost, transfer efficiency |
+| `neural` | Hidden layer size, output count |
+| `sensors` | Number of sectors, resource sample distance |
+| `gpu` | Texture sizes, update intervals |
+| `telemetry` | Stats window, bookmark history |
+| `bookmarks` | Detection thresholds for evolutionary events |
+
+### Accessing Config in Code
+
+```go
+import "github.com/pthm-cable/soup/config"
+
+// After config.Init() is called in main()
+cfg := config.Cfg()
+dt := cfg.Derived.DT32           // float32 version of physics.dt
+maxPrey := cfg.Population.MaxPrey
+forageRate := cfg.Energy.Prey.ForageRate
+```
+
+### Compile-Time Constants
+
+Some values (NumSectors, NumInputs, NumHidden, NumOutputs) remain compile-time constants for array sizing performance. If you change these in config, you must also update the corresponding constants in `systems/sensors.go` and `neural/ffnn.go`.
 
 ## Architecture: Entity-Component-System (ECS)
 
@@ -137,10 +203,10 @@ GPU-accelerated visuals using raylib:
 | `water.go` | Animated Perlin noise water background |
 | `flowfield_gpu.go` | GPU-computed flow field texture, CPU-sampled |
 
-The flow field:
-- Rendered to 128×128 texture via shader
+The flow field (sizes configurable via `config.yaml`):
+- Rendered to 128×128 texture via shader (default)
 - Read back to CPU for fast O(1) sampling
-- Updated every 30 ticks
+- Updated every 30 ticks (default)
 
 ## World Space
 
@@ -171,12 +237,20 @@ pos := g.posMap.Get(entity)  // returns *Position or nil
 
 ## Energy Model
 
-- **Base cost**: 0.01/sec (metabolism)
-- **Movement cost**: 0.03 × (speed/maxSpeed)² per sec
-- **Bite cost**: Fixed cost when attacking
-- **Death**: When energy ≤ 0
+All values configurable via `config.yaml` (defaults shown):
 
-Predators gain 80% of energy taken from prey.
+**Prey:**
+- Base cost: 0.01/sec (metabolism)
+- Movement cost: 0.03 × (speed/maxSpeed)² per sec
+- Forage rate: 0.06/sec at resource=1.0 when stationary
+
+**Predator:**
+- Base cost: 0.016/sec (higher metabolism)
+- Movement cost: 0.045 × (speed/maxSpeed)² per sec
+- Bite cost: 0.01 per attack
+- Transfer efficiency: 80% of energy taken from prey
+
+**Death**: When energy ≤ 0
 
 ## Telemetry Package (`telemetry/`)
 
@@ -200,15 +274,15 @@ Every `--stats-window` seconds (default 10), two log lines are emitted:
 
 ### Bookmarks
 
-Auto-detected evolutionary events that trigger snapshots:
+Auto-detected evolutionary events that trigger snapshots. Thresholds configurable via `config.yaml`:
 
-| Type | Condition |
+| Type | Default Condition |
 |------|-----------|
-| `hunt_breakthrough` | Kill rate > 2× rolling average |
-| `forage_breakthrough` | Resource utilization > 2× average |
-| `predator_recovery` | Recovered from ≤3 to ≥9 predators |
-| `prey_crash` | Population dropped >30% from peak |
-| `stable_ecosystem` | Low variance over 5+ windows |
+| `hunt_breakthrough` | Kill rate > 2× rolling average, min 3 kills |
+| `forage_breakthrough` | Resource utilization > 2× average, min 0.3 |
+| `predator_recovery` | Recovered from ≤3 to 3× minimum, min 6 final |
+| `prey_crash` | Population dropped >30% from peak, min 10 drop |
+| `stable_ecosystem` | CV² < 0.04 over 5 consecutive windows |
 
 ### Performance Phases
 

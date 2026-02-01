@@ -9,20 +9,29 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/game"
 )
 
 func main() {
 	// CLI flags
+	configPath := flag.String("config", "", "Path to config.yaml (empty = use defaults)")
 	headless := flag.Bool("headless", false, "Run without graphics")
 	logStats := flag.Bool("log-stats", false, "Output stats via slog")
 	logFile := flag.String("log-file", "", "Write logs to file (empty = stdout)")
-	statsWindow := flag.Float64("stats-window", 10.0, "Stats window size in seconds")
+	statsWindow := flag.Float64("stats-window", 0, "Stats window size in seconds (0 = use config)")
 	snapshotDir := flag.String("snapshot-dir", "", "Directory for snapshot files")
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
 	maxTicks := flag.Int("max-ticks", 0, "Stop after N ticks (0 = unlimited)")
 
 	flag.Parse()
+
+	// Initialize config before anything else
+	if err := config.Init(*configPath); err != nil {
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+	cfg := config.Cfg()
 
 	// Set up seed
 	rngSeed := *seed
@@ -45,11 +54,17 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(logWriter, nil))
 	slog.SetDefault(logger)
 
+	// Use config stats window if not overridden by CLI
+	statsWindowSec := cfg.Telemetry.StatsWindow
+	if *statsWindow > 0 {
+		statsWindowSec = *statsWindow
+	}
+
 	// Build game options
 	opts := game.Options{
 		Seed:           rngSeed,
 		LogStats:       *logStats,
-		StatsWindowSec: *statsWindow,
+		StatsWindowSec: statsWindowSec,
 		SnapshotDir:    *snapshotDir,
 		Headless:       *headless,
 	}
@@ -57,7 +72,7 @@ func main() {
 	if *headless {
 		// Headless mode - hidden window for GPU access
 		rl.SetConfigFlags(rl.FlagWindowHidden)
-		rl.InitWindow(int32(game.ScreenWidth), int32(game.ScreenHeight), "Primordial Soup (headless)")
+		rl.InitWindow(int32(cfg.Screen.Width), int32(cfg.Screen.Height), "Primordial Soup (headless)")
 		defer rl.CloseWindow()
 
 		g := game.NewGameWithOptions(opts)
@@ -79,10 +94,10 @@ func main() {
 		}
 	} else {
 		// Graphical mode
-		rl.InitWindow(int32(game.ScreenWidth), int32(game.ScreenHeight), "Primordial Soup")
+		rl.InitWindow(int32(cfg.Screen.Width), int32(cfg.Screen.Height), "Primordial Soup")
 		defer rl.CloseWindow()
 
-		rl.SetTargetFPS(60)
+		rl.SetTargetFPS(int32(cfg.Screen.TargetFPS))
 
 		g := game.NewGameWithOptions(opts)
 		defer g.Unload()

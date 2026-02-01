@@ -24,6 +24,8 @@ go build .
 Usage: ./soup [options]
 
 Options:
+  -config string
+        Path to config.yaml (empty = use embedded defaults)
   -headless
         Run without graphics (for fast evolution)
   -seed int
@@ -35,10 +37,56 @@ Options:
   -log-file string
         Write logs to file (empty = stdout)
   -stats-window float
-        Stats aggregation window in seconds (default 10.0)
+        Stats aggregation window in seconds (0 = use config default)
   -snapshot-dir string
         Directory to save snapshots on bookmarks
 ```
+
+## Configuration
+
+All simulation parameters can be tuned via a YAML config file. The simulation includes sensible defaults embedded at compile time.
+
+### Using Custom Config
+
+```bash
+./soup --config=my-config.yaml
+```
+
+### Creating a Config File
+
+Start from the embedded defaults in `config/defaults.yaml`. You only need to specify values you want to change:
+
+```yaml
+# my-config.yaml
+population:
+  initial: 50          # More starting entities
+  max_prey: 600        # Larger population cap
+
+energy:
+  prey:
+    forage_rate: 0.08  # Faster resource gathering
+  predator:
+    transfer_efficiency: 0.9  # More efficient hunting
+
+reproduction:
+  prey_threshold: 0.75   # Reproduce at lower energy
+```
+
+### Configurable Parameters
+
+| Category | Examples |
+|----------|----------|
+| Screen | Window size, FPS |
+| Physics | Time step, grid size |
+| Population | Initial count, caps, respawn rules |
+| Energy | Base costs, movement costs, forage rate, transfer efficiency |
+| Reproduction | Thresholds, cooldowns, offspring energy |
+| Mutation | Rates, sigma values |
+| Capabilities | Vision range, FOV, speed, turn rate |
+| GPU | Texture sizes, update intervals |
+| Bookmarks | Detection thresholds |
+
+See `config/defaults.yaml` for the complete list with default values, or [CLAUDE.md](CLAUDE.md) for detailed documentation.
 
 ## Examples
 
@@ -60,6 +108,11 @@ Options:
 ### Long overnight run to file
 ```bash
 ./soup --headless --log-stats --log-file=run.jsonl &
+```
+
+### Experiment with tuned parameters
+```bash
+./soup --config=aggressive-predators.yaml --headless --log-stats
 ```
 
 ## Telemetry
@@ -133,6 +186,7 @@ These can be used for replay, analysis, or seeding new runs with evolved brains.
 ## Architecture
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation including:
+- Configuration system and all tunable parameters
 - Entity-Component-System design
 - Neural network structure
 - Energy model

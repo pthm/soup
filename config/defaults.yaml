@@ -1,0 +1,182 @@
+# =============================================================================
+# Soup Simulation Configuration
+# =============================================================================
+# All simulation parameters with their default values. Copy this file and
+# modify only the values you want to change - unspecified values use defaults.
+#
+# Usage: ./soup --config=my-config.yaml
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Display Settings
+# -----------------------------------------------------------------------------
+screen:
+  width: 1280                # Window width in pixels
+  height: 720                # Window height in pixels
+  target_fps: 60             # Target frame rate (also affects simulation speed in graphics mode)
+
+# -----------------------------------------------------------------------------
+# Physics & Simulation
+# -----------------------------------------------------------------------------
+physics:
+  dt: 0.016666666666666666   # Time step per tick in seconds (1/60 = 60 ticks/sec)
+  grid_cell_size: 64.0       # Spatial hash grid cell size; affects neighbor query performance
+                             # Should be >= largest vision_range for efficiency
+
+# -----------------------------------------------------------------------------
+# Entity Defaults
+# -----------------------------------------------------------------------------
+entity:
+  body_radius: 10.0          # Collision/visual radius of entities in world units
+  initial_energy: 0.8        # Starting energy for newly spawned entities (0-1 scale)
+
+# -----------------------------------------------------------------------------
+# Entity Capabilities
+# These define the physical abilities of all entities (prey and predators share these)
+# -----------------------------------------------------------------------------
+capabilities:
+  vision_range: 120.0        # How far entities can see (world units)
+  fov: 2.4                   # Field of view in radians (~140 degrees)
+                             # Wider FOV = more awareness but less directional precision
+  max_speed: 80.0            # Maximum velocity magnitude (world units/sec)
+  max_accel: 180.0           # Maximum acceleration for velocity smoothing
+  max_turn_rate: 3.5         # Maximum rotation speed (radians/sec)
+  drag: 1.2                  # Velocity damping factor; higher = slower stopping
+  bite_range: 10.0           # Distance at which predators can bite prey (world units)
+  bite_cost: 0.02            # Energy cost per bite attempt (currently unused, see energy.predator.bite_cost)
+
+# -----------------------------------------------------------------------------
+# Population Management
+# -----------------------------------------------------------------------------
+population:
+  initial: 20                # Number of entities spawned at simulation start
+  max_prey: 400              # Population cap for prey; prevents runaway growth
+  max_pred: 120              # Population cap for predators
+  respawn_threshold: 5       # If total population drops below this, trigger respawn
+  respawn_count: 5           # How many entities to spawn on respawn trigger
+  predator_spawn_chance: 0.25  # Probability a respawned entity is a predator (0-1)
+
+# -----------------------------------------------------------------------------
+# Reproduction
+# Asexual reproduction occurs when energy exceeds threshold and cooldown expires
+# -----------------------------------------------------------------------------
+reproduction:
+  prey_threshold: 0.85       # Minimum energy for prey to reproduce (0-1)
+  pred_threshold: 0.90       # Minimum energy for predators to reproduce (0-1)
+                             # Higher threshold = predators must be well-fed to breed
+  maturity_age: 8.0          # Minimum age in seconds before entity can reproduce
+                             # Prevents immediate reproduction after birth
+  prey_cooldown: 8.0         # Seconds between prey reproductions
+  pred_cooldown: 10.0        # Seconds between predator reproductions
+                             # Longer cooldown = slower predator population growth
+  cooldown_jitter: 1.0       # Random +/- variation in initial cooldown (seconds)
+                             # Prevents synchronized reproduction waves
+  parent_energy_split: 0.55  # Fraction of energy parent keeps after reproduction
+  child_energy: 0.35         # Energy child starts with (independent of parent's energy)
+  spawn_offset: 15.0         # Base distance child spawns from parent (world units)
+  heading_jitter: 0.25       # Random heading variation for child (radians)
+
+# -----------------------------------------------------------------------------
+# Neural Network Mutation
+# Controls how offspring brains differ from parents
+# -----------------------------------------------------------------------------
+mutation:
+  rate: 0.05                 # Probability each weight mutates (0-1)
+                             # Lower = more stable lineages, slower adaptation
+  sigma: 0.08                # Standard deviation of normal mutation perturbation
+                             # Higher = larger weight changes when mutations occur
+  big_rate: 0.01             # Probability of a "big" mutation (0-1)
+                             # Rare large jumps help escape local optima
+  big_sigma: 0.40            # Standard deviation for big mutations
+  bias_rate_multiplier: 0.5  # Biases mutate at rate * this multiplier
+                             # Lower = more stable baseline behaviors
+
+# -----------------------------------------------------------------------------
+# Energy Economics
+# The balance between these values determines predator-prey dynamics
+# -----------------------------------------------------------------------------
+energy:
+  prey:
+    base_cost: 0.010         # Energy drain per second just for existing (metabolism)
+    move_cost: 0.030         # Additional cost multiplier for movement
+                             # Actual cost = move_cost * (speed/max_speed)^2 * dt
+    forage_rate: 0.060       # Energy gain per second at resource=1.0 when stationary
+                             # Moving reduces foraging efficiency linearly with speed
+  predator:
+    base_cost: 0.016         # Higher base metabolism than prey (predator tax)
+    move_cost: 0.045         # Higher movement cost than prey
+    bite_cost: 0.010         # Energy cost per bite attempt
+    bite_reward: 0.35        # Base energy transferred per successful bite
+    transfer_efficiency: 0.8 # Fraction of taken energy predator actually receives
+                             # Models energy loss in food chain transfer
+
+# -----------------------------------------------------------------------------
+# Neural Network Architecture
+# WARNING: Changing these requires recompiling - they affect array sizes
+# -----------------------------------------------------------------------------
+neural:
+  num_hidden: 12             # Hidden layer neurons (must match neural/ffnn.go)
+  num_outputs: 3             # Output neurons: turn, thrust, bite (must match neural/ffnn.go)
+
+# -----------------------------------------------------------------------------
+# Sensor Configuration
+# WARNING: num_sectors affects array sizes - requires recompile to change
+# -----------------------------------------------------------------------------
+sensors:
+  num_sectors: 5             # Vision divided into this many angular sectors
+                             # More sectors = finer directional resolution
+                             # Total inputs = num_sectors * 3 + 2 (must match systems/sensors.go)
+  resource_sample_distance: 0.7  # How far ahead to sample resource field (fraction of vision_range)
+                                 # Higher = entities "see" resources further away
+
+# -----------------------------------------------------------------------------
+# GPU Rendering
+# -----------------------------------------------------------------------------
+gpu:
+  flow_texture_size: 128     # Resolution of flow field texture (pixels)
+                             # Higher = smoother visuals but more GPU memory
+  flow_update_interval: 30   # Ticks between flow field regeneration
+                             # Lower = smoother animation but higher GPU load
+  resource_texture_size: 128 # Resolution of resource field texture (pixels)
+
+# -----------------------------------------------------------------------------
+# Telemetry & Logging
+# -----------------------------------------------------------------------------
+telemetry:
+  stats_window: 10.0         # Seconds between stats log entries
+  bookmark_history_size: 10  # Number of past windows to consider for bookmark detection
+  perf_collector_window: 600 # Ticks of performance data to keep (10 sec at 60 tps)
+
+# -----------------------------------------------------------------------------
+# Bookmark Detection Thresholds
+# Bookmarks flag interesting evolutionary moments for snapshot saving
+# -----------------------------------------------------------------------------
+bookmarks:
+  # Hunt breakthrough: predators suddenly become much more effective killers
+  hunt_breakthrough:
+    multiplier: 2.0          # Kill rate must exceed rolling average by this factor
+    min_kills: 3             # Minimum kills in window to trigger (avoids noise)
+
+  # Forage breakthrough: prey discover better resource utilization
+  forage_breakthrough:
+    multiplier: 2.0          # Resource utilization must exceed average by this factor
+    min_resource: 0.3        # Minimum absolute resource level to trigger
+
+  # Predator recovery: predators bounce back from near-extinction
+  predator_recovery:
+    min_population: 3        # Must have dropped to this level or below
+    recovery_multiplier: 3   # Must recover to min_population * this
+    min_final: 6             # Must reach at least this many predators
+
+  # Prey crash: sudden population collapse (often due to predator efficiency)
+  prey_crash:
+    drop_percent: 0.30       # Population must drop by this fraction from peak
+    min_drop: 10             # Minimum absolute drop in count
+
+  # Stable ecosystem: sustained coexistence without major fluctuations
+  stable_ecosystem:
+    min_prey: 10             # Need at least this many prey
+    min_pred: 3              # Need at least this many predators
+    cv_threshold: 0.04       # Coefficient of variation squared threshold
+                             # Lower = stricter stability requirement
+    stable_windows: 5        # Must maintain stability for this many consecutive windows
