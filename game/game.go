@@ -39,6 +39,25 @@ const (
 	InitialPopulation = 20
 )
 
+// Reproduction constants
+const (
+	PreyReproThreshold float32 = 0.85
+	PredReproThreshold float32 = 0.90
+	MaturityAge        float32 = 8.0  // seconds
+	PreyCooldown       float32 = 8.0  // seconds between reproductions
+	PredCooldown       float32 = 10.0 // seconds between reproductions
+	MaxPrey                    = 400
+	MaxPred                    = 120
+)
+
+// Mutation parameters for sparse mutation
+const (
+	MutationRate     = 0.05
+	MutationSigma    = 0.08
+	MutationBigRate  = 0.01
+	MutationBigSigma = 0.40
+)
+
 // normalizeAngle wraps angle to [-pi, pi].
 func normalizeAngle(a float32) float32 {
 	for a > math.Pi {
@@ -90,18 +109,23 @@ type Game struct {
 	// Spatial index
 	spatialGrid *systems.SpatialGrid
 
+	// Resource field
+	resourceField *systems.ResourceField
+
 	// Rendering
 	water     *renderer.WaterBackground
 	flow      *renderer.GPUFlowField
 	inspector *inspector.Inspector
 
 	// State
-	tick        int32
-	paused      bool
-	nextID      uint32
-	aliveCount  int
-	deadCount   int
-	speed       int // simulation speed multiplier (1-10)
+	tick       int32
+	paused     bool
+	nextID     uint32
+	aliveCount int
+	deadCount  int
+	numPrey    int
+	numPred    int
+	speed      int // simulation speed multiplier (1-10)
 
 	// Window dimensions
 	width, height float32
@@ -148,6 +172,9 @@ func NewGame() *Game {
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
 
+	// Resource field (12 hotspots)
+	g.resourceField = systems.NewResourceField(g.width, g.height, 12, g.rng)
+
 	// GPU flow field
 	g.flow = renderer.NewGPUFlowField(g.width, g.height)
 
@@ -191,7 +218,7 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 	body := components.Body{Radius: 10}
 	energy := components.Energy{Value: 0.8, Age: 0, Alive: true}
 	caps := components.DefaultCapabilities()
-	org := components.Organism{ID: id, Kind: kind}
+	org := components.Organism{ID: id, Kind: kind, ReproCooldown: MaturityAge}
 
 	// Create brain
 	brain := neural.NewFFNN(g.rng)
@@ -199,6 +226,13 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 
 	entity := g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
 	g.aliveCount++
+
+	// Track population by kind
+	if kind == components.KindPrey {
+		g.numPrey++
+	} else {
+		g.numPred++
+	}
 
 	return entity
 }
@@ -235,7 +269,13 @@ func (g *Game) simulationStep() {
 	// 4. Update energy and check deaths
 	g.updateEnergy()
 
-	// 5. Cleanup dead entities
+	// 5. Update cooldowns
+	g.updateCooldowns()
+
+	// 6. Handle reproduction
+	g.updateReproduction()
+
+	// 7. Cleanup dead entities
 	g.cleanupDead()
 
 	g.tick++
@@ -284,6 +324,7 @@ func (g *Game) updateBehaviorAndPhysics() {
 			*pos, *vel, *rot, *energy, *caps, org.Kind,
 			neighbors,
 			g.posMap, g.orgMap,
+			g.resourceField,
 			g.width, g.height,
 		)
 
@@ -384,15 +425,24 @@ func (g *Game) updateFeeding() {
 	}
 }
 
-// updateEnergy applies metabolic costs.
+// updateEnergy applies metabolic costs and prey foraging.
 func (g *Game) updateEnergy() {
 	query := g.entityFilter.Query()
 	for query.Next() {
-		_, vel, _, _, energy, caps, _ := query.Get()
+		pos, vel, _, _, energy, caps, org := query.Get()
 
-		if energy.Alive {
-			systems.UpdateEnergy(energy, *vel, *caps, false, DT)
+		if !energy.Alive {
+			continue
 		}
+
+		// Prey gain energy from resource field
+		if org.Kind == components.KindPrey {
+			r := g.resourceField.Sample(pos.X, pos.Y)
+			systems.UpdatePreyForage(energy, *vel, *caps, r, DT)
+		}
+
+		// Apply metabolic costs (per-kind)
+		systems.UpdateEnergy(energy, *vel, *caps, org.Kind, false, DT)
 	}
 }
 
@@ -402,6 +452,7 @@ func (g *Game) cleanupDead() {
 	type deadInfo struct {
 		entity ecs.Entity
 		id     uint32
+		kind   components.Kind
 	}
 	var toRemove []deadInfo
 
@@ -411,7 +462,7 @@ func (g *Game) cleanupDead() {
 		_, _, _, _, energy, _, org := query.Get()
 
 		if !energy.Alive {
-			toRemove = append(toRemove, deadInfo{entity: entity, id: org.ID})
+			toRemove = append(toRemove, deadInfo{entity: entity, id: org.ID, kind: org.Kind})
 		}
 	}
 
@@ -421,6 +472,13 @@ func (g *Game) cleanupDead() {
 		delete(g.brains, dead.id)
 		g.aliveCount--
 		g.deadCount++
+
+		// Track population by kind
+		if dead.kind == components.KindPrey {
+			g.numPrey--
+		} else {
+			g.numPred--
+		}
 	}
 
 	// Respawn if population drops too low
@@ -434,6 +492,111 @@ func (g *Game) cleanupDead() {
 				kind = components.KindPredator
 			}
 			g.spawnEntity(x, y, heading, kind)
+		}
+	}
+}
+
+// updateCooldowns decrements reproduction cooldowns.
+func (g *Game) updateCooldowns() {
+	query := g.entityFilter.Query()
+	for query.Next() {
+		_, _, _, _, energy, _, org := query.Get()
+
+		if energy.Alive && org.ReproCooldown > 0 {
+			org.ReproCooldown -= DT
+			if org.ReproCooldown < 0 {
+				org.ReproCooldown = 0
+			}
+		}
+	}
+}
+
+// updateReproduction handles asexual reproduction with mutation.
+func (g *Game) updateReproduction() {
+	// Collect births to spawn after iteration
+	type birthInfo struct {
+		x, y, heading float32
+		kind          components.Kind
+		parentBrain   *neural.FFNN
+	}
+	var births []birthInfo
+
+	query := g.entityFilter.Query()
+	for query.Next() {
+		pos, _, rot, _, energy, _, org := query.Get()
+
+		if !energy.Alive {
+			continue
+		}
+
+		// Check population caps
+		if org.Kind == components.KindPrey && g.numPrey >= MaxPrey {
+			continue
+		}
+		if org.Kind == components.KindPredator && g.numPred >= MaxPred {
+			continue
+		}
+
+		// Check reproduction thresholds
+		var threshold, cooldown float32
+		if org.Kind == components.KindPredator {
+			threshold = PredReproThreshold
+			cooldown = PredCooldown
+		} else {
+			threshold = PreyReproThreshold
+			cooldown = PreyCooldown
+		}
+
+		if energy.Value < threshold || energy.Age < MaturityAge || org.ReproCooldown > 0 {
+			continue
+		}
+
+		// Reproduction: parent pays energy, child spawns nearby
+		parentBrain, ok := g.brains[org.ID]
+		if !ok {
+			continue
+		}
+
+		// Energy split: parent keeps 55%, child gets 45%
+		childEnergy := energy.Value * 0.45
+		energy.Value *= 0.55
+
+		// Set cooldown
+		org.ReproCooldown = cooldown
+
+		// Queue child spawn
+		offset := float32(15 + g.rng.Float32()*10)
+		childX := mod(pos.X+(g.rng.Float32()-0.5)*offset*2, g.width)
+		childY := mod(pos.Y+(g.rng.Float32()-0.5)*offset*2, g.height)
+		childHeading := rot.Heading + (g.rng.Float32()-0.5)*0.5
+
+		births = append(births, birthInfo{
+			x:           childX,
+			y:           childY,
+			heading:     childHeading,
+			kind:        org.Kind,
+			parentBrain: parentBrain,
+		})
+
+		// Store child energy temporarily (will apply after spawn)
+		_ = childEnergy
+	}
+
+	// Spawn children outside query
+	for _, b := range births {
+		child := g.spawnEntity(b.x, b.y, b.heading, b.kind)
+		childOrg := g.orgMap.Get(child)
+		childEnergy := g.energyMap.Get(child)
+
+		if childOrg != nil && childEnergy != nil {
+			// Inherit mutated brain
+			childBrain := b.parentBrain.Clone()
+			childBrain.MutateSparse(g.rng, MutationRate, MutationSigma, MutationBigRate, MutationBigSigma)
+			g.brains[childOrg.ID] = childBrain
+
+			// Set child energy from parent split
+			childEnergy.Value = 0.35 // Fixed starting energy for children
+			childEnergy.Age = 0
 		}
 	}
 }
@@ -478,7 +641,7 @@ func (g *Game) Draw() {
 
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
-	rl.DrawText(fmt.Sprintf("Alive: %d  Dead: %d", g.aliveCount, g.deadCount), 10, 35, 20, rl.White)
+	rl.DrawText(fmt.Sprintf("Prey: %d  Pred: %d  Dead: %d", g.numPrey, g.numPred, g.deadCount), 10, 35, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.speed), 10, 60, 20, rl.White)
 	if g.paused {
 		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)

@@ -262,7 +262,7 @@ func (ins *Inspector) Draw(
 	if ins.lastInputs != nil {
 		y += DrawBarGroup(x, y, "Prey", ins.lastInputs.Prey[:], nil)
 		y += DrawBarGroup(x, y, "Pred", ins.lastInputs.Pred[:], nil)
-		y += DrawBarGroup(x, y, "Wall", ins.lastInputs.Wall[:], nil)
+		y += DrawBarGroup(x, y, "Food", ins.lastInputs.Resource[:], nil)
 	} else {
 		rl.DrawText("(no sensor data)", x, y, 12, ColorLabelDim)
 		y += 16

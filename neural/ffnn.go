@@ -146,6 +146,57 @@ func (nn *FFNN) Mutate(rng *rand.Rand, strength float32) {
 	}
 }
 
+// MutateSparse applies sparse per-weight mutation for stable lineages.
+// rate: probability each weight mutates (e.g., 0.05)
+// sigma: standard deviation of normal perturbation (e.g., 0.08)
+// bigRate: probability of a large mutation (e.g., 0.01)
+// bigSigma: sigma for large mutations (e.g., 0.4)
+func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma float32) {
+	biasRate := rate * 0.5 // biases mutate at half the rate
+
+	// Hidden layer weights
+	for i := range nn.W1 {
+		for j := range nn.W1[i] {
+			if rng.Float32() < rate {
+				if rng.Float32() < bigRate {
+					nn.W1[i][j] += float32(rng.NormFloat64()) * bigSigma
+				} else {
+					nn.W1[i][j] += float32(rng.NormFloat64()) * sigma
+				}
+			}
+		}
+		// Hidden biases
+		if rng.Float32() < biasRate {
+			if rng.Float32() < bigRate {
+				nn.B1[i] += float32(rng.NormFloat64()) * bigSigma
+			} else {
+				nn.B1[i] += float32(rng.NormFloat64()) * sigma
+			}
+		}
+	}
+
+	// Output layer weights
+	for i := range nn.W2 {
+		for j := range nn.W2[i] {
+			if rng.Float32() < rate {
+				if rng.Float32() < bigRate {
+					nn.W2[i][j] += float32(rng.NormFloat64()) * bigSigma
+				} else {
+					nn.W2[i][j] += float32(rng.NormFloat64()) * sigma
+				}
+			}
+		}
+		// Output biases
+		if rng.Float32() < biasRate {
+			if rng.Float32() < bigRate {
+				nn.B2[i] += float32(rng.NormFloat64()) * bigSigma
+			} else {
+				nn.B2[i] += float32(rng.NormFloat64()) * sigma
+			}
+		}
+	}
+}
+
 // Clone creates a deep copy of the network.
 func (nn *FFNN) Clone() *FFNN {
 	clone := &FFNN{}

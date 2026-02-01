@@ -8,11 +8,11 @@ import (
 
 func TestSensorInputsAsSlice(t *testing.T) {
 	inputs := SensorInputs{
-		Prey:   [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5},
-		Pred:   [NumSectors]float32{0.5, 0.4, 0.3, 0.2, 0.1},
-		Wall:   [NumSectors]float32{0.0, 0.0, 0.0, 0.0, 0.0},
-		Energy: 0.8,
-		Speed:  0.5,
+		Prey:     [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5},
+		Pred:     [NumSectors]float32{0.5, 0.4, 0.3, 0.2, 0.1},
+		Resource: [NumSectors]float32{0.0, 0.0, 0.0, 0.0, 0.0},
+		Energy:   0.8,
+		Speed:    0.5,
 	}
 
 	slice := inputs.AsSlice()
@@ -46,7 +46,7 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 
 	inputs := ComputeSensors(
 		pos, vel, rot, energy, caps, components.KindPrey,
-		nil, nil, nil,
+		nil, nil, nil, nil, // neighbors, posMap, orgMap, resourceField
 		1280, 720,
 	)
 

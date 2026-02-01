@@ -14,11 +14,11 @@ const NumSectors = 5
 // SensorInputs holds the computed sensor values for one entity.
 // Total: K*3 + 2 = 17 floats for K=5 sectors.
 type SensorInputs struct {
-	Prey  [NumSectors]float32 // density of prey in each sector
-	Pred  [NumSectors]float32 // density of predators in each sector
-	Wall  [NumSectors]float32 // proximity to wall in each sector
-	Energy float32            // self energy [0,1]
-	Speed  float32            // self speed normalized [0,1]
+	Prey     [NumSectors]float32 // density of prey in each sector
+	Pred     [NumSectors]float32 // density of predators in each sector
+	Resource [NumSectors]float32 // resource level ahead in each sector
+	Energy   float32             // self energy [0,1]
+	Speed    float32             // self speed normalized [0,1]
 }
 
 // AsSlice returns the sensor inputs as a flat slice for the neural network.
@@ -34,7 +34,7 @@ func (s *SensorInputs) AsSlice() []float32 {
 		idx++
 	}
 	for i := 0; i < NumSectors; i++ {
-		result[idx] = s.Wall[i]
+		result[idx] = s.Resource[i]
 		idx++
 	}
 	result[idx] = s.Energy
@@ -54,6 +54,7 @@ func ComputeSensors(
 	neighbors []ecs.Entity,
 	posMap *ecs.Map1[components.Position],
 	orgMap *ecs.Map1[components.Organism],
+	resourceField *ResourceField,
 	worldWidth, worldHeight float32,
 ) SensorInputs {
 	var inputs SensorInputs
@@ -119,52 +120,49 @@ func ComputeSensors(
 		inputs.Pred[i] = smoothSaturate(inputs.Pred[i])
 	}
 
-	// Wall proximity per sector
-	inputs.Wall = computeWallProximity(selfPos, selfRot.Heading, selfCaps, worldWidth, worldHeight)
+	// Resource level per sector
+	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
 
 	return inputs
 }
 
-// computeWallProximity calculates wall distance for each vision sector.
-// For a toroidal world, walls are effectively at infinity (no walls).
-// If you want bounded mode, set wallMode = true.
-func computeWallProximity(pos components.Position, heading float32, caps components.Capabilities, w, h float32) [NumSectors]float32 {
-	var walls [NumSectors]float32
+// computeResourceSensors samples the resource field ahead in each sector.
+func computeResourceSensors(pos components.Position, heading float32, caps components.Capabilities, field *ResourceField) [NumSectors]float32 {
+	var res [NumSectors]float32
+
+	if field == nil {
+		return res
+	}
 
 	halfFOV := caps.FOV / 2.0
-	halfSectors := float32(NumSectors-1) / 2.0
+	half := float32(NumSectors-1) / 2.0
+	sampleDist := caps.VisionRange * 0.7 // look ahead
 
 	for i := 0; i < NumSectors; i++ {
-		// Sector direction relative to heading
-		t := (float32(i) - float32(NumSectors/2)) / halfSectors
+		// Sector center angle
+		t := (float32(i) - half) / half // [-1, 1]
 		sectorAngle := heading + t*halfFOV
 
 		dirX := float32(math.Cos(float64(sectorAngle)))
 		dirY := float32(math.Sin(float64(sectorAngle)))
 
-		// Distance to wall in this direction (bounded mode)
-		var distToWall float32 = caps.VisionRange // default: no wall
+		// Sample point ahead in this sector
+		sampleX := pos.X + dirX*sampleDist
+		sampleY := pos.Y + dirY*sampleDist
 
-		// Check horizontal walls
-		if dirX > 0.001 {
-			distToWall = minf(distToWall, (w-pos.X)/dirX)
-		} else if dirX < -0.001 {
-			distToWall = minf(distToWall, -pos.X/dirX)
-		}
+		// Wrap toroidally
+		sampleX = wrapMod(sampleX, field.Width())
+		sampleY = wrapMod(sampleY, field.Height())
 
-		// Check vertical walls
-		if dirY > 0.001 {
-			distToWall = minf(distToWall, (h-pos.Y)/dirY)
-		} else if dirY < -0.001 {
-			distToWall = minf(distToWall, -pos.Y/dirY)
-		}
-
-		// In toroidal mode, there are no walls, so this will always be VisionRange
-		// Set to 0 (no wall signal) for toroidal worlds
-		walls[i] = 0 // toroidal: no wall proximity
+		res[i] = field.Sample(sampleX, sampleY)
 	}
 
-	return walls
+	return res
+}
+
+// wrapMod returns positive modulo for toroidal wrapping.
+func wrapMod(a, b float32) float32 {
+	return float32(math.Mod(float64(a)+float64(b), float64(b)))
 }
 
 func normalizeAngle(a float32) float32 {

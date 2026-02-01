@@ -15,8 +15,9 @@ type Energy struct {
 	Alive bool    `inspect:"bool"`
 }
 
-// Organism bundles identity, kind, and brain for an entity.
+// Organism bundles identity, kind, and reproduction state.
 type Organism struct {
-	ID   uint32 `inspect:"label"`
-	Kind Kind   `inspect:"label"`
+	ID            uint32  `inspect:"label"`
+	Kind          Kind    `inspect:"label"`
+	ReproCooldown float32 `inspect:"label,fmt:%.1fs"` // seconds until can reproduce again
 }
