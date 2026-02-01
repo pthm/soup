@@ -72,9 +72,10 @@ type Game struct {
 	parallel *parallelState
 
 	// Rendering
-	lightRenderer    *renderer.LightRenderer
-	particleRenderer *renderer.ParticleRenderer
-	inspector        *inspector.Inspector
+	backgroundRenderer *renderer.BackgroundRenderer
+	lightRenderer      *renderer.LightRenderer
+	particleRenderer   *renderer.ParticleRenderer
+	inspector          *inspector.Inspector
 
 	// State
 	tick       int32
@@ -212,6 +213,9 @@ func NewGameWithOptions(opts Options) *Game {
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
+		// Background noise texture (teal sea color with soft noise)
+		g.backgroundRenderer = renderer.NewBackgroundRenderer(int32(g.screenWidth), int32(g.screenHeight), 8, 45, 60)
+
 		// Light background (renders potential field as sunlight)
 		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight))
 
@@ -292,6 +296,9 @@ func (g *Game) simulationStep() {
 
 // Unload releases all resources.
 func (g *Game) Unload() {
+	if g.backgroundRenderer != nil {
+		g.backgroundRenderer.Unload()
+	}
 	if g.lightRenderer != nil {
 		g.lightRenderer.Unload()
 	}

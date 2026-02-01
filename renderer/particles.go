@@ -29,7 +29,7 @@ func NewParticleRenderer(width, height int32) *ParticleRenderer {
 		height:    height,
 		BaseColor: rl.Color{R: 100, G: 220, B: 120, A: 255}, // Soft algae green
 		DotRadius: 2.0,
-		GlowAlpha: 60, // Fairly subtle
+		GlowAlpha: 140, // Brighter glow
 	}
 }
 

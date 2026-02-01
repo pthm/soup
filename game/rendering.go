@@ -14,12 +14,12 @@ func (g *Game) Draw() {
 	g.perfCollector.RecordFrame()
 
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Black)
+	rl.ClearBackground(rl.Color{R: 8, G: 45, B: 60, A: 255}) // Teal sea fallback
 
-	// Light background (potential field as sunlight)
-	g.drawLightBackground()
+	// Layer 1: Background noise texture
+	g.drawBackground()
 
-	// Draw floating resource particles (algae-like effect)
+	// Layer 2: Particles
 	g.drawParticles()
 
 	// Debug overlays (drawn before entities so entities appear on top)
@@ -27,8 +27,14 @@ func (g *Game) Draw() {
 		g.drawResourceHeatmap(180)
 	}
 
-	// Draw entities
+	// Layer 3: Entities
 	g.drawEntities()
+
+	// Layer 4: Shadow (darkens everything underneath including particles and entities)
+	g.drawShadow()
+
+	// Layer 5: Caustics (lights up everything underneath)
+	g.drawCaustics()
 
 	// Draw selection highlight and vision cone
 	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap, g.orgMap, g.camera)
@@ -214,8 +220,23 @@ func resourceToColor(val float32, alpha uint8) rl.Color {
 	return rl.Color{R: r, G: g, B: b, A: alpha}
 }
 
-// drawLightBackground renders the potential field as dappled sunlight.
-func (g *Game) drawLightBackground() {
+// drawBackground renders the soft noise texture background.
+func (g *Game) drawBackground() {
+	if g.backgroundRenderer == nil {
+		return
+	}
+
+	cam := g.camera
+	g.backgroundRenderer.Draw(
+		float32(g.tick)*0.03,
+		cam.X, cam.Y,
+		cam.Zoom,
+		g.worldWidth, g.worldHeight,
+	)
+}
+
+// updateLightRenderer updates the light renderer state (potential texture, blend progress).
+func (g *Game) updateLightRenderer() {
 	if g.lightRenderer == nil {
 		return
 	}
@@ -226,10 +247,40 @@ func (g *Game) drawLightBackground() {
 		g.lightRenderer.UpdatePotential(pf.Pot, pf.PotW, pf.PotH)
 	}
 
-	// Draw with caustics animation
-	// Pass dt for smooth blend transitions
+	// Update blend progress
 	dt := float32(1.0 / 60.0) // Fixed timestep
-	g.lightRenderer.Draw(float32(g.tick)*0.03, dt)
+	g.lightRenderer.Update(dt)
+}
+
+// drawShadow renders the shadow layer (darkens low-potential areas).
+func (g *Game) drawShadow() {
+	if g.lightRenderer == nil {
+		return
+	}
+
+	g.updateLightRenderer()
+
+	cam := g.camera
+	g.lightRenderer.DrawShadow(
+		cam.X, cam.Y,
+		cam.Zoom,
+		g.worldWidth, g.worldHeight,
+	)
+}
+
+// drawCaustics renders the caustic light layer (additive glow on top of everything).
+func (g *Game) drawCaustics() {
+	if g.lightRenderer == nil {
+		return
+	}
+
+	cam := g.camera
+	g.lightRenderer.DrawCaustics(
+		float32(g.tick)*0.03,
+		cam.X, cam.Y,
+		cam.Zoom,
+		g.worldWidth, g.worldHeight,
+	)
 }
 
 // drawParticles renders the floating resource particles with glow effect.
