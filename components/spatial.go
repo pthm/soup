@@ -1,4 +1,3 @@
-// Package components defines ECS components for the simulation.
 package components
 
 // Position represents an entity's world position.
@@ -15,9 +14,4 @@ type Velocity struct {
 type Rotation struct {
 	Heading float32 // radians
 	AngVel  float32 // angular velocity (radians per tick)
-}
-
-// Body holds physical properties of an entity.
-type Body struct {
-	Radius float32
 }

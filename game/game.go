@@ -3,12 +3,15 @@ package game
 import (
 	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/mlange-42/ark/ecs"
 	rl "github.com/gen2brain/raylib-go/raylib"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
+	"github.com/pthm-cable/soup/systems"
 )
 
 // Screen dimensions
@@ -17,50 +20,23 @@ const (
 	ScreenHeight = 720
 )
 
-// Physics constants
+// Simulation constants
 const (
-	MaxSpeed     = 3.0
-	Acceleration = 0.1
-	TurnRateMax  = 0.15 // radians per tick
+	DT           = 1.0 / 60.0 // seconds per tick
+	GridCellSize = 64.0       // spatial grid cell size
 )
 
-// Controller defines the interface for entity control.
-// Brain will implement this later.
-type Controller interface {
-	Update(pos components.Position, vel components.Velocity, rot components.Rotation) (turnRate, throttle float32)
-}
+// Physics constants - mapped from entity Capabilities
+const (
+	DefaultMaxSpeed     = 80.0
+	DefaultAcceleration = 0.1
+	DefaultTurnRateMax  = 3.5
+)
 
-// FlowController follows the GPU flow field.
-type FlowController struct {
-	flow *renderer.GPUFlowField
-}
-
-// NewFlowController creates a controller that follows the flow field.
-func NewFlowController(flow *renderer.GPUFlowField) *FlowController {
-	return &FlowController{flow: flow}
-}
-
-// Update returns turn rate and throttle to follow the flow field.
-func (c *FlowController) Update(pos components.Position, vel components.Velocity, rot components.Rotation) (float32, float32) {
-	flowX, flowY := c.flow.Sample(pos.X, pos.Y)
-
-	// Target heading from flow direction
-	targetHeading := float32(math.Atan2(float64(flowY), float64(flowX)))
-
-	// Compute angle difference
-	diff := normalizeAngle(targetHeading - rot.Heading)
-
-	// Proportional turn rate
-	turnRate := diff * 0.1
-	if turnRate > TurnRateMax {
-		turnRate = TurnRateMax
-	} else if turnRate < -TurnRateMax {
-		turnRate = -TurnRateMax
-	}
-
-	throttle := float32(0.5)
-	return turnRate, throttle
-}
+// Initial population
+const (
+	InitialPopulation = 20
+)
 
 // normalizeAngle wraps angle to [-pi, pi].
 func normalizeAngle(a float32) float32 {
@@ -75,23 +51,51 @@ func normalizeAngle(a float32) float32 {
 
 // Game holds the complete game state.
 type Game struct {
-	world  *ecs.World
-	entity ecs.Entity
+	world *ecs.World
+	rng   *rand.Rand
 
-	// Mappers
-	mapper *ecs.Map4[components.Position, components.Velocity, components.Rotation, components.Body]
-	filter *ecs.Filter4[components.Position, components.Velocity, components.Rotation, components.Body]
+	// Entity mappers - using the 7 components we need
+	entityMapper *ecs.Map7[
+		components.Position,
+		components.Velocity,
+		components.Rotation,
+		components.Body,
+		components.Energy,
+		components.Capabilities,
+		components.Organism,
+	]
+	entityFilter *ecs.Filter7[
+		components.Position,
+		components.Velocity,
+		components.Rotation,
+		components.Body,
+		components.Energy,
+		components.Capabilities,
+		components.Organism,
+	]
+
+	// Individual component mappers for lookups
+	posMap    *ecs.Map1[components.Position]
+	orgMap    *ecs.Map1[components.Organism]
+	energyMap *ecs.Map1[components.Energy]
+
+	// Brain storage (per entity by ID)
+	brains map[uint32]*neural.FFNN
+
+	// Spatial index
+	spatialGrid *systems.SpatialGrid
 
 	// Rendering
 	water *renderer.WaterBackground
 	flow  *renderer.GPUFlowField
 
-	// Control
-	controller Controller
-
 	// State
-	tick   int32
-	paused bool
+	tick        int32
+	paused      bool
+	nextID      uint32
+	aliveCount  int
+	deadCount   int
+	speed       int // simulation speed multiplier (1-10)
 
 	// Window dimensions
 	width, height float32
@@ -103,11 +107,36 @@ func NewGame() *Game {
 
 	g := &Game{
 		world:  world,
+		rng:    rand.New(rand.NewSource(42)),
 		width:  float32(ScreenWidth),
 		height: float32(ScreenHeight),
-		mapper: ecs.NewMap4[components.Position, components.Velocity, components.Rotation, components.Body](world),
-		filter: ecs.NewFilter4[components.Position, components.Velocity, components.Rotation, components.Body](world),
+		speed:  1,
+		brains: make(map[uint32]*neural.FFNN),
+		entityMapper: ecs.NewMap7[
+			components.Position,
+			components.Velocity,
+			components.Rotation,
+			components.Body,
+			components.Energy,
+			components.Capabilities,
+			components.Organism,
+		](world),
+		entityFilter: ecs.NewFilter7[
+			components.Position,
+			components.Velocity,
+			components.Rotation,
+			components.Body,
+			components.Energy,
+			components.Capabilities,
+			components.Organism,
+		](world),
+		posMap:    ecs.NewMap1[components.Position](world),
+		orgMap:    ecs.NewMap1[components.Organism](world),
+		energyMap: ecs.NewMap1[components.Energy](world),
 	}
+
+	// Spatial grid
+	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
 
 	// GPU flow field
 	g.flow = renderer.NewGPUFlowField(g.width, g.height)
@@ -115,26 +144,53 @@ func NewGame() *Game {
 	// Water background
 	g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
 
-	// Controller (follows flow field)
-	g.controller = NewFlowController(g.flow)
-
-	// Create single entity
-	g.createEntity()
+	// Spawn initial population
+	g.spawnInitialPopulation()
 
 	return g
 }
 
-// createEntity spawns a single entity in the center of the world.
-func (g *Game) createEntity() {
-	pos := components.Position{X: g.width / 2, Y: g.height / 2}
-	vel := components.Velocity{X: 0, Y: 0}
-	rot := components.Rotation{Heading: 0, AngVel: 0}
-	body := components.Body{Radius: 10}
+// spawnInitialPopulation creates the starting entities.
+func (g *Game) spawnInitialPopulation() {
+	for i := 0; i < InitialPopulation; i++ {
+		x := g.rng.Float32() * g.width
+		y := g.rng.Float32() * g.height
+		heading := g.rng.Float32() * 2 * math.Pi
 
-	g.entity = g.mapper.NewEntity(&pos, &vel, &rot, &body)
+		// Alternate between prey and predator
+		kind := components.KindPrey
+		if i%4 == 0 {
+			kind = components.KindPredator
+		}
+
+		g.spawnEntity(x, y, heading, kind)
+	}
 }
 
-// Update runs one simulation step.
+// spawnEntity creates a new entity with a fresh brain.
+func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Entity {
+	id := g.nextID
+	g.nextID++
+
+	pos := components.Position{X: x, Y: y}
+	vel := components.Velocity{X: 0, Y: 0}
+	rot := components.Rotation{Heading: heading, AngVel: 0}
+	body := components.Body{Radius: 10}
+	energy := components.Energy{Value: 0.8, Age: 0, Alive: true}
+	caps := components.DefaultCapabilities()
+	org := components.Organism{ID: id, Kind: kind}
+
+	// Create brain
+	brain := neural.NewFFNN(g.rng)
+	g.brains[id] = brain
+
+	entity := g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
+	g.aliveCount++
+
+	return entity
+}
+
+// Update runs one or more simulation steps based on speed setting.
 func (g *Game) Update() {
 	// Handle input
 	g.handleInput()
@@ -143,44 +199,118 @@ func (g *Game) Update() {
 		return
 	}
 
+	// Run multiple simulation steps based on speed
+	for i := 0; i < g.speed; i++ {
+		g.simulationStep()
+	}
+}
+
+// simulationStep runs a single tick of the simulation.
+func (g *Game) simulationStep() {
 	// Update flow field
 	g.flow.Update(g.tick, float32(g.tick)*0.01)
 
-	// Run simulation step
-	g.updatePhysics()
+	// 1. Update spatial grid
+	g.updateSpatialGrid()
+
+	// 2. Run behavior (sensors + brains) and physics
+	g.updateBehaviorAndPhysics()
+
+	// 3. Handle feeding (predator bites)
+	g.updateFeeding()
+
+	// 4. Update energy and check deaths
+	g.updateEnergy()
+
+	// 5. Cleanup dead entities
+	g.cleanupDead()
 
 	g.tick++
 }
 
-// handleInput processes keyboard input.
-func (g *Game) handleInput() {
-	if rl.IsKeyPressed(rl.KeySpace) {
-		g.paused = !g.paused
+// updateSpatialGrid rebuilds the spatial index.
+func (g *Game) updateSpatialGrid() {
+	g.spatialGrid.Clear()
+
+	query := g.entityFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		pos, _, _, _, energy, _, _ := query.Get()
+
+		if energy.Alive {
+			g.spatialGrid.Insert(entity, pos.X, pos.Y)
+		}
 	}
 }
 
-// updatePhysics applies physics to all entities.
-func (g *Game) updatePhysics() {
-	query := g.filter.Query()
+// updateBehaviorAndPhysics runs brains and applies movement.
+func (g *Game) updateBehaviorAndPhysics() {
+	query := g.entityFilter.Query()
 	for query.Next() {
-		pos, vel, rot, _ := query.Get()
+		entity := query.Entity()
+		pos, vel, rot, _, energy, caps, org := query.Get()
 
-		// Get control inputs
-		turnRate, throttle := g.controller.Update(*pos, *vel, *rot)
+		if !energy.Alive {
+			continue
+		}
+
+		// Get brain
+		brain, ok := g.brains[org.ID]
+		if !ok {
+			continue
+		}
+
+		// Query neighbors for sensors
+		neighbors := g.spatialGrid.QueryRadius(pos.X, pos.Y, caps.VisionRange, entity, g.posMap)
+
+		// Compute sensors
+		sensorInputs := systems.ComputeSensors(
+			*pos, *vel, *rot, *energy, *caps, org.Kind,
+			neighbors,
+			g.posMap, g.orgMap,
+			g.width, g.height,
+		)
+
+		// Run brain
+		turn, thrust, _ := brain.Forward(sensorInputs.AsSlice())
+
+		// Scale outputs by capabilities
+		turnRate := turn * caps.MaxTurnRate * DT
+		if turnRate > caps.MaxTurnRate*DT {
+			turnRate = caps.MaxTurnRate * DT
+		} else if turnRate < -caps.MaxTurnRate*DT {
+			turnRate = -caps.MaxTurnRate * DT
+		}
 
 		// Apply angular velocity to heading (heading-as-state)
 		// Minimum turn rate (30%) even at zero throttle enables arrival behavior
-		effectiveTurnRate := turnRate * max(throttle, 0.3)
+		effectiveTurnRate := turnRate * max(thrust, 0.3)
 		rot.Heading += effectiveTurnRate
 		rot.Heading = normalizeAngle(rot.Heading)
 
 		// Compute desired velocity from heading
-		desiredVelX := float32(math.Cos(float64(rot.Heading))) * throttle * MaxSpeed
-		desiredVelY := float32(math.Sin(float64(rot.Heading))) * throttle * MaxSpeed
+		targetSpeed := thrust * caps.MaxSpeed * DT
+		desiredVelX := float32(math.Cos(float64(rot.Heading))) * targetSpeed
+		desiredVelY := float32(math.Sin(float64(rot.Heading))) * targetSpeed
 
 		// Smooth velocity change
-		vel.X += (desiredVelX - vel.X) * Acceleration
-		vel.Y += (desiredVelY - vel.Y) * Acceleration
+		accelFactor := caps.MaxAccel * DT * 0.01
+		vel.X += (desiredVelX - vel.X) * accelFactor
+		vel.Y += (desiredVelY - vel.Y) * accelFactor
+
+		// Apply drag
+		dragFactor := float32(math.Exp(-float64(caps.Drag * DT)))
+		vel.X *= dragFactor
+		vel.Y *= dragFactor
+
+		// Clamp speed
+		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		maxSpeed := caps.MaxSpeed * DT
+		if speed > maxSpeed {
+			scale := maxSpeed / speed
+			vel.X *= scale
+			vel.Y *= scale
+		}
 
 		// Update position
 		pos.X += vel.X
@@ -189,6 +319,113 @@ func (g *Game) updatePhysics() {
 		// Toroidal wrap
 		pos.X = mod(pos.X, g.width)
 		pos.Y = mod(pos.Y, g.height)
+	}
+}
+
+// updateFeeding handles predator attacks.
+func (g *Game) updateFeeding() {
+	query := g.entityFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		pos, _, _, _, energy, caps, org := query.Get()
+
+		if !energy.Alive || org.Kind != components.KindPredator {
+			continue
+		}
+
+		// Check if brain exists
+		_, ok := g.brains[org.ID]
+		if !ok {
+			continue
+		}
+
+		// Query nearby prey within bite range
+		neighbors := g.spatialGrid.QueryRadius(pos.X, pos.Y, caps.BiteRange, entity, g.posMap)
+
+		for _, neighbor := range neighbors {
+			// Get neighbor components
+			nOrg := g.orgMap.Get(neighbor)
+			if nOrg == nil || nOrg.Kind != components.KindPrey {
+				continue
+			}
+
+			// Get prey energy directly via mapper
+			nEnergy := g.energyMap.Get(neighbor)
+			if nEnergy != nil && nEnergy.Alive {
+				// Simple bite: transfer energy
+				systems.TransferEnergy(energy, nEnergy, 0.1)
+				break // one bite per tick
+			}
+		}
+	}
+}
+
+// updateEnergy applies metabolic costs.
+func (g *Game) updateEnergy() {
+	query := g.entityFilter.Query()
+	for query.Next() {
+		_, vel, _, _, energy, caps, _ := query.Get()
+
+		if energy.Alive {
+			systems.UpdateEnergy(energy, *vel, *caps, false, DT)
+		}
+	}
+}
+
+// cleanupDead removes dead entities and their brains.
+func (g *Game) cleanupDead() {
+	// First pass: collect dead entities (must complete before modifying)
+	type deadInfo struct {
+		entity ecs.Entity
+		id     uint32
+	}
+	var toRemove []deadInfo
+
+	query := g.entityFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		_, _, _, _, energy, _, org := query.Get()
+
+		if !energy.Alive {
+			toRemove = append(toRemove, deadInfo{entity: entity, id: org.ID})
+		}
+	}
+
+	// Second pass: remove entities (query iteration complete)
+	for _, dead := range toRemove {
+		g.entityMapper.Remove(dead.entity)
+		delete(g.brains, dead.id)
+		g.aliveCount--
+		g.deadCount++
+	}
+
+	// Respawn if population drops too low
+	if g.aliveCount < 5 && g.tick > 100 {
+		for i := 0; i < 5; i++ {
+			x := g.rng.Float32() * g.width
+			y := g.rng.Float32() * g.height
+			heading := g.rng.Float32() * 2 * math.Pi
+			kind := components.KindPrey
+			if g.rng.Float32() < 0.25 {
+				kind = components.KindPredator
+			}
+			g.spawnEntity(x, y, heading, kind)
+		}
+	}
+}
+
+// handleInput processes keyboard input.
+func (g *Game) handleInput() {
+	if rl.IsKeyPressed(rl.KeySpace) {
+		g.paused = !g.paused
+	}
+
+	// Speed control with < > keys (comma and period)
+	if rl.IsKeyPressed(rl.KeyComma) && g.speed > 1 {
+		g.speed--
+	}
+	if rl.IsKeyPressed(rl.KeyPeriod) && g.speed < 10 {
+		g.speed++
 	}
 }
 
@@ -205,13 +442,15 @@ func (g *Game) Draw() {
 	// Water background
 	g.water.Draw(float32(g.tick) * 0.01)
 
-	// Draw entity
+	// Draw entities
 	g.drawEntities()
 
-	// Draw tick count
+	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
+	rl.DrawText(fmt.Sprintf("Alive: %d  Dead: %d", g.aliveCount, g.deadCount), 10, 35, 20, rl.White)
+	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.speed), 10, 60, 20, rl.White)
 	if g.paused {
-		rl.DrawText("PAUSED", 10, 35, 20, rl.Yellow)
+		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)
 	}
 
 	rl.EndDrawing()
@@ -219,19 +458,30 @@ func (g *Game) Draw() {
 
 // drawEntities renders all entities as oriented triangles.
 func (g *Game) drawEntities() {
-	query := g.filter.Query()
+	query := g.entityFilter.Query()
 	for query.Next() {
-		pos, _, rot, body := query.Get()
+		pos, _, rot, body, energy, _, org := query.Get()
 
-		// Draw oriented triangle
-		drawOrientedTriangle(pos.X, pos.Y, rot.Heading, body.Radius)
+		if !energy.Alive {
+			continue
+		}
+
+		// Color by kind
+		color := rl.Green
+		if org.Kind == components.KindPredator {
+			color = rl.Red
+		}
+
+		// Dim based on energy
+		alpha := uint8(100 + int(energy.Value*155))
+		color.A = alpha
+
+		drawOrientedTriangle(pos.X, pos.Y, rot.Heading, body.Radius, color)
 	}
 }
 
 // drawOrientedTriangle draws a triangle pointing in the heading direction.
-func drawOrientedTriangle(x, y, heading, radius float32) {
-	// Triangle vertices relative to center
-	// Point in heading direction
+func drawOrientedTriangle(x, y, heading, radius float32, color rl.Color) {
 	cos := float32(math.Cos(float64(heading)))
 	sin := float32(math.Sin(float64(heading)))
 
@@ -253,7 +503,8 @@ func drawOrientedTriangle(x, y, heading, radius float32) {
 	v2 := rl.Vector2{X: backLeftX, Y: backLeftY}
 	v3 := rl.Vector2{X: backRightX, Y: backRightY}
 
-	rl.DrawTriangle(v1, v2, v3, rl.Green)
+	// DrawTriangle requires counter-clockwise winding (v1, v3, v2)
+	rl.DrawTriangle(v1, v3, v2, color)
 	rl.DrawTriangleLines(v1, v2, v3, rl.White)
 }
 
