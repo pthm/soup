@@ -68,6 +68,9 @@ type Game struct {
 	neighborBuf []systems.Neighbor         // reused each entity in behavior loop
 	inputBuf    [systems.NumInputs]float32 // reused for neural net inputs
 
+	// Parallel processing state
+	parallel *parallelState
+
 	// Rendering
 	water     *renderer.WaterBackground
 	inspector *inspector.Inspector
@@ -172,6 +175,9 @@ func NewGameWithOptions(opts Options) *Game {
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, float32(cfg.Physics.GridCellSize))
 
+	// Parallel processing
+	g.parallel = newParallelState()
+
 	// GPU resource field (O(1) sampling via precomputed texture)
 	g.gpuResourceField = renderer.NewGPUResourceField(g.width, g.height)
 	g.gpuResourceField.Initialize(0) // Static field at time=0
@@ -217,7 +223,7 @@ func (g *Game) simulationStep() {
 
 	// 2. Run behavior (sensors + brains) and physics
 	g.perfCollector.StartPhase(telemetry.PhaseBehaviorPhysics)
-	g.updateBehaviorAndPhysics()
+	g.updateBehaviorAndPhysicsParallel()
 
 	// 3. Handle feeding (predator bites)
 	g.perfCollector.StartPhase(telemetry.PhaseFeeding)
