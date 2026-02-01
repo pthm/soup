@@ -76,6 +76,59 @@ func (nn *FFNN) Forward(inputs []float32) (turn, thrust, bite float32) {
 	return turn, thrust, bite
 }
 
+// Activations holds captured intermediate layer values.
+type Activations struct {
+	Inputs  []float32
+	Hidden  []float32
+	Outputs []float32 // [turn, thrust, bite] after activation
+}
+
+// ForwardWithCapture computes the network output and captures all layer activations.
+// Returns: turn [-1,1], thrust [0,1], bite [0,1], and activations for visualization.
+func (nn *FFNN) ForwardWithCapture(inputs []float32) (turn, thrust, bite float32, act *Activations) {
+	act = &Activations{
+		Inputs:  make([]float32, len(inputs)),
+		Hidden:  make([]float32, NumHidden),
+		Outputs: make([]float32, NumOutputs),
+	}
+
+	// Capture inputs
+	copy(act.Inputs, inputs)
+
+	// Hidden layer with tanh activation
+	var hidden [NumHidden]float32
+	for i := 0; i < NumHidden; i++ {
+		sum := nn.B1[i]
+		for j := 0; j < NumInputs; j++ {
+			sum += nn.W1[i][j] * inputs[j]
+		}
+		hidden[i] = tanh(sum)
+		act.Hidden[i] = hidden[i]
+	}
+
+	// Output layer
+	var outputs [NumOutputs]float32
+	for i := 0; i < NumOutputs; i++ {
+		sum := nn.B2[i]
+		for j := 0; j < NumHidden; j++ {
+			sum += nn.W2[i][j] * hidden[j]
+		}
+		outputs[i] = sum
+	}
+
+	// Apply output activations
+	turn = tanh(outputs[0])      // [-1, 1]
+	thrust = sigmoid(outputs[1]) // [0, 1]
+	bite = sigmoid(outputs[2])   // [0, 1]
+
+	// Capture activated outputs
+	act.Outputs[0] = turn
+	act.Outputs[1] = thrust
+	act.Outputs[2] = bite
+
+	return turn, thrust, bite, act
+}
+
 // Mutate perturbs weights and biases with Gaussian noise.
 func (nn *FFNN) Mutate(rng *rand.Rand, strength float32) {
 	for i := range nn.W1 {

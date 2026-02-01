@@ -9,6 +9,7 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/inspector"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
@@ -76,8 +77,12 @@ type Game struct {
 
 	// Individual component mappers for lookups
 	posMap    *ecs.Map1[components.Position]
-	orgMap    *ecs.Map1[components.Organism]
+	velMap    *ecs.Map1[components.Velocity]
+	rotMap    *ecs.Map1[components.Rotation]
+	bodyMap   *ecs.Map1[components.Body]
 	energyMap *ecs.Map1[components.Energy]
+	capsMap   *ecs.Map1[components.Capabilities]
+	orgMap    *ecs.Map1[components.Organism]
 
 	// Brain storage (per entity by ID)
 	brains map[uint32]*neural.FFNN
@@ -86,8 +91,9 @@ type Game struct {
 	spatialGrid *systems.SpatialGrid
 
 	// Rendering
-	water *renderer.WaterBackground
-	flow  *renderer.GPUFlowField
+	water     *renderer.WaterBackground
+	flow      *renderer.GPUFlowField
+	inspector *inspector.Inspector
 
 	// State
 	tick        int32
@@ -131,8 +137,12 @@ func NewGame() *Game {
 			components.Organism,
 		](world),
 		posMap:    ecs.NewMap1[components.Position](world),
-		orgMap:    ecs.NewMap1[components.Organism](world),
+		velMap:    ecs.NewMap1[components.Velocity](world),
+		rotMap:    ecs.NewMap1[components.Rotation](world),
+		bodyMap:   ecs.NewMap1[components.Body](world),
 		energyMap: ecs.NewMap1[components.Energy](world),
+		capsMap:   ecs.NewMap1[components.Capabilities](world),
+		orgMap:    ecs.NewMap1[components.Organism](world),
 	}
 
 	// Spatial grid
@@ -143,6 +153,9 @@ func NewGame() *Game {
 
 	// Water background
 	g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
+
+	// Inspector
+	g.inspector = inspector.NewInspector(int32(g.width), int32(g.height))
 
 	// Spawn initial population
 	g.spawnInitialPopulation()
@@ -245,6 +258,9 @@ func (g *Game) updateSpatialGrid() {
 
 // updateBehaviorAndPhysics runs brains and applies movement.
 func (g *Game) updateBehaviorAndPhysics() {
+	// Check if we have a selected entity for inspector
+	selectedEntity, hasSelection := g.inspector.Selected()
+
 	query := g.entityFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
@@ -271,8 +287,16 @@ func (g *Game) updateBehaviorAndPhysics() {
 			g.width, g.height,
 		)
 
-		// Run brain
-		turn, thrust, _ := brain.Forward(sensorInputs.AsSlice())
+		// Run brain (capture activations if this is the selected entity)
+		var turn, thrust float32
+		if hasSelection && entity == selectedEntity {
+			var act *neural.Activations
+			turn, thrust, _, act = brain.ForwardWithCapture(sensorInputs.AsSlice())
+			g.inspector.SetSensorData(&sensorInputs)
+			g.inspector.SetActivations(act)
+		} else {
+			turn, thrust, _ = brain.Forward(sensorInputs.AsSlice())
+		}
 
 		// Scale outputs by capabilities
 		turnRate := turn * caps.MaxTurnRate * DT
@@ -427,6 +451,10 @@ func (g *Game) handleInput() {
 	if rl.IsKeyPressed(rl.KeyPeriod) && g.speed < 10 {
 		g.speed++
 	}
+
+	// Inspector input
+	mousePos := rl.GetMousePosition()
+	g.inspector.HandleInput(mousePos.X, mousePos.Y, g.posMap, g.bodyMap, g.orgMap, g.entityFilter)
 }
 
 // mod returns positive modulo (Go's % can return negative).
@@ -445,6 +473,9 @@ func (g *Game) Draw() {
 	// Draw entities
 	g.drawEntities()
 
+	// Draw selection highlight and vision cone
+	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap)
+
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Alive: %d  Dead: %d", g.aliveCount, g.deadCount), 10, 35, 20, rl.White)
@@ -452,6 +483,9 @@ func (g *Game) Draw() {
 	if g.paused {
 		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)
 	}
+
+	// Draw inspector panel
+	g.inspector.Draw(g.posMap, g.velMap, g.rotMap, g.bodyMap, g.energyMap, g.capsMap, g.orgMap, g.brains)
 
 	rl.EndDrawing()
 }
