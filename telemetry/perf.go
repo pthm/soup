@@ -237,3 +237,43 @@ func (s PerfStats) LogValue() slog.Value {
 
 	return slog.GroupValue(attrs...)
 }
+
+// PerfStatsCSV is a flat struct for CSV export of performance stats.
+type PerfStatsCSV struct {
+	WindowEnd          int32   `csv:"window_end"`
+	AvgTickUS          int64   `csv:"avg_tick_us"`
+	MinTickUS          int64   `csv:"min_tick_us"`
+	MaxTickUS          int64   `csv:"max_tick_us"`
+	TicksPerSec        float64 `csv:"ticks_per_sec"`
+	FPS                float64 `csv:"fps"`
+	ResourceFieldPct   float64 `csv:"resource_field_pct"`
+	SpatialGridPct     float64 `csv:"spatial_grid_pct"`
+	BehaviorPhysicsPct float64 `csv:"behavior_physics_pct"`
+	FeedingPct         float64 `csv:"feeding_pct"`
+	EnergyPct          float64 `csv:"energy_pct"`
+	CooldownsPct       float64 `csv:"cooldowns_pct"`
+	ReproductionPct    float64 `csv:"reproduction_pct"`
+	CleanupPct         float64 `csv:"cleanup_pct"`
+	TelemetryPct       float64 `csv:"telemetry_pct"`
+}
+
+// ToCSV converts PerfStats to a flat CSV-friendly struct.
+func (s PerfStats) ToCSV(windowEnd int32) PerfStatsCSV {
+	return PerfStatsCSV{
+		WindowEnd:          windowEnd,
+		AvgTickUS:          s.AvgTickDuration.Microseconds(),
+		MinTickUS:          s.MinTickDuration.Microseconds(),
+		MaxTickUS:          s.MaxTickDuration.Microseconds(),
+		TicksPerSec:        s.TicksPerSecond,
+		FPS:                s.FPS,
+		ResourceFieldPct:   s.PhasePct[PhaseResourceField],
+		SpatialGridPct:     s.PhasePct[PhaseSpatialGrid],
+		BehaviorPhysicsPct: s.PhasePct[PhaseBehaviorPhysics],
+		FeedingPct:         s.PhasePct[PhaseFeeding],
+		EnergyPct:          s.PhasePct[PhaseEnergy],
+		CooldownsPct:       s.PhasePct[PhaseCooldowns],
+		ReproductionPct:    s.PhasePct[PhaseReproduction],
+		CleanupPct:         s.PhasePct[PhaseCleanup],
+		TelemetryPct:       s.PhasePct[PhaseTelemetry],
+	}
+}

@@ -20,9 +20,9 @@ const (
 
 // Bookmark represents an automatically triggered bookmark.
 type Bookmark struct {
-	Type        BookmarkType
-	Tick        int32
-	Description string
+	Tick        int32        `csv:"tick"`
+	Type        BookmarkType `csv:"type"`
+	Description string       `csv:"description"`
 }
 
 // LogBookmark logs the bookmark using slog.

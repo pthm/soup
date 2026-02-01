@@ -18,11 +18,22 @@ func (g *Game) flushTelemetry() {
 
 	// Flush the stats window
 	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource)
+	perfStats := g.perfCollector.Stats()
 
-	// Log stats if enabled
+	// Log stats if enabled (console output)
 	if g.logStats {
 		stats.LogStats()
-		g.perfCollector.Stats().LogStats()
+		perfStats.LogStats()
+	}
+
+	// Write to CSV if output manager is enabled
+	if g.outputManager != nil {
+		if err := g.outputManager.WriteTelemetry(stats); err != nil {
+			slog.Error("failed to write telemetry", "error", err)
+		}
+		if err := g.outputManager.WritePerf(perfStats, stats.WindowEndTick); err != nil {
+			slog.Error("failed to write perf", "error", err)
+		}
 	}
 
 	// Check for bookmarks
@@ -30,6 +41,13 @@ func (g *Game) flushTelemetry() {
 	for _, bm := range bookmarks {
 		if g.logStats {
 			bm.LogBookmark()
+		}
+
+		// Write to CSV if output manager is enabled
+		if g.outputManager != nil {
+			if err := g.outputManager.WriteBookmark(bm); err != nil {
+				slog.Error("failed to write bookmark", "error", err)
+			}
 		}
 
 		// Save snapshot on bookmark

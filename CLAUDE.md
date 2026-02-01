@@ -55,6 +55,7 @@ Use the Context7 MCP server to fetch up-to-date documentation for libraries used
 | `mlange-42/ark` | ECS library for entity-component-system architecture |
 | `gen2brain/raylib-go` | Go bindings for raylib graphics library |
 | `gopkg.in/yaml.v3` | YAML parsing for configuration |
+| `gocarina/gocsv` | CSV marshaling with struct tags |
 
 ### Usage
 
@@ -83,16 +84,17 @@ mcp__context7__query-docs(libraryId: "/gen2brain/raylib-go", query: "LoadShader 
 | `-seed` | time-based | RNG seed for reproducibility |
 | `-max-ticks` | 0 | Stop after N ticks (0 = unlimited) |
 | `-steps-per-update` | 1 | Simulation ticks per update call (higher = faster) |
-| `-log-stats` | false | Output ecosystem/perf stats as JSON |
-| `-log-file` | stdout | Write logs to file |
+| `-log-stats` | false | Output ecosystem/perf stats as JSON to stdout |
+| `-output-dir` | "" | Output directory for CSV logs and config snapshot |
 | `-stats-window` | 0 | Stats window size in seconds (0 = use config) |
 | `-snapshot-dir` | "" | Save snapshots on bookmarks |
 
 Common patterns:
 ```bash
-./soup --headless --log-stats                    # Fast evolution with stats
+./soup --headless --log-stats                    # Fast evolution with JSON stats to stdout
+./soup --headless --output-dir=./exp1            # Structured CSV output for analysis
 ./soup --headless --seed=42 --max-ticks=100000   # Reproducible batch run
-./soup --log-stats --snapshot-dir=./snapshots    # Save interesting moments
+./soup --output-dir=./exp1 --snapshot-dir=./exp1/snapshots  # Full experiment output
 ./soup --config=config.yaml                      # Custom tuning parameters
 ```
 
@@ -399,14 +401,51 @@ Collects and logs simulation metrics:
 |------|---------|
 | `collector.go` | Aggregates events (births, deaths, bites) per window |
 | `stats.go` | `WindowStats` with population, hunting, energy distributions |
-| `perf.go` | `PerfCollector` measures per-phase timing |
+| `perf.go` | `PerfCollector` measures per-phase timing; `PerfStatsCSV` for export |
 | `bookmark.go` | Detects evolutionary breakthroughs |
 | `snapshot.go` | Serializes full simulation state to JSON |
 | `lifetime.go` | Tracks per-organism lifetime statistics |
+| `output.go` | `OutputManager` for CSV file output |
+| `halloffame.go` | Stores proven lineages for reseeding |
+
+### Output Modes
+
+Two output modes available (can be used together):
+
+| Mode | Flag | Format | Use Case |
+|------|------|--------|----------|
+| Console | `--log-stats` | JSON to stdout | Quick monitoring, piping to jq |
+| Directory | `--output-dir` | CSV files | Analysis with pandas, spreadsheets |
+
+### Output Directory Structure
+
+When `--output-dir=./exp1` is specified:
+
+```
+exp1/
+├── config.yaml       # Full config snapshot for reproducibility
+├── telemetry.csv     # Population, hunting, energy stats per window
+├── perf.csv          # Performance metrics per window
+├── bookmarks.csv     # Detected evolutionary events
+└── hall_of_fame.json # Best-performing organism brains
+```
+
+### CSV Struct Tags
+
+CSV columns are defined via struct tags using [gocsv](https://github.com/gocarina/gocsv). To add/rename a column, update the struct field and its `csv:` tag:
+
+```go
+type WindowStats struct {
+    WindowEndTick   int32   `csv:"window_end"`
+    SimTimeSec      float64 `csv:"sim_time"`
+    PreyCount       int     `csv:"prey"`
+    // ...
+}
+```
 
 ### Stats Window
 
-Every `--stats-window` seconds (default 10), two log lines are emitted:
+Every `--stats-window` seconds (default 10), stats are recorded:
 
 1. **Ecosystem stats**: prey/pred counts, births, deaths, hunt success rates, energy percentiles
 2. **Perf stats**: avg/min/max tick duration, ticks/sec, phase breakdown percentages

@@ -372,3 +372,15 @@ func (c *Config) computeDerived() {
 	c.Derived.WorldW32 = float32(worldW)
 	c.Derived.WorldH32 = float32(worldH)
 }
+
+// WriteYAML writes the configuration to a YAML file.
+func (c *Config) WriteYAML(path string) error {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+	return nil
+}

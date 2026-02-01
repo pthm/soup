@@ -1,0 +1,45 @@
+# Experiment 7: Lower max_prey
+# Based on exp6 with max_prey reduced to dampen boom-bust
+
+population:
+  initial: 60
+  predator_spawn_chance: 0.15     # From exp6
+  min_predators: 0
+  min_prey: 0
+  max_pred: 20
+  max_prey: 200                   # CHANGED: from 300 to 200
+
+resource:
+  contrast: 2.0
+  forage_efficiency: 1.0
+  graze_radius: 1
+
+energy:
+  predator:
+    digest_time: 1.0
+    base_cost: 0.006              # From exp5
+    move_cost: 0.04
+    bite_reward: 0.60
+  prey:
+    base_cost: 0.010
+    move_cost: 0.06
+    forage_rate: 0.09
+    grazing_peak: 0.15
+    accel_cost: 0.015
+
+refugia:
+  strength: 0.75
+
+reproduction:
+  prey_threshold: 0.65
+  prey_cooldown: 12.0
+  cooldown_jitter: 4.0
+  parent_energy_split: 0.45
+  pred_cooldown: 20.0
+  pred_threshold: 0.85
+  pred_density_k: 300
+
+particles:
+  spawn_rate: 800
+  initial_mass: 0.03
+  cell_capacity: 0.8

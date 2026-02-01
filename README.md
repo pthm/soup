@@ -32,10 +32,12 @@ Options:
         RNG seed for reproducibility (0 = time-based)
   -max-ticks int
         Stop after N ticks (0 = unlimited)
+  -steps-per-update int
+        Simulation ticks per update call (higher = faster, default 1)
   -log-stats
-        Output ecosystem and performance stats via JSON logs
-  -log-file string
-        Write logs to file (empty = stdout)
+        Output ecosystem and performance stats via JSON to stdout
+  -output-dir string
+        Output directory for CSV logs and config snapshot
   -stats-window float
         Stats aggregation window in seconds (0 = use config default)
   -snapshot-dir string
@@ -95,69 +97,90 @@ See `config/defaults.yaml` for the complete list with default values, or [CLAUDE
 ./soup
 ```
 
-### Fast headless evolution with logging
+### Fast headless evolution with console logging
 ```bash
 ./soup --headless --log-stats --max-ticks=100000
 ```
 
-### Reproducible run with snapshots
+### Structured experiment output (CSV)
 ```bash
-./soup --headless --seed=42 --log-stats --snapshot-dir=./snapshots
+./soup --headless --output-dir=./exp1 --max-ticks=500000
 ```
 
-### Long overnight run to file
+This creates a directory with:
+- `config.yaml` - Full configuration snapshot
+- `telemetry.csv` - Population, hunting, energy stats per window
+- `perf.csv` - Performance metrics per window
+- `bookmarks.csv` - Detected evolutionary events
+- `hall_of_fame.json` - Best-performing organism brains
+
+### Reproducible run with snapshots
 ```bash
-./soup --headless --log-stats --log-file=run.jsonl &
+./soup --headless --seed=42 --output-dir=./exp2 --snapshot-dir=./exp2/snapshots
+```
+
+### Fast evolution at 100x speed
+```bash
+./soup --headless --output-dir=./exp3 --max-ticks=1000000 --steps-per-update=100
 ```
 
 ### Experiment with tuned parameters
 ```bash
-./soup --config=aggressive-predators.yaml --headless --log-stats
+./soup --config=aggressive-predators.yaml --headless --output-dir=./exp4
 ```
 
 ## Telemetry
 
-When `--log-stats` is enabled, the simulation outputs JSON logs every stats window (default 10 seconds).
+The simulation provides two output modes that can be used independently or together:
 
-### Ecosystem Stats
+| Mode | Flag | Format | Use Case |
+|------|------|--------|----------|
+| Console | `--log-stats` | JSON to stdout | Quick monitoring, piping to jq |
+| Directory | `--output-dir` | CSV files | Analysis with pandas, spreadsheets |
 
-Population dynamics, hunting success, and energy distributions:
+### Output Directory Structure
 
-```json
-{
-  "msg": "stats",
-  "prey": 45,
-  "pred": 12,
-  "prey_births": 8,
-  "pred_births": 2,
-  "prey_deaths": 5,
-  "pred_deaths": 1,
-  "bites_attempted": 23,
-  "bites_hit": 18,
-  "kills": 5,
-  "hit_rate": 0.78,
-  "kill_rate": 0.27,
-  "prey_energy_mean": 0.62,
-  "pred_energy_mean": 0.71
-}
+When `--output-dir=./exp1` is specified:
+
+```
+exp1/
+├── config.yaml       # Full configuration snapshot for reproducibility
+├── telemetry.csv     # Population, hunting, energy stats per window
+├── perf.csv          # Performance metrics per window
+├── bookmarks.csv     # Detected evolutionary events
+└── hall_of_fame.json # Best-performing organism brains with weights
 ```
 
-### Performance Stats
+### CSV Format
 
-Per-phase timing breakdown for optimization:
-
-```json
-{
-  "msg": "perf",
-  "avg_tick_us": 32,
-  "ticks_per_sec": 30614,
-  "behavior_physics_pct": 86,
-  "energy_pct": 7,
-  "spatial_grid_pct": 1
-}
+**telemetry.csv** - Ecosystem stats per window:
+```csv
+window_end,sim_time,prey,pred,prey_births,pred_births,prey_deaths,pred_deaths,bites_attempted,bites_hit,kills,hit_rate,kill_rate,prey_energy_mean,pred_energy_mean,resource_util
+599,10.0,45,12,8,2,5,1,23,18,5,0.78,0.27,0.62,0.71,0.42
 ```
 
-In headless mode, expect ~30,000 ticks/sec with a small population. The `behavior_physics` phase (sensors, neural networks, movement) typically dominates.
+**perf.csv** - Performance per window:
+```csv
+window_end,avg_tick_us,min_tick_us,max_tick_us,ticks_per_sec,fps,behavior_physics_pct,energy_pct,...
+599,32,28,45,30614,60,86.2,7.1,...
+```
+
+**bookmarks.csv** - Evolutionary events:
+```csv
+tick,type,description
+50000,hunt_breakthrough,"Kill rate 0.65 is 2.3x average (0.28)"
+```
+
+### Console Output (JSON)
+
+When `--log-stats` is enabled, JSON logs are written to stdout every stats window:
+
+```json
+{"msg":"stats","prey":45,"pred":12,"prey_births":8,"hit_rate":0.78,...}
+{"msg":"perf","avg_tick_us":32,"ticks_per_sec":30614,"behavior_physics_pct":86,...}
+```
+
+In headless mode, expect ~30,000 ticks/sec with a small population.
 
 ### Bookmarks
 
@@ -172,6 +195,14 @@ The system automatically detects interesting evolutionary moments:
 | `stable_ecosystem` | Low population variance over 5+ windows |
 
 When `--snapshot-dir` is set, a full simulation snapshot is saved on each bookmark.
+
+### Hall of Fame
+
+The simulation tracks proven lineages—organisms that reproduced or survived long enough while achieving something notable. When the run ends, `hall_of_fame.json` contains the top performers with their complete neural network weights, enabling:
+
+- Seeding new runs with evolved brains
+- Analyzing successful strategies
+- Comparing runs across different configurations
 
 ### Snapshots
 

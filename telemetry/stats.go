@@ -7,42 +7,42 @@ import (
 
 // WindowStats holds aggregated statistics for a time window.
 type WindowStats struct {
-	WindowStartTick int32
-	WindowEndTick   int32
-	SimTimeSec      float64
+	WindowStartTick int32   `csv:"-"`
+	WindowEndTick   int32   `csv:"window_end"`
+	SimTimeSec      float64 `csv:"sim_time"`
 
 	// Population counts at window end
-	PreyCount int
-	PredCount int
+	PreyCount int `csv:"prey"`
+	PredCount int `csv:"pred"`
 
 	// Events during window
-	PreyBirths  int
-	PredBirths  int
-	PreyDeaths  int
-	PredDeaths  int
+	PreyBirths int `csv:"prey_births"`
+	PredBirths int `csv:"pred_births"`
+	PreyDeaths int `csv:"prey_deaths"`
+	PredDeaths int `csv:"pred_deaths"`
 
 	// Hunting
-	BitesAttempted     int
-	BitesHit           int
-	Kills              int
-	BitesBlockedDigest int     // Bites blocked by digestion cooldown
-	BitesMissedRefugia int     // Bites that missed due to refugia protection
-	HitRate            float64 // BitesHit / BitesAttempted (0 if no attempts)
-	KillRate           float64 // Kills / BitesHit (0 if no hits)
+	BitesAttempted     int     `csv:"bites_attempted"`
+	BitesHit           int     `csv:"bites_hit"`
+	Kills              int     `csv:"kills"`
+	BitesBlockedDigest int     `csv:"bites_blocked_digest"`
+	BitesMissedRefugia int     `csv:"bites_missed_refugia"`
+	HitRate            float64 `csv:"hit_rate"`
+	KillRate           float64 `csv:"kill_rate"`
 
 	// Energy distribution (sampled at window end)
-	PreyEnergyMean float64
-	PreyEnergyP10  float64
-	PreyEnergyP50  float64
-	PreyEnergyP90  float64
+	PreyEnergyMean float64 `csv:"prey_energy_mean"`
+	PreyEnergyP10  float64 `csv:"prey_energy_p10"`
+	PreyEnergyP50  float64 `csv:"prey_energy_p50"`
+	PreyEnergyP90  float64 `csv:"prey_energy_p90"`
 
-	PredEnergyMean float64
-	PredEnergyP10  float64
-	PredEnergyP50  float64
-	PredEnergyP90  float64
+	PredEnergyMean float64 `csv:"pred_energy_mean"`
+	PredEnergyP10  float64 `csv:"pred_energy_p10"`
+	PredEnergyP50  float64 `csv:"pred_energy_p50"`
+	PredEnergyP90  float64 `csv:"pred_energy_p90"`
 
 	// Resource utilization
-	MeanResourceAtPreyPos float64
+	MeanResourceAtPreyPos float64 `csv:"resource_util"`
 }
 
 // Percentile calculates the p-th percentile of a sorted slice.
@@ -157,3 +157,4 @@ func (s WindowStats) LogStats() {
 		"resource_util", s.MeanResourceAtPreyPos,
 	)
 }
+

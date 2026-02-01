@@ -107,6 +107,7 @@ type Game struct {
 	lifetimeTracker  *telemetry.LifetimeTracker
 	perfCollector    *telemetry.PerfCollector
 	hallOfFame       *telemetry.HallOfFame
+	outputManager    *telemetry.OutputManager
 	logStats         bool
 	snapshotDir      string
 	rngSeed          int64
@@ -119,7 +120,8 @@ type Options struct {
 	StatsWindowSec float64
 	SnapshotDir    string
 	Headless       bool
-	StepsPerUpdate int // simulation ticks per update call (1+), 0 = use default (1)
+	StepsPerUpdate int    // simulation ticks per update call (1+), 0 = use default (1)
+	OutputDir      string // output directory for CSV logs and config snapshot
 }
 
 // NewGame creates a new game instance with default options.
@@ -191,6 +193,20 @@ func NewGameWithOptions(opts Options) *Game {
 	g.perfCollector = telemetry.NewPerfCollector(cfg.Telemetry.PerfCollectorWindow)
 	if cfg.HallOfFame.Enabled {
 		g.hallOfFame = telemetry.NewHallOfFame(cfg.HallOfFame.Size, g.rng)
+	}
+
+	// Initialize output manager for CSV logging
+	if opts.OutputDir != "" {
+		om, err := telemetry.NewOutputManager(opts.OutputDir)
+		if err != nil {
+			panic("failed to create output manager: " + err.Error())
+		}
+		g.outputManager = om
+
+		// Write config snapshot
+		if err := om.WriteConfig(cfg); err != nil {
+			panic("failed to write config: " + err.Error())
+		}
 	}
 
 	// Spatial grid (uses world dimensions)
@@ -313,6 +329,14 @@ func (g *Game) Unload() {
 	}
 	if g.particleRenderer != nil {
 		g.particleRenderer.Unload()
+	}
+
+	// Write hall of fame and close output manager
+	if g.outputManager != nil {
+		if g.hallOfFame != nil {
+			g.outputManager.WriteHallOfFame(g.hallOfFame)
+		}
+		g.outputManager.Close()
 	}
 }
 

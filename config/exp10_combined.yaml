@@ -1,0 +1,45 @@
+# Experiment 10: Combined best settings
+# Combining successful findings from experiments 5-7
+
+population:
+  initial: 60
+  predator_spawn_chance: 0.15     # From exp6 - prevents early extinction
+  min_predators: 0
+  min_prey: 0
+  max_pred: 30                    # INCREASED for natural regulation
+  max_prey: 200                   # From exp7 - dampens oscillations
+
+resource:
+  contrast: 2.0
+  forage_efficiency: 1.0
+  graze_radius: 1
+
+energy:
+  predator:
+    digest_time: 1.0
+    base_cost: 0.006              # From exp5 - helps early survival
+    move_cost: 0.04
+    bite_reward: 0.60
+  prey:
+    base_cost: 0.010
+    move_cost: 0.06
+    forage_rate: 0.09
+    grazing_peak: 0.15
+    accel_cost: 0.015
+
+refugia:
+  strength: 0.75
+
+reproduction:
+  prey_threshold: 0.65
+  prey_cooldown: 12.0
+  cooldown_jitter: 4.0
+  parent_energy_split: 0.45
+  pred_cooldown: 20.0
+  pred_threshold: 0.85
+  pred_density_k: 300
+
+particles:
+  spawn_rate: 800
+  initial_mass: 0.03
+  cell_capacity: 0.8

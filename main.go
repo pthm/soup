@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -19,9 +18,9 @@ func main() {
 	configPath := flag.String("config", "", "Path to config.yaml (empty = use defaults)")
 	headless := flag.Bool("headless", false, "Run without graphics")
 	logStats := flag.Bool("log-stats", false, "Output stats via slog")
-	logFile := flag.String("log-file", "", "Write logs to file (empty = stdout)")
 	statsWindow := flag.Float64("stats-window", 0, "Stats window size in seconds (0 = use config)")
 	snapshotDir := flag.String("snapshot-dir", "", "Directory for snapshot files")
+	outputDir := flag.String("output-dir", "", "Output directory for CSV logs and config snapshot")
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
 	maxTicks := flag.Int("max-ticks", 0, "Stop after N ticks (0 = unlimited)")
 	stepsPerUpdate := flag.Int("steps-per-update", 1, "Simulation ticks per update call (higher = faster headless runs)")
@@ -44,19 +43,8 @@ func main() {
 		rngSeed = time.Now().UnixNano()
 	}
 
-	// Set up slog
-	var logWriter io.Writer = os.Stdout
-	if *logFile != "" {
-		f, err := os.Create(*logFile)
-		if err != nil {
-			slog.Error("failed to create log file", "error", err)
-			os.Exit(1)
-		}
-		defer f.Close()
-		logWriter = f
-	}
-
-	logger := slog.New(slog.NewJSONHandler(logWriter, nil))
+	// Set up slog (JSON to stdout for structured logging)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
 	// Use config stats window if not overridden by CLI
@@ -71,6 +59,7 @@ func main() {
 		LogStats:       *logStats,
 		StatsWindowSec: statsWindowSec,
 		SnapshotDir:    *snapshotDir,
+		OutputDir:      *outputDir,
 		Headless:       *headless,
 		StepsPerUpdate: *stepsPerUpdate,
 	}

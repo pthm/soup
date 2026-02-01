@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"log/slog"
 	"math/rand"
 	"sort"
@@ -216,4 +217,58 @@ func LogHallEntry(kind components.Kind, entityID uint32, fitness float32, hallSi
 		"fitness", fitness,
 		"hall_size", hallSize,
 	)
+}
+
+// hallOfFameJSON is the JSON-serializable representation of the hall of fame.
+type hallOfFameJSON struct {
+	Prey     []hallEntryJSON `json:"prey"`
+	Predator []hallEntryJSON `json:"predator"`
+}
+
+// hallEntryJSON is the JSON-serializable representation of a hall entry.
+type hallEntryJSON struct {
+	EntityID uint32              `json:"entity_id"`
+	Kind     string              `json:"kind"`
+	Fitness  float32             `json:"fitness"`
+	Children int                 `json:"children"`
+	Kills    int                 `json:"kills"`
+	Survival float32             `json:"survival_sec"`
+	Foraging float32             `json:"foraging"`
+	Weights  neural.BrainWeights `json:"brain"`
+}
+
+// MarshalJSON serializes the hall of fame to JSON.
+func (hof *HallOfFame) MarshalJSON() ([]byte, error) {
+	export := hallOfFameJSON{
+		Prey:     make([]hallEntryJSON, len(hof.prey)),
+		Predator: make([]hallEntryJSON, len(hof.predator)),
+	}
+
+	for i, entry := range hof.prey {
+		export.Prey[i] = hallEntryJSON{
+			EntityID: entry.EntityID,
+			Kind:     entry.Kind.String(),
+			Fitness:  entry.Fitness,
+			Children: entry.Children,
+			Kills:    entry.Kills,
+			Survival: entry.Survival,
+			Foraging: entry.Foraging,
+			Weights:  entry.Weights,
+		}
+	}
+
+	for i, entry := range hof.predator {
+		export.Predator[i] = hallEntryJSON{
+			EntityID: entry.EntityID,
+			Kind:     entry.Kind.String(),
+			Fitness:  entry.Fitness,
+			Children: entry.Children,
+			Kills:    entry.Kills,
+			Survival: entry.Survival,
+			Foraging: entry.Foraging,
+			Weights:  entry.Weights,
+		}
+	}
+
+	return json.MarshalIndent(export, "", "  ")
 }

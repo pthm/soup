@@ -160,8 +160,8 @@ potential:
   gain: 0.66                 # Amplitude multiplier per octave (higher = brighter peaks)
   contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
-  drift_x: 0.0035            # Horizontal drift rate (glacial evolution)
-  drift_y: 0.0017            # Vertical drift rate (glacial evolution)
+  drift_x: 0.0005            # Horizontal drift rate (glacial evolution)
+  drift_y: 0.0007            # Vertical drift rate (glacial evolution)
   update_sec: 3.0            # Rebuild interval in seconds (affects visual smoothness)
 
 # -----------------------------------------------------------------------------
