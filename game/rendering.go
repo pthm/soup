@@ -28,14 +28,16 @@ func (g *Game) Draw() {
 	g.drawEntities()
 
 	// Draw selection highlight and vision cone
-	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap, g.orgMap)
+	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap, g.orgMap, g.camera)
 
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Prey: %d  Pred: %d  Dead: %d", g.numPrey, g.numPred, g.deadCount), 10, 35, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.stepsPerUpdate), 10, 60, 20, rl.White)
+	cam := g.camera
+	rl.DrawText(fmt.Sprintf("Zoom: %.2fx  Pos: (%.0f, %.0f)  [Arrows/+/-/Home]", cam.Zoom, cam.X, cam.Y), 10, 85, 16, rl.LightGray)
 	if g.paused {
-		rl.DrawText("PAUSED", 10, 85, 20, rl.Yellow)
+		rl.DrawText("PAUSED", 10, 110, 20, rl.Yellow)
 	}
 
 	// Debug menu
@@ -51,11 +53,18 @@ func (g *Game) Draw() {
 
 // drawEntities renders all entities as oriented triangles.
 func (g *Game) drawEntities() {
+	cam := g.camera
+
 	query := g.entityFilter.Query()
 	for query.Next() {
 		pos, _, rot, body, energy, _, org := query.Get()
 
 		if !energy.Alive {
+			continue
+		}
+
+		// Visibility culling
+		if !cam.IsVisible(pos.X, pos.Y, body.Radius*2) {
 			continue
 		}
 
@@ -69,14 +78,24 @@ func (g *Game) drawEntities() {
 		alpha := uint8(100 + int(energy.Value*155))
 		color.A = alpha
 
-		drawOrientedTriangle(pos.X, pos.Y, rot.Heading, body.Radius, color)
+		// Transform to screen coordinates
+		sx, sy := cam.WorldToScreen(pos.X, pos.Y)
+		scaledRadius := body.Radius * cam.Zoom
+
+		drawOrientedTriangle(sx, sy, rot.Heading, scaledRadius, color)
+
+		// Draw ghost copies for entities near world edges
+		ghosts := cam.GhostPositions(pos.X, pos.Y, body.Radius*2)
+		for _, ghost := range ghosts {
+			drawOrientedTriangle(ghost.X, ghost.Y, rot.Heading, scaledRadius, color)
+		}
 	}
 }
 
 // drawDebugMenu renders the debug overlay menu.
 func (g *Game) drawDebugMenu() {
 	// Semi-transparent background panel
-	panelX := int32(g.width) - 200
+	panelX := int32(g.screenWidth) - 200
 	panelY := int32(10)
 	panelW := int32(190)
 	panelH := int32(80)
@@ -103,20 +122,38 @@ func (g *Game) drawDebugMenu() {
 
 // drawResourceHeatmap renders the CPU resource field as a colored overlay.
 func (g *Game) drawResourceHeatmap(alpha uint8) {
+	cam := g.camera
 	gridW, gridH := g.cpuResourceField.GridSize()
-	cellW := g.width / float32(gridW)
-	cellH := g.height / float32(gridH)
+	cellW := g.worldWidth / float32(gridW)
+	cellH := g.worldHeight / float32(gridH)
 	res := g.cpuResourceField.ResData()
+
+	// Scale cell size by zoom
+	screenCellW := cellW * cam.Zoom
+	screenCellH := cellH * cam.Zoom
 
 	for y := 0; y < gridH; y++ {
 		for x := 0; x < gridW; x++ {
+			// Calculate world position of cell center
+			worldX := float32(x)*cellW + cellW/2
+			worldY := float32(y)*cellH + cellH/2
+
+			// Check visibility (use cell diagonal as radius)
+			cellRadius := (cellW + cellH) / 2
+			if !cam.IsVisible(worldX, worldY, cellRadius) {
+				continue
+			}
+
+			// Transform to screen coordinates
+			sx, sy := cam.WorldToScreen(worldX, worldY)
+
 			val := res[y*gridW+x]
 			color := resourceToColor(val, alpha)
 			rl.DrawRectangle(
-				int32(float32(x)*cellW),
-				int32(float32(y)*cellH),
-				int32(cellW)+1,
-				int32(cellH)+1,
+				int32(sx-screenCellW/2),
+				int32(sy-screenCellH/2),
+				int32(screenCellW)+1,
+				int32(screenCellH)+1,
 				color,
 			)
 		}

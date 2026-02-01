@@ -7,6 +7,7 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/mlange-42/ark/ecs"
 
+	"github.com/pthm-cable/soup/camera"
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
@@ -70,6 +71,7 @@ func (ins *Inspector) HandleInput(
 		components.Capabilities,
 		components.Organism,
 	],
+	cam *camera.Camera,
 ) {
 	// Right click or Escape to deselect
 	if rl.IsMouseButtonPressed(rl.MouseButtonRight) || rl.IsKeyPressed(rl.KeyEscape) {
@@ -99,7 +101,10 @@ func (ins *Inspector) HandleInput(
 		}
 	}
 
-	// Find clicked entity
+	// Convert screen coords to world coords
+	worldX, worldY := cam.ScreenToWorld(mouseX, mouseY)
+
+	// Find clicked entity using toroidal distance
 	var closest ecs.Entity
 	closestDist := float32(1000000)
 	found := false
@@ -113,12 +118,13 @@ func (ins *Inspector) HandleInput(
 			continue
 		}
 
-		dx := mouseX - pos.X
-		dy := mouseY - pos.Y
+		// Use toroidal distance for hit detection
+		dx := toroidalDelta(worldX, pos.X, cam.WorldW)
+		dy := toroidalDelta(worldY, pos.Y, cam.WorldH)
 		dist := dx*dx + dy*dy
 
-		// Check if within body radius (with some tolerance)
-		hitRadius := body.Radius + 5
+		// Check if within body radius (with some tolerance, scaled by zoom)
+		hitRadius := body.Radius + 5/cam.Zoom
 		if dist < hitRadius*hitRadius && dist < closestDist {
 			closest = entity
 			closestDist = dist
@@ -130,6 +136,18 @@ func (ins *Inspector) HandleInput(
 		ins.selected = closest
 		ins.hasSelected = true
 	}
+}
+
+// toroidalDelta computes the shortest signed distance from 'from' to 'to'
+// in a toroidal space of the given size.
+func toroidalDelta(to, from, size float32) float32 {
+	d := to - from
+	if d > size/2 {
+		d -= size
+	} else if d < -size/2 {
+		d += size
+	}
+	return d
 }
 
 // Deselect clears the current selection.
@@ -323,6 +341,7 @@ func (ins *Inspector) DrawSelectionHighlight(
 	rotMap *ecs.Map1[components.Rotation],
 	capsMap *ecs.Map1[components.Capabilities],
 	orgMap *ecs.Map1[components.Organism],
+	cam *camera.Camera,
 ) {
 	if !ins.hasSelected {
 		return
@@ -337,13 +356,16 @@ func (ins *Inspector) DrawSelectionHighlight(
 		return
 	}
 
-	// Selection circle (fixed size, no pulse)
-	radius := body.Radius * 1.8
-	rl.DrawCircleLines(int32(pos.X), int32(pos.Y), radius, rl.Yellow)
+	// Transform to screen coordinates
+	sx, sy := cam.WorldToScreen(pos.X, pos.Y)
+
+	// Selection circle (scaled by zoom)
+	radius := body.Radius * 1.8 * cam.Zoom
+	rl.DrawCircleLines(int32(sx), int32(sy), radius, rl.Yellow)
 
 	// Draw vision sectors if we have rotation, capabilities, and organism
 	if rot != nil && caps != nil && org != nil {
-		ins.drawVisionSectors(pos.X, pos.Y, rot.Heading, caps.VisionRange, org.Kind)
+		ins.drawVisionSectors(sx, sy, rot.Heading, caps.VisionRange*cam.Zoom, org.Kind)
 	}
 }
 

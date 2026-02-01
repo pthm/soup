@@ -31,9 +31,57 @@ func (g *Game) handleInput() {
 		}
 	}
 
+	// Camera controls
+	g.handleCameraInput()
+
 	// Inspector input
 	if g.inspector != nil {
 		mousePos := rl.GetMousePosition()
-		g.inspector.HandleInput(mousePos.X, mousePos.Y, g.posMap, g.bodyMap, g.orgMap, g.entityFilter)
+		g.inspector.HandleInput(mousePos.X, mousePos.Y, g.posMap, g.bodyMap, g.orgMap, g.entityFilter, g.camera)
+	}
+}
+
+// handleCameraInput processes camera pan/zoom controls.
+func (g *Game) handleCameraInput() {
+	if g.camera == nil {
+		return
+	}
+
+	// Pan speed scales inversely with zoom for natural feel
+	panSpeed := float32(8.0) / g.camera.Zoom
+
+	// Arrow key panning
+	if rl.IsKeyDown(rl.KeyRight) {
+		g.camera.Pan(panSpeed, 0)
+	}
+	if rl.IsKeyDown(rl.KeyLeft) {
+		g.camera.Pan(-panSpeed, 0)
+	}
+	if rl.IsKeyDown(rl.KeyDown) {
+		g.camera.Pan(0, panSpeed)
+	}
+	if rl.IsKeyDown(rl.KeyUp) {
+		g.camera.Pan(0, -panSpeed)
+	}
+
+	// Zoom controls: mouse wheel or +/- keys
+	wheelMove := rl.GetMouseWheelMove()
+	if wheelMove != 0 {
+		// Zoom toward/away from cursor position
+		zoomFactor := float32(1.0) + wheelMove*0.1
+		g.camera.ZoomBy(zoomFactor)
+	}
+
+	// Keyboard zoom with +/- (= and - keys)
+	if rl.IsKeyPressed(rl.KeyEqual) || rl.IsKeyPressed(rl.KeyKpAdd) {
+		g.camera.ZoomBy(1.25)
+	}
+	if rl.IsKeyPressed(rl.KeyMinus) || rl.IsKeyPressed(rl.KeyKpSubtract) {
+		g.camera.ZoomBy(0.8)
+	}
+
+	// Home key to reset camera
+	if rl.IsKeyPressed(rl.KeyHome) {
+		g.camera.Reset()
 	}
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/mlange-42/ark/ecs"
 
+	"github.com/pthm-cable/soup/camera"
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/inspector"
@@ -89,8 +90,12 @@ type Game struct {
 	debugMode         bool
 	debugShowResource bool
 
-	// Window dimensions
-	width, height float32
+	// Dimensions
+	screenWidth, screenHeight float32 // Viewport (window) size
+	worldWidth, worldHeight   float32 // Simulation world size
+
+	// Camera (nil in headless mode)
+	camera *camera.Camera
 
 	// Telemetry
 	collector        *telemetry.Collector
@@ -137,8 +142,10 @@ func NewGameWithOptions(opts Options) *Game {
 	g := &Game{
 		world:          world,
 		rng:            rand.New(rand.NewSource(opts.Seed)),
-		width:          float32(cfg.Screen.Width),
-		height:         float32(cfg.Screen.Height),
+		screenWidth:    cfg.Derived.ScreenW32,
+		screenHeight:   cfg.Derived.ScreenH32,
+		worldWidth:     cfg.Derived.WorldW32,
+		worldHeight:    cfg.Derived.WorldH32,
 		stepsPerUpdate: stepsPerUpdate,
 		brains: make(map[uint32]*neural.FFNN),
 		entityMapper: ecs.NewMap7[
@@ -182,15 +189,26 @@ func NewGameWithOptions(opts Options) *Game {
 		g.hallOfFame = telemetry.NewHallOfFame(cfg.HallOfFame.Size, g.rng)
 	}
 
-	// Spatial grid
-	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, float32(cfg.Physics.GridCellSize))
+	// Spatial grid (uses world dimensions)
+	g.spatialGrid = systems.NewSpatialGrid(g.worldWidth, g.worldHeight, float32(cfg.Physics.GridCellSize))
 
 	// Parallel processing
 	g.parallel = newParallelState()
 
-	// CPU resource field with depletion and regrowth
-	gridSize := cfg.GPU.ResourceTextureSize // reuse texture size config for grid resolution
-	g.cpuResourceField = systems.NewCPUResourceField(gridSize, gridSize, g.width, g.height)
+	// CPU resource field with depletion and regrowth (uses world dimensions)
+	// Compute grid dimensions to maintain square cells matching world aspect ratio
+	baseGridSize := cfg.GPU.ResourceTextureSize
+	var gridW, gridH int
+	if g.worldWidth >= g.worldHeight {
+		// Landscape: scale width up
+		gridH = baseGridSize
+		gridW = int(float32(baseGridSize) * g.worldWidth / g.worldHeight)
+	} else {
+		// Portrait: scale height up
+		gridW = baseGridSize
+		gridH = int(float32(baseGridSize) * g.worldHeight / g.worldWidth)
+	}
+	g.cpuResourceField = systems.NewCPUResourceField(gridW, gridH, g.worldWidth, g.worldHeight)
 	g.cpuResourceField.SetParams(
 		float32(cfg.Resource.RegrowRate),
 		float32(cfg.Resource.Diffuse),
@@ -205,11 +223,14 @@ func NewGameWithOptions(opts Options) *Game {
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
-		// Water background
-		g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
+		// Water background (uses screen dimensions)
+		g.water = renderer.NewWaterBackground(int32(g.screenWidth), int32(g.screenHeight))
 
 		// Inspector
-		g.inspector = inspector.NewInspector(int32(g.width), int32(g.height))
+		g.inspector = inspector.NewInspector(int32(g.screenWidth), int32(g.screenHeight))
+
+		// Camera (centered on world with 1:1 zoom)
+		g.camera = camera.New(g.screenWidth, g.screenHeight, g.worldWidth, g.worldHeight)
 	}
 
 	// Spawn initial population
@@ -304,4 +325,14 @@ func (g *Game) ResourceField() systems.ResourceSampler {
 // PerfStats returns the current performance statistics.
 func (g *Game) PerfStats() telemetry.PerfStats {
 	return g.perfCollector.Stats()
+}
+
+// Camera returns the camera (nil in headless mode).
+func (g *Game) Camera() *camera.Camera {
+	return g.camera
+}
+
+// WorldSize returns the world dimensions.
+func (g *Game) WorldSize() (width, height float32) {
+	return g.worldWidth, g.worldHeight
 }

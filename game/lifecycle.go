@@ -15,8 +15,8 @@ import (
 func (g *Game) spawnInitialPopulation() {
 	cfg := config.Cfg()
 	for i := 0; i < cfg.Population.Initial; i++ {
-		x := g.rng.Float32() * g.width
-		y := g.rng.Float32() * g.height
+		x := g.rng.Float32() * g.worldWidth
+		y := g.rng.Float32() * g.worldHeight
 		heading := g.rng.Float32() * 2 * math.Pi
 
 		// Use configured spawn chance for initial population
@@ -122,8 +122,8 @@ func (g *Game) cleanupDead() {
 	// Respawn if population drops too low (general respawn)
 	if g.aliveCount < cfg.Population.RespawnThreshold && g.tick > 100 {
 		for i := 0; i < cfg.Population.RespawnCount; i++ {
-			x := g.rng.Float32() * g.width
-			y := g.rng.Float32() * g.height
+			x := g.rng.Float32() * g.worldWidth
+			y := g.rng.Float32() * g.worldHeight
 			heading := g.rng.Float32() * 2 * math.Pi
 			kind := components.KindPrey
 			if g.rng.Float32() < float32(cfg.Population.PredatorSpawnChance) {
@@ -141,8 +141,8 @@ func (g *Game) cleanupDead() {
 		// Fallback: use legacy min population logic if hall of fame is disabled
 		if cfg.Population.MinPredators > 0 && g.numPred < cfg.Population.MinPredators && g.tick > 100 {
 			for g.numPred < cfg.Population.MinPredators {
-				x := g.rng.Float32() * g.width
-				y := g.rng.Float32() * g.height
+				x := g.rng.Float32() * g.worldWidth
+				y := g.rng.Float32() * g.worldHeight
 				heading := g.rng.Float32() * 2 * math.Pi
 				g.spawnEntity(x, y, heading, components.KindPredator)
 			}
@@ -150,8 +150,8 @@ func (g *Game) cleanupDead() {
 
 		if cfg.Population.MinPrey > 0 && g.numPrey < cfg.Population.MinPrey && g.tick > 100 {
 			for g.numPrey < cfg.Population.MinPrey {
-				x := g.rng.Float32() * g.width
-				y := g.rng.Float32() * g.height
+				x := g.rng.Float32() * g.worldWidth
+				y := g.rng.Float32() * g.worldHeight
 				heading := g.rng.Float32() * 2 * math.Pi
 				g.spawnEntity(x, y, heading, components.KindPrey)
 			}
@@ -209,8 +209,8 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 			"kind", kind.String(),
 			"message", "no proven lineages yet, spawning random brain",
 		)
-		x := g.rng.Float32() * g.width
-		y := g.rng.Float32() * g.height
+		x := g.rng.Float32() * g.worldWidth
+		y := g.rng.Float32() * g.worldHeight
 		heading := g.rng.Float32() * 2 * math.Pi
 		g.spawnEntity(x, y, heading, kind)
 		return true
@@ -220,8 +220,8 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	id := g.nextID
 	g.nextID++
 
-	x := g.rng.Float32() * g.width
-	y := g.rng.Float32() * g.height
+	x := g.rng.Float32() * g.worldWidth
+	y := g.rng.Float32() * g.worldHeight
 	heading := g.rng.Float32() * 2 * math.Pi
 
 	pos := components.Position{X: x, Y: y}

@@ -261,8 +261,8 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 		}
 
 		// Position + wrap
-		newPosX := mod(snap.Pos.X+newVelX, g.width)
-		newPosY := mod(snap.Pos.Y+newVelY, g.height)
+		newPosX := mod(snap.Pos.X+newVelX, g.worldWidth)
+		newPosY := mod(snap.Pos.Y+newVelY, g.worldHeight)
 
 		intent.NewHeading = newHeading
 		intent.NewVelX = newVelX

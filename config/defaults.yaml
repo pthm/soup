@@ -16,6 +16,14 @@ screen:
   target_fps: 60             # Target frame rate (also affects simulation speed in graphics mode)
 
 # -----------------------------------------------------------------------------
+# World Size (can be larger than screen; use camera to pan/zoom)
+# -----------------------------------------------------------------------------
+world:
+  width: 2560                # World width in world units (0 = use screen width)
+  height: 1440               # World height in world units (0 = use screen height)
+                             # Default is 2x screen size for larger flocking areas
+
+# -----------------------------------------------------------------------------
 # Physics & Simulation
 # -----------------------------------------------------------------------------
 physics:

@@ -1,49 +1,49 @@
 # =============================================================================
-# Ecosystem v2 - Self-Sustaining Predator-Prey Cycles
+# Ecosystem v2 - Resource-Driven Migration
 # =============================================================================
-# Achieves Lotka-Volterra-style oscillating coexistence through:
-#   - Low prey energy costs (base 0.01, high forage 0.08)
-#   - Low prey reproduction threshold (0.55) enabling frequent breeding
-#   - Slow predator hunting (3s digest time)
-#   - Strong refugia (0.85) protecting prey in resource-rich areas
-#   - Density-dependent predator reproduction (K=200) preventing runaway boom
-#   - Predator cap (max_pred=30) limiting peak predator numbers
+# Focus on resource dynamics to create natural migration pressure:
+#   - Slow resource regrowth forces prey to move after depleting an area
+#   - Sparse resource patches (high contrast) create barren zones to cross
+#   - Lower forage efficiency means prey must find more resources
+#   - Moderate prey energy costs create real survival pressure
 #
-# Observed dynamics (no artificial floors needed):
-#   - Prey oscillate ~50-500+ with long cycles (~1000s period)
-#   - Predators oscillate ~3-30
-#   - Classic predator-prey cycle: high pred → low prey → low pred → prey recovery
-#   - Self-sustaining without min_predators or min_prey floors
+# The goal is meaningful resource depletion where prey must migrate to survive,
+# not just coast on abundant food. Predator pressure emerges from prey behavior.
 # =============================================================================
 
-# Large starting population with very few predators
+# Start with balanced population to prevent feast-boom cycle
 population:
   initial: 300
-  predator_spawn_chance: 0.02 # ~6 predators to start
-  min_predators: 0            # No artificial floor - naturally stable
-  min_prey: 0                 # No artificial floor - naturally stable
-  max_pred: 30                # Cap prevents extreme peaks
+  predator_spawn_chance: 0.015 # ~5 predators to start (let prey build up)
+  min_predators: 0             # No artificial floor
+  min_prey: 0                  # No artificial floor
+  max_pred: 8                  # Very low cap - scarce apex predators
 
-# Slower hunting pace with more forgiving prey economics
+# Resource field - the core of migration dynamics
+resource:
+  regrow_rate: 0.06           # Slow regrowth - 17s to full recovery (key for depletion)
+  contrast: 1.8               # Lush patches - plenty of resources overall
+  forage_efficiency: 0.85     # Slight inefficiency
+  diffuse: 0.02               # Moderate spreading creates gradients
+  graze_radius: 2             # Larger depletion zone (5x5 kernel) - forces migration
+
+# Energy costs - moderate pressure
 energy:
   predator:
-    digest_time: 3.0          # Longer cooldown between kills
+    digest_time: 1.5          # Faster hunting (default 0.8)
   prey:
-    base_cost: 0.010          # Lower metabolism - easier survival
-    forage_rate: 0.080        # Much faster foraging
+    base_cost: 0.013          # Slightly lower than default 0.015
+    forage_rate: 0.055        # Slightly above default 0.045
+    grazing_peak: 0.20        # Optimal grazing at 20% speed (encourages slow movement)
 
-# Strong protection in resource areas
+# Refugia - protection tied to resources
 refugia:
-  strength: 0.85              # High protection in resource-rich areas
+  strength: 0.75              # Strong protection in resource areas
 
-# Slower resource drift - prey can still forage but must move
-resource:
-  update_interval: 60         # Update every second - slower drift
-
-# Breeding control with density dependence
+# Breeding tied to actual resource success
 reproduction:
-  prey_threshold: 0.55        # Low threshold - prey can breed when doing okay
-  pred_cooldown: 20.0         # Slow predator breeding to prevent initial boom
-  pred_threshold: 0.92        # High threshold - must be well-fed to breed
-  pred_density_k: 200         # Stronger density dependence
-                              # At 200 prey: 50% prob, at 100 prey: 33%
+  prey_threshold: 0.55        # Prey breed at moderate energy
+  prey_cooldown: 6.0          # Faster breeding to recover from predation
+  pred_cooldown: 30.0         # Very slow predator breeding
+  pred_threshold: 0.92        # Predators need excellent hunting to breed
+  pred_density_k: 400         # Stronger density dependence (halves at 400 prey)

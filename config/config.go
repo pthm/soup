@@ -15,6 +15,7 @@ var defaultsYAML []byte
 // Config holds all simulation configuration parameters.
 type Config struct {
 	Screen       ScreenConfig       `yaml:"screen"`
+	World        WorldConfig        `yaml:"world"`
 	Physics      PhysicsConfig      `yaml:"physics"`
 	Entity       EntityConfig       `yaml:"entity"`
 	Capabilities CapabilitiesConfig `yaml:"capabilities"`
@@ -40,6 +41,13 @@ type ScreenConfig struct {
 	Width     int `yaml:"width"`
 	Height    int `yaml:"height"`
 	TargetFPS int `yaml:"target_fps"`
+}
+
+// WorldConfig holds simulation world dimensions.
+// World can be larger than the screen; camera handles the viewport.
+type WorldConfig struct {
+	Width  int `yaml:"width"`  // World width in world units (0 = use screen width)
+	Height int `yaml:"height"` // World height in world units (0 = use screen height)
 }
 
 // PhysicsConfig holds simulation physics parameters.
@@ -268,6 +276,10 @@ type HallOfFameEntryConfig struct {
 type DerivedConfig struct {
 	DT32      float32 // Physics.DT as float32
 	NumInputs int     // Sensors.NumSectors*3 + 2
+	ScreenW32 float32 // Screen.Width as float32
+	ScreenH32 float32 // Screen.Height as float32
+	WorldW32  float32 // Effective world width as float32
+	WorldH32  float32 // Effective world height as float32
 }
 
 // global holds the loaded configuration.
@@ -330,4 +342,18 @@ func Load(path string) (*Config, error) {
 func (c *Config) computeDerived() {
 	c.Derived.DT32 = float32(c.Physics.DT)
 	c.Derived.NumInputs = c.Sensors.NumSectors*3 + 2
+	c.Derived.ScreenW32 = float32(c.Screen.Width)
+	c.Derived.ScreenH32 = float32(c.Screen.Height)
+
+	// World dimensions default to screen size if not specified
+	worldW := c.World.Width
+	if worldW == 0 {
+		worldW = c.Screen.Width
+	}
+	worldH := c.World.Height
+	if worldH == 0 {
+		worldH = c.Screen.Height
+	}
+	c.Derived.WorldW32 = float32(worldW)
+	c.Derived.WorldH32 = float32(worldH)
 }

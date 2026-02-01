@@ -89,8 +89,8 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 	snapshot := &telemetry.Snapshot{
 		Version:     telemetry.SnapshotVersion,
 		RNGSeed:     g.rngSeed,
-		WorldWidth:  g.width,
-		WorldHeight: g.height,
+		WorldWidth:  g.worldWidth,
+		WorldHeight: g.worldHeight,
 		Tick:        g.tick,
 		Bookmark:    bookmark,
 	}

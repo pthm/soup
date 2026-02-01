@@ -121,8 +121,8 @@ func (g *Game) updateBehaviorAndPhysics() {
 		pos.Y += vel.Y
 
 		// Toroidal wrap
-		pos.X = mod(pos.X, g.width)
-		pos.Y = mod(pos.Y, g.height)
+		pos.X = mod(pos.X, g.worldWidth)
+		pos.Y = mod(pos.Y, g.worldHeight)
 	}
 }
 
@@ -363,8 +363,8 @@ func (g *Game) updateReproduction() {
 		// Queue child spawn
 		spawnOffset := float32(repro.SpawnOffset)
 		offset := spawnOffset + g.rng.Float32()*10
-		childX := mod(pos.X+(g.rng.Float32()-0.5)*offset*2, g.width)
-		childY := mod(pos.Y+(g.rng.Float32()-0.5)*offset*2, g.height)
+		childX := mod(pos.X+(g.rng.Float32()-0.5)*offset*2, g.worldWidth)
+		childY := mod(pos.Y+(g.rng.Float32()-0.5)*offset*2, g.worldHeight)
 		headingJitter := float32(repro.HeadingJitter)
 		childHeading := rot.Heading + (g.rng.Float32()-0.5)*headingJitter*2
 
