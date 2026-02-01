@@ -9,19 +9,40 @@ go build . && ./soup    # Run with graphics
 go test ./...           # Run tests
 ```
 
-Controls: `Space` pause, `<`/`>` adjust speed (1-10x)
+Controls: `Space` pause, `<`/`>` adjust speed (1-10x), click to inspect entity
+
+## CLI Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-headless` | false | Run without graphics (fast evolution) |
+| `-seed` | time-based | RNG seed for reproducibility |
+| `-max-ticks` | 0 | Stop after N ticks (0 = unlimited) |
+| `-log-stats` | false | Output ecosystem/perf stats as JSON |
+| `-log-file` | stdout | Write logs to file |
+| `-stats-window` | 10.0 | Stats window size in seconds |
+| `-snapshot-dir` | "" | Save snapshots on bookmarks |
+
+Common patterns:
+```bash
+./soup --headless --log-stats                    # Fast evolution with stats
+./soup --headless --seed=42 --max-ticks=100000   # Reproducible batch run
+./soup --log-stats --snapshot-dir=./snapshots    # Save interesting moments
+```
 
 ## Project Structure
 
 ```
 soup/
-├── main.go           # Entry point, window setup
+├── main.go           # Entry point, CLI flags
 ├── game/             # Simulation orchestration
 ├── components/       # ECS data (what entities have)
 ├── systems/          # ECS logic (what happens each tick)
 ├── neural/           # Brain networks
 ├── renderer/         # GPU shaders and drawing
-└── shaders/          # GLSL fragment shaders
+├── shaders/          # GLSL fragment shaders
+├── telemetry/        # Stats, bookmarks, snapshots, perf
+└── inspector/        # Click-to-inspect UI
 ```
 
 ## Architecture: Entity-Component-System (ECS)
@@ -156,3 +177,53 @@ pos := g.posMap.Get(entity)  // returns *Position or nil
 - **Death**: When energy ≤ 0
 
 Predators gain 80% of energy taken from prey.
+
+## Telemetry Package (`telemetry/`)
+
+Collects and logs simulation metrics:
+
+| File | Purpose |
+|------|---------|
+| `collector.go` | Aggregates events (births, deaths, bites) per window |
+| `stats.go` | `WindowStats` with population, hunting, energy distributions |
+| `perf.go` | `PerfCollector` measures per-phase timing |
+| `bookmark.go` | Detects evolutionary breakthroughs |
+| `snapshot.go` | Serializes full simulation state to JSON |
+| `lifetime.go` | Tracks per-organism lifetime statistics |
+
+### Stats Window
+
+Every `--stats-window` seconds (default 10), two log lines are emitted:
+
+1. **Ecosystem stats**: prey/pred counts, births, deaths, hunt success rates, energy percentiles
+2. **Perf stats**: avg/min/max tick duration, ticks/sec, phase breakdown percentages
+
+### Bookmarks
+
+Auto-detected evolutionary events that trigger snapshots:
+
+| Type | Condition |
+|------|-----------|
+| `hunt_breakthrough` | Kill rate > 2× rolling average |
+| `forage_breakthrough` | Resource utilization > 2× average |
+| `predator_recovery` | Recovered from ≤3 to ≥9 predators |
+| `prey_crash` | Population dropped >30% from peak |
+| `stable_ecosystem` | Low variance over 5+ windows |
+
+### Performance Phases
+
+The simulation tick is instrumented into phases for profiling:
+
+| Phase | What it measures |
+|-------|-----------------|
+| `flow_field` | GPU flow field update |
+| `spatial_grid` | Rebuild spatial index |
+| `behavior_physics` | Sensors + neural nets + movement |
+| `feeding` | Predator bite resolution |
+| `energy` | Metabolism and foraging |
+| `cooldowns` | Reproduction cooldown ticks |
+| `reproduction` | Spawning offspring |
+| `cleanup` | Removing dead entities |
+| `telemetry` | Stats aggregation |
+
+Typical breakdown: `behavior_physics` ~85%, `energy` ~7%, others <2%.

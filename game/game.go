@@ -136,6 +136,7 @@ type Game struct {
 	collector        *telemetry.Collector
 	bookmarkDetector *telemetry.BookmarkDetector
 	lifetimeTracker  *telemetry.LifetimeTracker
+	perfCollector    *telemetry.PerfCollector
 	logStats         bool
 	snapshotDir      string
 	rngSeed          int64
@@ -207,6 +208,7 @@ func NewGameWithOptions(opts Options) *Game {
 	g.collector = telemetry.NewCollector(opts.StatsWindowSec, DT)
 	g.bookmarkDetector = telemetry.NewBookmarkDetector(10) // 10 windows of history
 	g.lifetimeTracker = telemetry.NewLifetimeTracker()
+	g.perfCollector = telemetry.NewPerfCollector(600) // 10 seconds at 60 ticks/sec
 
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, GridCellSize)
@@ -299,35 +301,47 @@ func (g *Game) Update() {
 
 // simulationStep runs a single tick of the simulation.
 func (g *Game) simulationStep() {
+	g.perfCollector.StartTick()
+
 	// Update flow field (only if available - nil in headless mode initially)
+	g.perfCollector.StartPhase(telemetry.PhaseFlowField)
 	if g.flow != nil {
 		g.flow.Update(g.tick, float32(g.tick)*0.01)
 	}
 
 	// 1. Update spatial grid
+	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)
 	g.updateSpatialGrid()
 
 	// 2. Run behavior (sensors + brains) and physics
+	g.perfCollector.StartPhase(telemetry.PhaseBehaviorPhysics)
 	g.updateBehaviorAndPhysics()
 
 	// 3. Handle feeding (predator bites)
+	g.perfCollector.StartPhase(telemetry.PhaseFeeding)
 	g.updateFeeding()
 
 	// 4. Update energy and check deaths
+	g.perfCollector.StartPhase(telemetry.PhaseEnergy)
 	g.updateEnergy()
 
 	// 5. Update cooldowns
+	g.perfCollector.StartPhase(telemetry.PhaseCooldowns)
 	g.updateCooldowns()
 
 	// 6. Handle reproduction
+	g.perfCollector.StartPhase(telemetry.PhaseReproduction)
 	g.updateReproduction()
 
 	// 7. Cleanup dead entities
+	g.perfCollector.StartPhase(telemetry.PhaseCleanup)
 	g.cleanupDead()
 
 	// 8. Flush telemetry window if needed
+	g.perfCollector.StartPhase(telemetry.PhaseTelemetry)
 	g.flushTelemetry()
 
+	g.perfCollector.EndTick()
 	g.tick++
 }
 
@@ -346,6 +360,7 @@ func (g *Game) flushTelemetry() {
 	// Log stats if enabled
 	if g.logStats {
 		stats.LogStats()
+		g.perfCollector.Stats().LogStats()
 	}
 
 	// Check for bookmarks
@@ -841,6 +856,8 @@ func mod(a, b float32) float32 {
 
 // Draw renders the game.
 func (g *Game) Draw() {
+	g.perfCollector.RecordFrame()
+
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.Black)
 
@@ -942,4 +959,9 @@ func (g *Game) UpdateHeadless() {
 // ResourceField returns the resource field for snapshot access.
 func (g *Game) ResourceField() *systems.ResourceField {
 	return g.resourceField
+}
+
+// PerfStats returns the current performance statistics.
+func (g *Game) PerfStats() telemetry.PerfStats {
+	return g.perfCollector.Stats()
 }
