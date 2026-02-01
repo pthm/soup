@@ -76,11 +76,7 @@ func main() {
 	}
 
 	if *headless {
-		// Headless mode - hidden window for GPU access
-		rl.SetConfigFlags(rl.FlagWindowHidden)
-		rl.InitWindow(int32(cfg.Screen.Width), int32(cfg.Screen.Height), "Primordial Soup (headless)")
-		defer rl.CloseWindow()
-
+		// Headless mode - pure CPU simulation, no raylib needed
 		g := game.NewGameWithOptions(opts)
 		defer g.Unload()
 

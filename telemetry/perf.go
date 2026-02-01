@@ -7,6 +7,7 @@ import (
 
 // Phase names for the simulation step.
 const (
+	PhaseResourceField   = "resource_field"
 	PhaseSpatialGrid     = "spatial_grid"
 	PhaseBehaviorPhysics = "behavior_physics"
 	PhaseFeeding         = "feeding"
@@ -203,7 +204,7 @@ func (s PerfStats) LogStats() {
 
 	// Add phase breakdowns
 	phases := []string{
-		PhaseSpatialGrid, PhaseBehaviorPhysics,
+		PhaseResourceField, PhaseSpatialGrid, PhaseBehaviorPhysics,
 		PhaseFeeding, PhaseEnergy, PhaseCooldowns,
 		PhaseReproduction, PhaseCleanup, PhaseTelemetry,
 	}

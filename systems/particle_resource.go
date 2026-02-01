@@ -27,6 +27,7 @@ type ParticleResourceField struct {
 	Count      int   // current active particle count
 	MaxCount   int   // maximum particles
 	FreeList   []int // recycled indices
+	ActiveList []int // compact list of active particle indices
 
 	// Potential field P (spawn rate map)
 	Pot        []float32
@@ -103,12 +104,13 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 
 	pf := &ParticleResourceField{
 		// Particle arrays
-		X:        make([]float32, maxCount),
-		Y:        make([]float32, maxCount),
-		Mass:     make([]float32, maxCount),
-		Active:   make([]bool, maxCount),
-		MaxCount: maxCount,
-		FreeList: make([]int, 0, maxCount),
+		X:          make([]float32, maxCount),
+		Y:          make([]float32, maxCount),
+		Mass:       make([]float32, maxCount),
+		Active:     make([]bool, maxCount),
+		MaxCount:   maxCount,
+		FreeList:   make([]int, 0, maxCount),
+		ActiveList: make([]int, 0, maxCount),
 
 		// Potential field (same resolution as resource grid)
 		Pot:  make([]float32, gridW*gridH),
@@ -216,12 +218,12 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	// Update blended flow field for rendering
 	pf.updateFlowBlend()
 
-	// Particle dynamics
+	// Particle dynamics - use compact active list for O(n) instead of O(MaxCount)
 	pf.spawnParticles(dt)
-	pf.advectParticles(dt)
-	pf.deposit(dt)
-	pf.pickup(dt)
-	pf.cleanup()
+	pf.advectParticlesCompact(dt)
+	pf.depositCompact(dt)
+	pf.pickupCompact(dt)
+	pf.cleanupCompact()
 }
 
 func (pf *ParticleResourceField) ResData() []float32 {
@@ -313,15 +315,50 @@ func (pf *ParticleResourceField) updateFlowInterpolation(dt float32) {
 }
 
 // sampleFlow returns interpolated flow at world position.
+// Uses pre-blended flow arrays (computed once per tick in updateFlowBlend).
 func (pf *ParticleResourceField) sampleFlow(x, y float32) (float32, float32) {
-	u0 := pf.sampleGrid(pf.FlowU0, pf.FlowW, pf.FlowH, x, y)
-	v0 := pf.sampleGrid(pf.FlowV0, pf.FlowW, pf.FlowH, x, y)
-	u1 := pf.sampleGrid(pf.FlowU1, pf.FlowW, pf.FlowH, x, y)
-	v1 := pf.sampleGrid(pf.FlowV1, pf.FlowW, pf.FlowH, x, y)
+	// Compute grid coordinates
+	u := pfFract(x / pf.worldW)
+	v := pfFract(y / pf.worldH)
 
-	// Linear interpolation for constant rate of change
-	t := pf.FlowBlend
-	return u0 + (u1-u0)*t, v0 + (v1-v0)*t
+	fx := u * float32(pf.FlowW)
+	fy := v * float32(pf.FlowH)
+
+	x0 := int(fx)
+	y0 := int(fy)
+	if x0 >= pf.FlowW {
+		x0 = 0
+	}
+	if y0 >= pf.FlowH {
+		y0 = 0
+	}
+
+	x1 := x0 + 1
+	if x1 >= pf.FlowW {
+		x1 = 0
+	}
+	y1 := y0 + 1
+	if y1 >= pf.FlowH {
+		y1 = 0
+	}
+
+	tx := fx - float32(x0)
+	ty := fy - float32(y0)
+
+	// Precompute indices
+	i00 := y0*pf.FlowW + x0
+	i10 := y0*pf.FlowW + x1
+	i01 := y1*pf.FlowW + x0
+	i11 := y1*pf.FlowW + x1
+
+	// Sample from pre-blended arrays (2 instead of 4)
+	ub := pf.FlowUBlend[i00] + (pf.FlowUBlend[i10]-pf.FlowUBlend[i00])*tx
+	ubb := pf.FlowUBlend[i01] + (pf.FlowUBlend[i11]-pf.FlowUBlend[i01])*tx
+
+	vb := pf.FlowVBlend[i00] + (pf.FlowVBlend[i10]-pf.FlowVBlend[i00])*tx
+	vbb := pf.FlowVBlend[i01] + (pf.FlowVBlend[i11]-pf.FlowVBlend[i01])*tx
+
+	return ub + (ubb-ub)*ty, vb + (vbb-vb)*ty
 }
 
 // updateFlowBlend computes the interpolated flow field for rendering.
@@ -557,6 +594,7 @@ func (pf *ParticleResourceField) spawn(x, y, mass float32) {
 	pf.Y[idx] = y
 	pf.Mass[idx] = mass
 	pf.Active[idx] = true
+	pf.ActiveList = append(pf.ActiveList, idx)
 	pf.Count++
 }
 
@@ -565,6 +603,7 @@ func (pf *ParticleResourceField) despawn(i int) {
 	pf.Mass[i] = 0
 	pf.FreeList = append(pf.FreeList, i)
 	pf.Count--
+	// Note: ActiveList is cleaned during cleanupCompact, not here
 }
 
 // --- Cleanup ---
@@ -584,6 +623,101 @@ func (pf *ParticleResourceField) cleanup() {
 			pf.Res[i] = 0
 		}
 	}
+}
+
+// --- Compact Iteration Functions (O(active) instead of O(MaxCount)) ---
+
+// advectParticlesCompact only iterates over active particles.
+// Uses RK2 (midpoint) integration for smooth trajectories.
+func (pf *ParticleResourceField) advectParticlesCompact(dt float32) {
+	for _, i := range pf.ActiveList {
+		if !pf.Active[i] {
+			continue // Skip despawned (will be cleaned in cleanupCompact)
+		}
+
+		x0, y0 := pf.X[i], pf.Y[i]
+
+		// k1 = flow at current position
+		u1, v1 := pf.sampleFlow(x0, y0)
+
+		// Midpoint
+		xm := pfWrap(x0+u1*dt*0.5, pf.worldW)
+		ym := pfWrap(y0+v1*dt*0.5, pf.worldH)
+
+		// k2 = flow at midpoint
+		u2, v2 := pf.sampleFlow(xm, ym)
+
+		// Final position
+		pf.X[i] = pfWrap(x0+u2*dt, pf.worldW)
+		pf.Y[i] = pfWrap(y0+v2*dt, pf.worldH)
+	}
+}
+
+// depositCompact transfers mass from particles to grid, only iterating active particles.
+func (pf *ParticleResourceField) depositCompact(dt float32) {
+	rate := pf.DepositRate * dt
+	if rate > 1 {
+		rate = 1
+	}
+
+	for _, i := range pf.ActiveList {
+		if !pf.Active[i] || pf.Mass[i] <= 0 {
+			continue
+		}
+
+		dm := pf.Mass[i] * rate
+		pf.Mass[i] -= dm
+		pf.splatToGrid(pf.X[i], pf.Y[i], dm)
+	}
+}
+
+// pickupCompact transfers mass from grid to particles, only iterating active particles.
+func (pf *ParticleResourceField) pickupCompact(dt float32) {
+	for _, i := range pf.ActiveList {
+		if !pf.Active[i] {
+			continue
+		}
+
+		r := pf.Sample(pf.X[i], pf.Y[i])
+		if r < 0.001 {
+			continue
+		}
+
+		dm := pf.PickupRate * r * dt
+		if dm > r*0.5 {
+			dm = r * 0.5
+		}
+
+		pf.removeFromGrid(pf.X[i], pf.Y[i], dm)
+		pf.Mass[i] += dm
+	}
+}
+
+// cleanupCompact removes dead particles and compacts the ActiveList.
+func (pf *ParticleResourceField) cleanupCompact() {
+	const minMass = 0.0001
+
+	// Mark low-mass particles as dead
+	for _, i := range pf.ActiveList {
+		if pf.Active[i] && pf.Mass[i] < minMass {
+			pf.Active[i] = false
+			pf.Mass[i] = 0
+			pf.FreeList = append(pf.FreeList, i)
+			pf.Count--
+		}
+	}
+
+	// Compact the ActiveList by removing dead entries
+	writeIdx := 0
+	for _, i := range pf.ActiveList {
+		if pf.Active[i] {
+			pf.ActiveList[writeIdx] = i
+			writeIdx++
+		}
+	}
+	pf.ActiveList = pf.ActiveList[:writeIdx]
+
+	// Note: Grid clamping removed - removeFromGrid already clamps with maxf32(0, ...)
 }
 
 // --- Grazing (same as CPUResourceField) ---
@@ -650,16 +784,30 @@ func (pf *ParticleResourceField) sampleGrid(grid []float32, w, h int, x, y float
 	fx := u * float32(w)
 	fy := v * float32(h)
 
-	x0 := int(math.Floor(float64(fx)))
-	y0 := int(math.Floor(float64(fy)))
-	x0 = pfModInt(x0, w)
-	y0 = pfModInt(y0, h)
+	// Fast floor for positive values (truncation = floor for positive floats)
+	x0 := int(fx)
+	y0 := int(fy)
 
-	x1 := pfModInt(x0+1, w)
-	y1 := pfModInt(y0+1, h)
+	// Wrap (coordinates are always positive so simple modulo works)
+	if x0 >= w {
+		x0 = 0
+	}
+	if y0 >= h {
+		y0 = 0
+	}
 
-	tx := fx - float32(int(math.Floor(float64(fx))))
-	ty := fy - float32(int(math.Floor(float64(fy))))
+	x1 := x0 + 1
+	if x1 >= w {
+		x1 = 0
+	}
+	y1 := y0 + 1
+	if y1 >= h {
+		y1 = 0
+	}
+
+	// Fractional part
+	tx := fx - float32(x0)
+	ty := fy - float32(y0)
 
 	i00 := y0*w + x0
 	i10 := y0*w + x1

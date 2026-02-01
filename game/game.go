@@ -258,6 +258,7 @@ func (g *Game) simulationStep() {
 	cfg := config.Cfg()
 
 	// 0. Update resource field (regrowth, diffusion, capacity evolution / particle dynamics)
+	g.perfCollector.StartPhase(telemetry.PhaseResourceField)
 	g.resourceField.Step(cfg.Derived.DT32, true)
 
 	// 1. Update spatial grid
