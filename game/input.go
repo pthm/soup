@@ -29,6 +29,12 @@ func (g *Game) handleInput() {
 		if rl.IsKeyPressed(rl.KeyR) {
 			g.debugShowResource = !g.debugShowResource
 		}
+		if rl.IsKeyPressed(rl.KeyP) {
+			g.debugShowPotential = !g.debugShowPotential
+		}
+		if rl.IsKeyPressed(rl.KeyF) {
+			g.debugShowFlow = !g.debugShowFlow
+		}
 	}
 
 	// Camera controls

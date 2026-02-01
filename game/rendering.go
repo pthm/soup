@@ -26,6 +26,12 @@ func (g *Game) Draw() {
 	if g.debugMode && g.debugShowResource {
 		g.drawResourceHeatmap(180)
 	}
+	if g.debugMode && g.debugShowPotential {
+		g.drawPotentialHeatmap(180)
+	}
+	if g.debugMode && g.debugShowFlow {
+		g.drawFlowField()
+	}
 
 	// Layer 3: Entities
 	g.drawEntities()
@@ -107,7 +113,7 @@ func (g *Game) drawDebugMenu() {
 	panelX := int32(g.screenWidth) - 200
 	panelY := int32(10)
 	panelW := int32(190)
-	panelH := int32(80)
+	panelH := int32(120)
 
 	rl.DrawRectangle(panelX, panelY, panelW, panelH, rl.Color{R: 0, G: 0, B: 0, A: 180})
 	rl.DrawRectangleLines(panelX, panelY, panelW, panelH, rl.Yellow)
@@ -124,9 +130,27 @@ func (g *Game) drawDebugMenu() {
 	}
 	rl.DrawText(fmt.Sprintf("[R] Resource: %s", resourceStatus), panelX+10, panelY+30, 14, resourceColor)
 
+	// Potential overlay toggle
+	potentialStatus := "OFF"
+	potentialColor := rl.Gray
+	if g.debugShowPotential {
+		potentialStatus = "ON"
+		potentialColor = rl.Green
+	}
+	rl.DrawText(fmt.Sprintf("[P] Potential: %s", potentialStatus), panelX+10, panelY+48, 14, potentialColor)
+
+	// Flow field overlay toggle
+	flowStatus := "OFF"
+	flowColor := rl.Gray
+	if g.debugShowFlow {
+		flowStatus = "ON"
+		flowColor = rl.Green
+	}
+	rl.DrawText(fmt.Sprintf("[F] Flow: %s", flowStatus), panelX+10, panelY+66, 14, flowColor)
+
 	// Performance stats
 	stats := g.perfCollector.Stats()
-	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+55, 12, rl.White)
+	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+95, 12, rl.White)
 }
 
 // drawResourceHeatmap renders the resource field as a colored overlay.
@@ -181,7 +205,129 @@ func (g *Game) drawResourceHeatmap(alpha uint8) {
 	}
 }
 
-// resourceToColor maps a resource value [0,1] to a blue-green-yellow-red heatmap color.
+// drawPotentialHeatmap renders the potential field as a colored overlay.
+func (g *Game) drawPotentialHeatmap(alpha uint8) {
+	cam := g.camera
+	pf := g.resourceField
+	cellW := g.worldWidth / float32(pf.PotW)
+	cellH := g.worldHeight / float32(pf.PotH)
+
+	for y := 0; y < pf.PotH; y++ {
+		for x := 0; x < pf.PotW; x++ {
+			worldX0 := float32(x) * cellW
+			worldY0 := float32(y) * cellH
+			worldX1 := float32(x+1) * cellW
+			worldY1 := float32(y+1) * cellH
+
+			worldCX := (worldX0 + worldX1) / 2
+			worldCY := (worldY0 + worldY1) / 2
+			cellRadius := (cellW + cellH) / 2
+			if !cam.IsVisible(worldCX, worldCY, cellRadius) {
+				continue
+			}
+
+			sx0, sy0 := cam.WorldToScreen(worldX0, worldY0)
+			sx1, sy1 := cam.WorldToScreen(worldX1, worldY1)
+
+			left := int32(math.Floor(float64(sx0)))
+			top := int32(math.Floor(float64(sy0)))
+			right := int32(math.Floor(float64(sx1)))
+			bottom := int32(math.Floor(float64(sy1)))
+
+			w := right - left
+			h := bottom - top
+			if w < 1 {
+				w = 1
+			}
+			if h < 1 {
+				h = 1
+			}
+
+			val := pf.Pot[y*pf.PotW+x]
+			color := resourceToColor(val, alpha)
+			rl.DrawRectangle(left, top, w, h, color)
+		}
+	}
+}
+
+// drawFlowField renders the flow field as short oriented lines ("hairs").
+// All hairs have uniform length; color indicates magnitude (viridis scale).
+func (g *Game) drawFlowField() {
+	cam := g.camera
+	pf := g.resourceField
+	cellW := g.worldWidth / float32(pf.FlowW)
+	cellH := g.worldHeight / float32(pf.FlowH)
+
+	// Fixed hair length in screen pixels
+	const hairLen = float32(8)
+
+	for y := 0; y < pf.FlowH; y++ {
+		for x := 0; x < pf.FlowW; x++ {
+			// Cell center in world coords
+			worldCX := (float32(x) + 0.5) * cellW
+			worldCY := (float32(y) + 0.5) * cellH
+
+			if !cam.IsVisible(worldCX, worldCY, cellW) {
+				continue
+			}
+
+			idx := y*pf.FlowW + x
+			u := pf.FlowU[idx]
+			v := pf.FlowV[idx]
+
+			// Compute magnitude for coloring
+			mag := float32(math.Sqrt(float64(u*u + v*v)))
+			if mag < 0.001 {
+				continue
+			}
+
+			// Normalize direction
+			nx := u / mag
+			ny := v / mag
+
+			// Screen center of this cell
+			sx, sy := cam.WorldToScreen(worldCX, worldCY)
+
+			// Hair endpoints in screen space (fixed length, centered)
+			halfLen := hairLen / 2
+			x0 := sx - nx*halfLen
+			y0 := sy - ny*halfLen
+			x1 := sx + nx*halfLen
+			y1 := sy + ny*halfLen
+
+			// Color by magnitude using viridis (normalize mag to ~[0,1])
+			normMag := mag * 2 // Adjust scaling as needed
+			if normMag > 1 {
+				normMag = 1
+			}
+			color := resourceToColor(normMag, 220)
+
+			rl.DrawLineEx(
+				rl.Vector2{X: x0, Y: y0},
+				rl.Vector2{X: x1, Y: y1},
+				1.5,
+				color,
+			)
+
+			// Small arrowhead at the tip
+			arrowSize := float32(3)
+			angle := float32(math.Atan2(float64(ny), float64(nx)))
+			ax1 := x1 - arrowSize*float32(math.Cos(float64(angle-0.5)))
+			ay1 := y1 - arrowSize*float32(math.Sin(float64(angle-0.5)))
+			ax2 := x1 - arrowSize*float32(math.Cos(float64(angle+0.5)))
+			ay2 := y1 - arrowSize*float32(math.Sin(float64(angle+0.5)))
+			rl.DrawTriangle(
+				rl.Vector2{X: x1, Y: y1},
+				rl.Vector2{X: ax2, Y: ay2},
+				rl.Vector2{X: ax1, Y: ay1},
+				color,
+			)
+		}
+	}
+}
+
+// resourceToColor maps a resource value [0,1] to a viridis color scale.
+// Viridis: dark purple → blue → teal → green → yellow
 func resourceToColor(val float32, alpha uint8) rl.Color {
 	if val < 0 {
 		val = 0
@@ -190,32 +336,31 @@ func resourceToColor(val float32, alpha uint8) rl.Color {
 		val = 1
 	}
 
-	var r, g, b uint8
-	if val < 0.25 {
-		// Blue to cyan
-		t := val / 0.25
-		r = 0
-		g = uint8(t * 255)
-		b = 255
-	} else if val < 0.5 {
-		// Cyan to green
-		t := (val - 0.25) / 0.25
-		r = 0
-		g = 255
-		b = uint8((1 - t) * 255)
-	} else if val < 0.75 {
-		// Green to yellow
-		t := (val - 0.5) / 0.25
-		r = uint8(t * 255)
-		g = 255
-		b = 0
-	} else {
-		// Yellow to red
-		t := (val - 0.75) / 0.25
-		r = 255
-		g = uint8((1 - t) * 255)
-		b = 0
+	// Viridis color stops (5 points)
+	type colorStop struct {
+		r, g, b uint8
 	}
+	stops := []colorStop{
+		{68, 1, 84},    // 0.00: dark purple
+		{59, 82, 139},  // 0.25: blue-purple
+		{33, 145, 140}, // 0.50: teal
+		{94, 201, 98},  // 0.75: green
+		{253, 231, 37}, // 1.00: yellow
+	}
+
+	// Find which segment we're in and interpolate
+	idx := int(val * 4)
+	if idx >= 4 {
+		idx = 3
+	}
+	t := (val - float32(idx)*0.25) / 0.25
+
+	c0 := stops[idx]
+	c1 := stops[idx+1]
+
+	r := uint8(float32(c0.r) + t*(float32(c1.r)-float32(c0.r)))
+	g := uint8(float32(c0.g) + t*(float32(c1.g)-float32(c0.g)))
+	b := uint8(float32(c0.b) + t*(float32(c1.b)-float32(c0.b)))
 
 	return rl.Color{R: r, G: g, B: b, A: alpha}
 }

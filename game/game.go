@@ -88,8 +88,10 @@ type Game struct {
 	stepsPerUpdate int // simulation ticks per update call
 
 	// Debug state
-	debugMode         bool
-	debugShowResource bool
+	debugMode          bool
+	debugShowResource  bool
+	debugShowPotential bool
+	debugShowFlow      bool
 
 	// Dimensions
 	screenWidth, screenHeight float32 // Viewport (window) size
