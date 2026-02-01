@@ -20,6 +20,9 @@ func (g *Game) Draw() {
 	// Layer 2: Particles
 	g.drawParticles()
 
+	// Layer 2.5: Resource fog (soft green algae overlay)
+	g.drawResourceFog()
+
 	// Debug overlays (drawn before entities so entities appear on top)
 	if g.debugMode && g.debugShowResource {
 		g.drawResourceHeatmap(180)
@@ -476,6 +479,27 @@ func (g *Game) drawParticles() {
 
 	// Draw the particle texture with glow shader
 	g.particleRenderer.Draw(float32(g.tick) * 0.05)
+}
+
+// drawResourceFog renders the resource field as a soft green fog.
+func (g *Game) drawResourceFog() {
+	if g.resourceFogRenderer == nil {
+		return
+	}
+
+	pf := g.resourceField
+	gridW, gridH := pf.GridSize()
+
+	// Update resource texture (lazy init happens here)
+	g.resourceFogRenderer.UpdateResource(pf.ResData(), gridW, gridH)
+
+	cam := g.camera
+	g.resourceFogRenderer.Draw(
+		float32(g.tick)*0.016,
+		cam.X, cam.Y,
+		cam.Zoom,
+		g.worldWidth, g.worldHeight,
+	)
 }
 
 // drawOrientedTriangle draws a smooth rounded triangle pointing in the heading direction.

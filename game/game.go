@@ -72,9 +72,10 @@ type Game struct {
 	parallel *parallelState
 
 	// Rendering
-	backgroundRenderer *renderer.BackgroundRenderer
-	lightRenderer      *renderer.LightRenderer
-	particleRenderer   *renderer.ParticleRenderer
+	backgroundRenderer  *renderer.BackgroundRenderer
+	lightRenderer       *renderer.LightRenderer
+	resourceFogRenderer *renderer.ResourceFogRenderer
+	particleRenderer    *renderer.ParticleRenderer
 	inspector          *inspector.Inspector
 
 	// State
@@ -222,6 +223,9 @@ func NewGameWithOptions(opts Options) *Game {
 		// Blend speed is derived from potential update interval for smooth transitions
 		potUpdateSec := float32(cfg.Potential.UpdateSec)
 		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight), potUpdateSec)
+
+		// Resource fog renderer (soft green fog showing resource field)
+		g.resourceFogRenderer = renderer.NewResourceFogRenderer(int32(g.screenWidth), int32(g.screenHeight))
 
 		// Particle renderer for floating resource particles
 		g.particleRenderer = renderer.NewParticleRenderer(int32(g.screenWidth), int32(g.screenHeight))

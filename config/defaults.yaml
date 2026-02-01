@@ -147,8 +147,6 @@ energy:
 resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   forage_efficiency: 1.0     # Fraction of removed resource that becomes energy (0-1)
-  contrast: 2.3              # FBM contrast exponent (higher = sharper edges, more defined hotspots)
-                             # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation
@@ -156,12 +154,14 @@ resource:
 # The potential field evolves slowly over time, creating shifting oases.
 # -----------------------------------------------------------------------------
 potential:
-  scale: 5.0                 # Base noise frequency (lower = larger hotspots)
-  octaves: 2                 # FBM octaves (fewer = smoother, less noisy)
-  lacunarity: 2.0            # Frequency multiplier per octave
-  gain: 0.6                  # Amplitude multiplier per octave (higher = brighter peaks)
-  drift_x: 0.001             # Horizontal drift rate (glacial evolution)
-  drift_y: 0.0007            # Vertical drift rate (glacial evolution)
+  scale: 4.1                 # Base noise frequency (lower = larger hotspots)
+  octaves: 5                 # FBM octaves (fewer = smoother, less noisy)
+  lacunarity: 3.3            # Frequency multiplier per octave
+  gain: 0.66                 # Amplitude multiplier per octave (higher = brighter peaks)
+  contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
+                             # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
+  drift_x: 0.0035            # Horizontal drift rate (glacial evolution)
+  drift_y: 0.0017            # Vertical drift rate (glacial evolution)
   update_sec: 3.0            # Rebuild interval in seconds (affects visual smoothness)
 
 # -----------------------------------------------------------------------------
@@ -284,6 +284,8 @@ particles:
   initial_mass: 0.01         # Mass of newly spawned particle
   deposit_rate: 2.0          # Fraction of particle mass deposited to grid per sec
   pickup_rate: 0.5           # Mass pickup rate from grid per sec
+  cell_capacity: 1.0         # Max resource per cell (particles keep mass if cell is full)
+                             # 0 = unlimited; 1.0 = cells cap at 1.0 resource
   flow_strength: 40.0        # Flow velocity scale (world units/sec)
   flow_grid_size: 32         # Flow field resolution (independent of resource grid)
                              # Lower = larger features, less computation

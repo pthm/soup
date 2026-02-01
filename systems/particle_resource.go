@@ -77,10 +77,11 @@ type ParticleResourceField struct {
 	FlowStrength  float32
 
 	// Exchange rates
-	SpawnRate   float32 // particles/sec base rate (scaled by P)
-	DepositRate float32 // fraction of mass deposited to grid per sec
-	PickupRate  float32 // mass pickup rate from grid per sec
-	InitialMass float32 // mass of newly spawned particle
+	SpawnRate    float32 // particles/sec base rate (scaled by P)
+	DepositRate  float32 // fraction of mass deposited to grid per sec
+	PickupRate   float32 // mass pickup rate from grid per sec
+	InitialMass  float32 // mass of newly spawned particle
+	CellCapacity float32 // max resource per cell (0 = unlimited)
 
 	// Update intervals
 	FlowUpdateSec float32
@@ -150,7 +151,7 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		Octaves:    potCfg.Octaves,
 		Lacunarity: float32(potCfg.Lacunarity),
 		Gain:       float32(potCfg.Gain),
-		Contrast:   float32(config.Cfg().Resource.Contrast),
+		Contrast:   float32(potCfg.Contrast),
 		DriftX:     float32(potCfg.DriftX),
 		DriftY:     float32(potCfg.DriftY),
 
@@ -161,10 +162,11 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		FlowStrength:  float32(pcfg.FlowStrength),
 
 		// Exchange rates from config
-		SpawnRate:   float32(pcfg.SpawnRate),
-		DepositRate: float32(pcfg.DepositRate),
-		PickupRate:  float32(pcfg.PickupRate),
-		InitialMass: float32(pcfg.InitialMass),
+		SpawnRate:    float32(pcfg.SpawnRate),
+		DepositRate:  float32(pcfg.DepositRate),
+		PickupRate:   float32(pcfg.PickupRate),
+		InitialMass:  float32(pcfg.InitialMass),
+		CellCapacity: float32(pcfg.CellCapacity),
 
 		// Update intervals
 		FlowUpdateSec: float32(pcfg.FlowUpdateSec),
@@ -185,9 +187,13 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 	// Start async generation of the third field so it's ready when we transition
 	pf.startAsyncFlowGeneration(pf.FlowUpdateSec * 2)
 
-	// Initialize resource grid from potential (like CPUResourceField does with capacity)
+	// Initialize resource grid from potential, respecting cell capacity
 	for i := range pf.Res {
-		pf.Res[i] = pf.Pot[i]
+		val := pf.Pot[i]
+		if pf.CellCapacity > 0 && val > pf.CellCapacity {
+			val = pf.CellCapacity
+		}
+		pf.Res[i] = val
 	}
 
 	return pf
@@ -224,10 +230,12 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.updateFlowBlend()
 
 	// Particle dynamics - use compact active list for O(n) instead of O(MaxCount)
+	// Simplified model: particles spawn, drift, deposit up to capacity, then die
+	// No pickup - mass flows from spawn points (hotspots) to depleted areas
 	pf.spawnParticles(dt)
 	pf.advectParticlesCompact(dt)
 	pf.depositCompact(dt)
-	pf.pickupCompact(dt)
+	// pickupCompact disabled - particles only deposit, don't pick up mass
 	pf.cleanupCompact()
 }
 
@@ -477,10 +485,11 @@ func (pf *ParticleResourceField) pickup(dt float32) {
 	}
 }
 
-// splatToGrid distributes mass to nearby cells with tent weighting
-func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) {
+// splatToGrid distributes mass to nearby cells with tent weighting.
+// Returns how much mass was actually deposited (respects cell capacity).
+func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) float32 {
 	if mass <= 0 {
-		return
+		return 0
 	}
 
 	// Convert to grid coordinates
@@ -505,10 +514,35 @@ func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) {
 	x1 := pfModInt(cx+1, pf.ResW)
 	y1 := pfModInt(cy+1, pf.ResH)
 
-	pf.Res[y0*pf.ResW+x0] += mass * w00
-	pf.Res[y0*pf.ResW+x1] += mass * w10
-	pf.Res[y1*pf.ResW+x0] += mass * w01
-	pf.Res[y1*pf.ResW+x1] += mass * w11
+	// If no capacity limit, deposit everything
+	if pf.CellCapacity <= 0 {
+		pf.Res[y0*pf.ResW+x0] += mass * w00
+		pf.Res[y0*pf.ResW+x1] += mass * w10
+		pf.Res[y1*pf.ResW+x0] += mass * w01
+		pf.Res[y1*pf.ResW+x1] += mass * w11
+		return mass
+	}
+
+	// Deposit up to cell capacity for each cell
+	var deposited float32
+	indices := [4]int{y0*pf.ResW + x0, y0*pf.ResW + x1, y1*pf.ResW + x0, y1*pf.ResW + x1}
+	weights := [4]float32{w00, w10, w01, w11}
+
+	for i, idx := range indices {
+		want := mass * weights[i]
+		room := pf.CellCapacity - pf.Res[idx]
+		if room < 0 {
+			room = 0
+		}
+		actual := want
+		if actual > room {
+			actual = room
+		}
+		pf.Res[idx] += actual
+		deposited += actual
+	}
+
+	return deposited
 }
 
 // removeFromGrid removes mass from grid at position
@@ -657,20 +691,16 @@ func (pf *ParticleResourceField) advectParticlesCompact(dt float32) {
 }
 
 // depositCompact transfers mass from particles to grid, only iterating active particles.
-func (pf *ParticleResourceField) depositCompact(dt float32) {
-	rate := pf.DepositRate * dt
-	if rate > 1 {
-		rate = 1
-	}
-
+// With cell capacity enabled, particles deposit instantly up to capacity and keep the rest.
+func (pf *ParticleResourceField) depositCompact(_ float32) {
 	for _, i := range pf.ActiveList {
 		if !pf.Active[i] || pf.Mass[i] <= 0 {
 			continue
 		}
 
-		dm := pf.Mass[i] * rate
-		pf.Mass[i] -= dm
-		pf.splatToGrid(pf.X[i], pf.Y[i], dm)
+		// Try to deposit all mass; splatToGrid returns how much was actually deposited
+		deposited := pf.splatToGrid(pf.X[i], pf.Y[i], pf.Mass[i])
+		pf.Mass[i] -= deposited
 	}
 }
 

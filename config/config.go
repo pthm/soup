@@ -131,7 +131,6 @@ type MutationConfig struct {
 type ResourceConfig struct {
 	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
-	Contrast         float64 `yaml:"contrast"`          // FBM contrast exponent (higher = sparser patches)
 }
 
 // PotentialConfig holds potential field generation parameters.
@@ -140,6 +139,7 @@ type PotentialConfig struct {
 	Octaves    int     `yaml:"octaves"`    // FBM octaves (detail level)
 	Lacunarity float64 `yaml:"lacunarity"` // Frequency multiplier per octave
 	Gain       float64 `yaml:"gain"`       // Amplitude multiplier per octave
+	Contrast   float64 `yaml:"contrast"`   // FBM contrast exponent (higher = sparser patches)
 	DriftX     float64 `yaml:"drift_x"`    // Horizontal drift rate
 	DriftY     float64 `yaml:"drift_y"`    // Vertical drift rate
 	UpdateSec  float64 `yaml:"update_sec"` // Rebuild interval in seconds
@@ -278,6 +278,7 @@ type ParticleConfig struct {
 	InitialMass   float64 `yaml:"initial_mass"`    // Mass of newly spawned particle
 	DepositRate   float64 `yaml:"deposit_rate"`    // Fraction of mass deposited to grid per sec
 	PickupRate    float64 `yaml:"pickup_rate"`     // Mass pickup rate from grid per sec
+	CellCapacity  float64 `yaml:"cell_capacity"`   // Max resource per cell (0 = unlimited)
 	FlowStrength  float64 `yaml:"flow_strength"`   // Flow velocity scale (world units/sec)
 	FlowGridSize  int     `yaml:"flow_grid_size"`  // Flow field resolution (independent of resource)
 	FlowUpdateSec float64 `yaml:"flow_update_sec"` // Flow field rebuild interval
