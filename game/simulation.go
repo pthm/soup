@@ -211,9 +211,14 @@ func (g *Game) updateFeeding() {
 	}
 }
 
-// updateEnergy applies metabolic costs and prey foraging.
+// updateEnergy applies metabolic costs and prey foraging with true depletion.
 func (g *Game) updateEnergy() {
-	dt := config.Cfg().Derived.DT32
+	cfg := config.Cfg()
+	dt := cfg.Derived.DT32
+	grazeRadius := cfg.Resource.GrazeRadius
+	forageEfficiency := float32(cfg.Resource.ForageEfficiency)
+	forageRate := float32(cfg.Energy.Prey.ForageRate)
+
 	query := g.entityFilter.Query()
 	for query.Next() {
 		pos, vel, _, _, energy, caps, org := query.Get()
@@ -222,10 +227,36 @@ func (g *Game) updateEnergy() {
 			continue
 		}
 
-		// Prey gain energy from resource field
+		// Prey gain energy from resource field via grazing (true depletion)
 		if org.Kind == components.KindPrey {
-			r := g.resourceField.Sample(pos.X, pos.Y)
-			systems.UpdatePreyForage(energy, *vel, *caps, r, dt)
+			// Compute grazing efficiency based on speed
+			speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
+			speedRatio := speed / caps.MaxSpeed
+			if speedRatio > 1 {
+				speedRatio = 1
+			}
+			grazingPeak := float32(cfg.Energy.Prey.GrazingPeak)
+			eff := 1.0 - 2.0*absf(speedRatio-grazingPeak)
+			if eff < 0 {
+				eff = 0
+			}
+
+			// Get resource level at position for grazing rate scaling
+			resourceHere := g.cpuResourceField.Sample(pos.X, pos.Y)
+			grazeRate := resourceHere * forageRate * eff
+
+			// Graze: remove resource and get actual removed amount
+			removed := g.cpuResourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
+
+			// Energy gain = removed * efficiency
+			gain := removed * forageEfficiency
+			energy.Value += gain
+			if energy.Value > 1.0 {
+				energy.Value = 1.0
+			}
+
+			// Track foraging for telemetry
+			g.lifetimeTracker.RecordForage(org.ID, gain)
 		}
 
 		// Apply metabolic costs (per-kind)

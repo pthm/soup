@@ -145,13 +145,19 @@ energy:
 
 # -----------------------------------------------------------------------------
 # Resource Field
-# Controls the food/grazing resource distribution
+# Controls the food/grazing resource distribution with depletion and regrowth
 # -----------------------------------------------------------------------------
 resource:
-  update_interval: 0         # Ticks between resource field updates
-                             # 0 = static field (default)
-                             # 60 = update every second (forces prey movement)
-                             # Higher = faster drift
+  update_interval: 0         # Ticks between GPU visual updates (0 = use CPU field state)
+  regrow_rate: 0.15          # Resource regrowth per second (~7 sec full recovery)
+  diffuse: 0.01              # Resource diffusion strength per second (minimal)
+  drift_x: 0.02              # Capacity drift in UV units per second (X direction)
+  drift_y: 0.014             # Capacity drift in UV units per second (Y direction)
+  evolve_interval: 2.0       # Seconds between capacity field rebuilds (0 = static patches)
+  graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
+  forage_efficiency: 1.0     # Fraction of removed resource that becomes energy (0-1)
+  contrast: 2.0              # FBM contrast exponent (higher = sparser oases, more barren areas)
+                             # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics

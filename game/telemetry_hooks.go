@@ -91,11 +91,20 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 		RNGSeed:     g.rngSeed,
 		WorldWidth:  g.width,
 		WorldHeight: g.height,
-		// Resource field is now procedural (GPU noise), no hotspots to serialize
-		ResourceHotspots: nil,
-		ResourceSigma:    0,
-		Tick:             g.tick,
-		Bookmark:         bookmark,
+		Tick:        g.tick,
+		Bookmark:    bookmark,
+	}
+
+	// Serialize CPU resource field if available
+	if g.cpuResourceField != nil {
+		w, h := g.cpuResourceField.GridSize()
+		snapshot.ResourceGridW = w
+		snapshot.ResourceGridH = h
+		snapshot.ResourceRes = make([]float32, len(g.cpuResourceField.Res))
+		copy(snapshot.ResourceRes, g.cpuResourceField.Res)
+		snapshot.ResourceCap = make([]float32, len(g.cpuResourceField.Cap))
+		copy(snapshot.ResourceCap, g.cpuResourceField.Cap)
+		snapshot.ResourceTime = g.cpuResourceField.Time
 	}
 
 	// Collect entity states

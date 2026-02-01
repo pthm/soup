@@ -8,7 +8,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/systems"
 )
 
 func TestSnapshotSaveLoad(t *testing.T) {
@@ -17,15 +16,15 @@ func TestSnapshotSaveLoad(t *testing.T) {
 
 	// Create a test snapshot
 	snapshot := &Snapshot{
-		Version:     SnapshotVersion,
-		RNGSeed:     42,
-		WorldWidth:  1280,
-		WorldHeight: 720,
-		ResourceHotspots: []systems.HotspotDef{
-			{X: 100, Y: 200},
-			{X: 300, Y: 400},
-		},
-		ResourceSigma: 57.6,
+		Version:       SnapshotVersion,
+		RNGSeed:       42,
+		WorldWidth:    1280,
+		WorldHeight:   720,
+		ResourceGridW: 128,
+		ResourceGridH: 128,
+		ResourceRes:   make([]float32, 128*128),
+		ResourceCap:   make([]float32, 128*128),
+		ResourceTime:  100.5,
 		Tick:          1000,
 		Entities: []EntityState{
 			{

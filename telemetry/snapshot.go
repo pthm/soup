@@ -9,7 +9,6 @@ import (
 
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/systems"
 )
 
 // SnapshotVersion is incremented when the format changes.
@@ -23,8 +22,12 @@ type Snapshot struct {
 	WorldWidth  float32 `json:"world_width"`
 	WorldHeight float32 `json:"world_height"`
 
-	ResourceHotspots []systems.HotspotDef `json:"resource_hotspots"`
-	ResourceSigma    float32              `json:"resource_sigma"`
+	// Resource field state (CPU grid)
+	ResourceGridW int       `json:"resource_grid_w"`
+	ResourceGridH int       `json:"resource_grid_h"`
+	ResourceRes   []float32 `json:"resource_res,omitempty"` // Current resource values
+	ResourceCap   []float32 `json:"resource_cap,omitempty"` // Capacity values
+	ResourceTime  float32   `json:"resource_time"`
 
 	Tick int32 `json:"tick"`
 

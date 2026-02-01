@@ -224,12 +224,26 @@ GPU-accelerated visuals using raylib:
 | File | Purpose |
 |------|---------|
 | `water.go` | Animated Perlin noise water background |
-| `flowfield_gpu.go` | GPU-computed flow field texture, CPU-sampled |
+| `flowfield_gpu.go` | GPU-computed flow field texture for visual effects |
 
-The flow field (sizes configurable via `config.yaml`):
-- Rendered to 128×128 texture via shader (default)
-- Read back to CPU for fast O(1) sampling
-- Updated every 30 ticks (default)
+### Resource Field (`systems/resource_field.go`)
+
+CPU-based resource grid with depletion, regrowth, and diffusion:
+
+| Feature | Description |
+|---------|-------------|
+| **Tileable FBM** | Procedural noise creates organic "patch" patterns |
+| **True depletion** | Prey grazing removes resource from grid cells |
+| **Regrowth** | Resource relaxes back toward capacity over time |
+| **Diffusion** | Resources spread between neighboring cells |
+| **Evolving patches** | Capacity field drifts over time (optional) |
+| **Energy transfer** | Prey energy gain = actual removed resource × efficiency |
+
+Key config parameters (`resource:` section):
+- `regrow_rate`: Recovery speed toward capacity (0.25/sec default)
+- `diffuse`: Spreading strength (0.10/sec default)
+- `graze_radius`: Kernel size for grazing (1 = 3×3 cells)
+- `forage_efficiency`: Fraction of removed resource that becomes energy
 
 ## World Space
 
@@ -262,13 +276,20 @@ pos := g.posMap.Get(entity)  // returns *Position or nil
 
 All values configurable via `config.yaml` (defaults shown):
 
-**Prey:**
+**Prey (with true resource depletion):**
 - Base cost: 0.015/sec (metabolism)
 - Movement cost: 0.12 × (speed/maxSpeed)² per sec
 - Accel cost: 0.03 × thrust² per sec (penalizes constant acceleration)
 - Forage rate: 0.045/sec at resource=1.0, peaks at ~15% max speed
 
-**Grazing curve**: Foraging efficiency = `1 - 2×|speedRatio - grazingPeak|`, clamped to [0,1]. At default `grazing_peak=0.15`:
+**Grazing with depletion**: Prey actually remove resource from the grid:
+1. Compute desired graze rate: `resourceHere × forageRate × efficiency`
+2. Remove resource from 3×3 kernel centered on prey position
+3. Energy gain = actual removed amount × `forage_efficiency`
+
+This creates natural migration pressure—prey must move to find fresh patches.
+
+**Grazing efficiency curve**: `1 - 2×|speedRatio - grazingPeak|`, clamped to [0,1]. At default `grazing_peak=0.15`:
 - Stationary: 70% efficiency
 - 15% speed: 100% efficiency (optimal grazing)
 - 50% speed: 30% efficiency

@@ -21,7 +21,7 @@ func (g *Game) Draw() {
 
 	// Debug overlays (drawn before entities so entities appear on top)
 	if g.debugMode && g.debugShowResource {
-		g.gpuResourceField.DrawOverlayHeatmap(180) // Heatmap with good visibility
+		g.drawResourceHeatmap(180)
 	}
 
 	// Draw entities
@@ -99,6 +99,67 @@ func (g *Game) drawDebugMenu() {
 	// Performance stats
 	stats := g.perfCollector.Stats()
 	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+55, 12, rl.White)
+}
+
+// drawResourceHeatmap renders the CPU resource field as a colored overlay.
+func (g *Game) drawResourceHeatmap(alpha uint8) {
+	gridW, gridH := g.cpuResourceField.GridSize()
+	cellW := g.width / float32(gridW)
+	cellH := g.height / float32(gridH)
+	res := g.cpuResourceField.ResData()
+
+	for y := 0; y < gridH; y++ {
+		for x := 0; x < gridW; x++ {
+			val := res[y*gridW+x]
+			color := resourceToColor(val, alpha)
+			rl.DrawRectangle(
+				int32(float32(x)*cellW),
+				int32(float32(y)*cellH),
+				int32(cellW)+1,
+				int32(cellH)+1,
+				color,
+			)
+		}
+	}
+}
+
+// resourceToColor maps a resource value [0,1] to a blue-green-yellow-red heatmap color.
+func resourceToColor(val float32, alpha uint8) rl.Color {
+	if val < 0 {
+		val = 0
+	}
+	if val > 1 {
+		val = 1
+	}
+
+	var r, g, b uint8
+	if val < 0.25 {
+		// Blue to cyan
+		t := val / 0.25
+		r = 0
+		g = uint8(t * 255)
+		b = 255
+	} else if val < 0.5 {
+		// Cyan to green
+		t := (val - 0.25) / 0.25
+		r = 0
+		g = 255
+		b = uint8((1 - t) * 255)
+	} else if val < 0.75 {
+		// Green to yellow
+		t := (val - 0.5) / 0.25
+		r = uint8(t * 255)
+		g = 255
+		b = 0
+	} else {
+		// Yellow to red
+		t := (val - 0.75) / 0.25
+		r = 255
+		g = uint8((1 - t) * 255)
+		b = 0
+	}
+
+	return rl.Color{R: r, G: g, B: b, A: alpha}
 }
 
 // drawOrientedTriangle draws a triangle pointing in the heading direction.

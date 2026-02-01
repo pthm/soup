@@ -60,9 +60,9 @@ type Game struct {
 	// Spatial index
 	spatialGrid *systems.SpatialGrid
 
-	// Resource field (GPU-accelerated, O(1) sampling)
+	// Resource field (CPU-based with depletion/regrowth)
 	resourceField    systems.ResourceSampler
-	gpuResourceField *renderer.GPUResourceField
+	cpuResourceField *systems.CPUResourceField
 
 	// Reusable buffers to avoid per-entity allocations
 	neighborBuf []systems.Neighbor         // reused each entity in behavior loop
@@ -188,10 +188,20 @@ func NewGameWithOptions(opts Options) *Game {
 	// Parallel processing
 	g.parallel = newParallelState()
 
-	// GPU resource field (O(1) sampling via precomputed texture)
-	g.gpuResourceField = renderer.NewGPUResourceField(g.width, g.height)
-	g.gpuResourceField.Initialize(0) // Static field at time=0
-	g.resourceField = g.gpuResourceField
+	// CPU resource field with depletion and regrowth
+	gridSize := cfg.GPU.ResourceTextureSize // reuse texture size config for grid resolution
+	g.cpuResourceField = systems.NewCPUResourceField(gridSize, gridSize, g.width, g.height)
+	g.cpuResourceField.SetParams(
+		float32(cfg.Resource.RegrowRate),
+		float32(cfg.Resource.Diffuse),
+		float32(cfg.Resource.DriftX),
+		float32(cfg.Resource.DriftY),
+		float32(cfg.Resource.EvolveInterval),
+	)
+	g.cpuResourceField.Seed = uint32(opts.Seed)
+	g.cpuResourceField.Contrast = float32(cfg.Resource.Contrast)
+	g.cpuResourceField.Regenerate() // Rebuild with new contrast setting
+	g.resourceField = g.cpuResourceField
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
@@ -228,11 +238,8 @@ func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
 	cfg := config.Cfg()
 
-	// 0. Update resource field if configured to evolve over time
-	if interval := cfg.Resource.UpdateInterval; interval > 0 && g.tick%int32(interval) == 0 {
-		simTime := float32(g.tick) * cfg.Derived.DT32
-		g.gpuResourceField.Regenerate(simTime)
-	}
+	// 0. Update CPU resource field (regrowth, diffusion, capacity evolution)
+	g.cpuResourceField.Step(cfg.Derived.DT32, true)
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)
@@ -274,9 +281,6 @@ func (g *Game) simulationStep() {
 func (g *Game) Unload() {
 	if g.water != nil {
 		g.water.Unload()
-	}
-	if g.gpuResourceField != nil {
-		g.gpuResourceField.Unload()
 	}
 }
 

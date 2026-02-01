@@ -127,7 +127,15 @@ type MutationConfig struct {
 
 // ResourceConfig holds resource field parameters.
 type ResourceConfig struct {
-	UpdateInterval int `yaml:"update_interval"` // Ticks between resource field updates (0 = static)
+	UpdateInterval   int     `yaml:"update_interval"`   // Ticks between resource field updates (0 = static)
+	RegrowRate       float64 `yaml:"regrow_rate"`       // Resource regrowth per second toward capacity
+	Diffuse          float64 `yaml:"diffuse"`           // Resource diffusion strength per second
+	DriftX           float64 `yaml:"drift_x"`           // Capacity drift in UV units per second (X)
+	DriftY           float64 `yaml:"drift_y"`           // Capacity drift in UV units per second (Y)
+	EvolveInterval   float64 `yaml:"evolve_interval"`   // Seconds between capacity rebuilds
+	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
+	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
+	Contrast         float64 `yaml:"contrast"`          // FBM contrast exponent (higher = sparser patches)
 }
 
 // EnergyConfig holds energy economics parameters.
