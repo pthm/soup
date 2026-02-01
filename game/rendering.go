@@ -128,34 +128,46 @@ func (g *Game) drawResourceHeatmap(alpha uint8) {
 	cellH := g.worldHeight / float32(gridH)
 	res := g.cpuResourceField.ResData()
 
-	// Scale cell size by zoom
-	screenCellW := cellW * cam.Zoom
-	screenCellH := cellH * cam.Zoom
-
 	for y := 0; y < gridH; y++ {
 		for x := 0; x < gridW; x++ {
-			// Calculate world position of cell center
-			worldX := float32(x)*cellW + cellW/2
-			worldY := float32(y)*cellH + cellH/2
+			// Calculate world corners using consistent formula.
+			// This ensures cell[x+1]'s left edge == cell[x]'s right edge.
+			worldX0 := float32(x) * cellW
+			worldY0 := float32(y) * cellH
+			worldX1 := float32(x+1) * cellW
+			worldY1 := float32(y+1) * cellH
 
-			// Check visibility (use cell diagonal as radius)
+			// Check visibility using cell center
+			worldCX := (worldX0 + worldX1) / 2
+			worldCY := (worldY0 + worldY1) / 2
 			cellRadius := (cellW + cellH) / 2
-			if !cam.IsVisible(worldX, worldY, cellRadius) {
+			if !cam.IsVisible(worldCX, worldCY, cellRadius) {
 				continue
 			}
 
-			// Transform to screen coordinates
-			sx, sy := cam.WorldToScreen(worldX, worldY)
+			// Transform corners to screen coordinates
+			sx0, sy0 := cam.WorldToScreen(worldX0, worldY0)
+			sx1, sy1 := cam.WorldToScreen(worldX1, worldY1)
+
+			// Use floor consistently so adjacent cells share exact pixel boundaries
+			left := int32(math.Floor(float64(sx0)))
+			top := int32(math.Floor(float64(sy0)))
+			right := int32(math.Floor(float64(sx1)))
+			bottom := int32(math.Floor(float64(sy1)))
+
+			// Ensure minimum size of 1 pixel
+			w := right - left
+			h := bottom - top
+			if w < 1 {
+				w = 1
+			}
+			if h < 1 {
+				h = 1
+			}
 
 			val := res[y*gridW+x]
 			color := resourceToColor(val, alpha)
-			rl.DrawRectangle(
-				int32(sx-screenCellW/2),
-				int32(sy-screenCellH/2),
-				int32(screenCellW)+1,
-				int32(screenCellH)+1,
-				color,
-			)
+			rl.DrawRectangle(left, top, w, h, color)
 		}
 	}
 }
