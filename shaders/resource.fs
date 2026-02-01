@@ -11,6 +11,7 @@ const int OCTAVES = 4;
 const float LACUNARITY = 2.0;
 const float GAIN = 0.5;
 const float SEED = 42.0;
+const float DRIFT_SPEED = 0.005; // How fast patches drift (UV units per second)
 
 // Tileable hash
 float hash12(vec2 p) {
@@ -63,8 +64,16 @@ void main() {
     // UV in [0, 1] - tiles seamlessly
     vec2 uv = gl_FragCoord.xy / resolution;
 
+    // Drift the resource field over time
+    // Different drift directions for visual interest
+    vec2 drift = vec2(
+        time * DRIFT_SPEED,
+        time * DRIFT_SPEED * 0.7  // Slightly different Y speed
+    );
+    vec2 driftedUV = fract(uv + drift);
+
     // Base resource from tileable FBM
-    float r = fbm(fract(uv));
+    float r = fbm(driftedUV);
 
     // Shape to create stronger grazing patches (more contrast)
     r = pow(r, 1.5);

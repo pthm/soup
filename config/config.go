@@ -22,6 +22,7 @@ type Config struct {
 	Reproduction ReproductionConfig `yaml:"reproduction"`
 	Mutation     MutationConfig     `yaml:"mutation"`
 	Energy       EnergyConfig       `yaml:"energy"`
+	Resource     ResourceConfig     `yaml:"resource"`
 	Neural       NeuralConfig       `yaml:"neural"`
 	Sensors      SensorsConfig      `yaml:"sensors"`
 	GPU          GPUConfig          `yaml:"gpu"`
@@ -89,26 +90,29 @@ type CapabilitiesConfig struct {
 
 // PopulationConfig holds population management parameters.
 type PopulationConfig struct {
-	Initial            int     `yaml:"initial"`
-	MaxPrey            int     `yaml:"max_prey"`
-	MaxPred            int     `yaml:"max_pred"`
-	RespawnThreshold   int     `yaml:"respawn_threshold"`
-	RespawnCount       int     `yaml:"respawn_count"`
+	Initial             int     `yaml:"initial"`
+	MaxPrey             int     `yaml:"max_prey"`
+	MaxPred             int     `yaml:"max_pred"`
+	RespawnThreshold    int     `yaml:"respawn_threshold"`
+	RespawnCount        int     `yaml:"respawn_count"`
 	PredatorSpawnChance float64 `yaml:"predator_spawn_chance"`
+	MinPredators        int     `yaml:"min_predators"` // Minimum predator count; respawn when below
+	MinPrey             int     `yaml:"min_prey"`      // Minimum prey count; respawn when below
 }
 
 // ReproductionConfig holds reproduction parameters.
 type ReproductionConfig struct {
-	PreyThreshold    float64 `yaml:"prey_threshold"`
-	PredThreshold    float64 `yaml:"pred_threshold"`
-	MaturityAge      float64 `yaml:"maturity_age"`
-	PreyCooldown     float64 `yaml:"prey_cooldown"`
-	PredCooldown     float64 `yaml:"pred_cooldown"`
-	CooldownJitter   float64 `yaml:"cooldown_jitter"`
+	PreyThreshold     float64 `yaml:"prey_threshold"`
+	PredThreshold     float64 `yaml:"pred_threshold"`
+	MaturityAge       float64 `yaml:"maturity_age"`
+	PreyCooldown      float64 `yaml:"prey_cooldown"`
+	PredCooldown      float64 `yaml:"pred_cooldown"`
+	CooldownJitter    float64 `yaml:"cooldown_jitter"`
 	ParentEnergySplit float64 `yaml:"parent_energy_split"`
-	ChildEnergy      float64 `yaml:"child_energy"`
-	SpawnOffset      float64 `yaml:"spawn_offset"`
-	HeadingJitter    float64 `yaml:"heading_jitter"`
+	ChildEnergy       float64 `yaml:"child_energy"`
+	SpawnOffset       float64 `yaml:"spawn_offset"`
+	HeadingJitter     float64 `yaml:"heading_jitter"`
+	PredDensityK      float64 `yaml:"pred_density_k"` // Density-dependent reproduction: p = prey / (prey + K)
 }
 
 // MutationConfig holds mutation parameters.
@@ -118,6 +122,11 @@ type MutationConfig struct {
 	BigRate           float64 `yaml:"big_rate"`
 	BigSigma          float64 `yaml:"big_sigma"`
 	BiasRateMultiplier float64 `yaml:"bias_rate_multiplier"`
+}
+
+// ResourceConfig holds resource field parameters.
+type ResourceConfig struct {
+	UpdateInterval int `yaml:"update_interval"` // Ticks between resource field updates (0 = static)
 }
 
 // EnergyConfig holds energy economics parameters.

@@ -1,0 +1,44 @@
+# =============================================================================
+# Ecosystem v2 - Stable Predator-Prey Cycles
+# =============================================================================
+# Achieves oscillating coexistence through:
+#   - Dynamic resource field (drift forces prey movement, prevents camping)
+#   - Density-dependent predator reproduction (prevents boom)
+#   - Minimum population floors (prevents extinction)
+#   - Moderate hunting efficiency (predators can sustain but not overwhelm)
+#
+# Expected dynamics:
+#   - Prey oscillate ~15-90 (with min_prey=10 floor)
+#   - Predators oscillate ~3-40 (with min_predators=3 floor, max_pred=50 cap)
+#   - Cycle period ~500-800 seconds
+# =============================================================================
+
+# Large starting population with few predators
+population:
+  initial: 300
+  predator_spawn_chance: 0.05 # ~15 predators to start
+  min_predators: 3            # Maintain small predator presence
+  min_prey: 10                # Higher prey floor for stability
+  max_pred: 50                # Cap to prevent extreme peaks
+
+# Standard hunting pace
+energy:
+  predator:
+    digest_time: 1.5          # Moderate hunting
+  prey:
+    forage_rate: 0.060        # Higher forage rate - helps prey thrive with moving resources
+
+# Moderate protection
+refugia:
+  strength: 0.50              # Balanced protection
+
+# Slower resource drift - prey can still forage but must move
+resource:
+  update_interval: 60         # Update every second - slower drift
+
+# Breeding control with density dependence
+reproduction:
+  pred_cooldown: 12.0         # Faster breeding when conditions allow
+  pred_threshold: 0.88        # Lower threshold - easier to breed
+  pred_density_k: 80          # Lower K - less density suppression
+                              # At 80 prey: 50% prob, at 40 prey: 33%

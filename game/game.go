@@ -222,6 +222,13 @@ func (g *Game) Update() {
 // simulationStep runs a single tick of the simulation.
 func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
+	cfg := config.Cfg()
+
+	// 0. Update resource field if configured to evolve over time
+	if interval := cfg.Resource.UpdateInterval; interval > 0 && g.tick%int32(interval) == 0 {
+		simTime := float32(g.tick) * cfg.Derived.DT32
+		g.gpuResourceField.Regenerate(simTime)
+	}
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)

@@ -18,9 +18,9 @@ func (g *Game) spawnInitialPopulation() {
 		y := g.rng.Float32() * g.height
 		heading := g.rng.Float32() * 2 * math.Pi
 
-		// Alternate between prey and predator
+		// Use configured spawn chance for initial population
 		kind := components.KindPrey
-		if i%4 == 0 {
+		if g.rng.Float32() < float32(cfg.Population.PredatorSpawnChance) {
 			kind = components.KindPredator
 		}
 
@@ -115,6 +115,26 @@ func (g *Game) cleanupDead() {
 				kind = components.KindPredator
 			}
 			g.spawnEntity(x, y, heading, kind)
+		}
+	}
+
+	// Ensure minimum predator population
+	if cfg.Population.MinPredators > 0 && g.numPred < cfg.Population.MinPredators && g.tick > 100 {
+		for g.numPred < cfg.Population.MinPredators {
+			x := g.rng.Float32() * g.width
+			y := g.rng.Float32() * g.height
+			heading := g.rng.Float32() * 2 * math.Pi
+			g.spawnEntity(x, y, heading, components.KindPredator)
+		}
+	}
+
+	// Ensure minimum prey population
+	if cfg.Population.MinPrey > 0 && g.numPrey < cfg.Population.MinPrey && g.tick > 100 {
+		for g.numPrey < cfg.Population.MinPrey {
+			x := g.rng.Float32() * g.width
+			y := g.rng.Float32() * g.height
+			heading := g.rng.Float32() * 2 * math.Pi
+			g.spawnEntity(x, y, heading, components.KindPrey)
 		}
 	}
 }

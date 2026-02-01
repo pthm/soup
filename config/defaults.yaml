@@ -47,6 +47,9 @@ capabilities:
       - angle: -1.57         # -90° (right side)
         width: 0.87          # ~50° half-width = 100° total zone
         power: 1.0
+      - angle: 0.0           # front
+        width: 1.0           # ~60° half-width = 120° total zone
+        power: 0.3
   predator:
     vision_range: 140.0      # Longer range for hunting
     # Predators have focused forward vision for tracking prey
@@ -76,6 +79,10 @@ population:
   respawn_threshold: 5       # If total population drops below this, trigger respawn
   respawn_count: 5           # How many entities to spawn on respawn trigger
   predator_spawn_chance: 0.25  # Probability a respawned entity is a predator (0-1)
+  min_predators: 0             # Minimum predator count; when below, spawn predators
+                               # Set to 0 to disable (default)
+  min_prey: 0                  # Minimum prey count; when below, spawn prey
+                               # Set to 0 to disable (default)
 
 # -----------------------------------------------------------------------------
 # Reproduction
@@ -96,6 +103,9 @@ reproduction:
   child_energy: 0.35         # Energy child starts with (independent of parent's energy)
   spawn_offset: 15.0         # Base distance child spawns from parent (world units)
   heading_jitter: 0.25       # Random heading variation for child (radians)
+  pred_density_k: 0          # Density-dependent predator reproduction: p = prey/(prey+K)
+                             # When K > 0, predators breed less when prey are scarce
+                             # K=0 disables (default), K=150 is a good starting value
 
 # -----------------------------------------------------------------------------
 # Neural Network Mutation
@@ -132,6 +142,16 @@ energy:
     transfer_efficiency: 0.85 # Fraction of taken energy predator actually receives
     digest_time: 0.8         # Seconds after a kill before predator can bite again
     accel_cost: 0.010        # Energy cost multiplier for thrust (acceleration penalty)
+
+# -----------------------------------------------------------------------------
+# Resource Field
+# Controls the food/grazing resource distribution
+# -----------------------------------------------------------------------------
+resource:
+  update_interval: 0         # Ticks between resource field updates
+                             # 0 = static field (default)
+                             # 60 = update every second (forces prey movement)
+                             # Higher = faster drift
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics

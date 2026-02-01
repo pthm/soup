@@ -306,6 +306,17 @@ func (g *Game) updateReproduction() {
 			continue
 		}
 
+		// Density-dependent reproduction for predators
+		// When prey are scarce, predators breed less (p = prey / (prey + K))
+		if org.Kind == components.KindPredator && repro.PredDensityK > 0 {
+			preyN := float32(g.numPrey)
+			k := float32(repro.PredDensityK)
+			breedProb := preyN / (preyN + k)
+			if g.rng.Float32() > breedProb {
+				continue // Skip reproduction this tick, but stay eligible
+			}
+		}
+
 		// Reproduction: parent pays energy, child spawns nearby
 		parentBrain, ok := g.brains[org.ID]
 		if !ok {
