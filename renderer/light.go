@@ -48,11 +48,17 @@ type LightRenderer struct {
 }
 
 // NewLightRenderer creates a new light renderer.
-func NewLightRenderer(screenW, screenH int32) *LightRenderer {
+// updateIntervalSec is the potential field update interval in seconds;
+// the blend speed is derived from this to ensure smooth transitions.
+func NewLightRenderer(screenW, screenH int32, updateIntervalSec float32) *LightRenderer {
+	blendSpeed := float32(1.0)
+	if updateIntervalSec > 0 {
+		blendSpeed = 1.0 / updateIntervalSec // Blend completes exactly when next update arrives
+	}
 	return &LightRenderer{
 		screenW:        float32(screenW),
 		screenH:        float32(screenH),
-		blendSpeed:     1.0,  // Blend over 1 second (synced with 60-tick update interval)
+		blendSpeed:     blendSpeed,
 		shadowStrength: 0.35, // Moderate shadow darkness
 	}
 }

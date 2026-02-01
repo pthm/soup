@@ -219,7 +219,9 @@ func NewGameWithOptions(opts Options) *Game {
 		g.backgroundRenderer = renderer.NewBackgroundRenderer(int32(g.screenWidth), int32(g.screenHeight), 8, 45, 60)
 
 		// Light background (renders potential field as sunlight)
-		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight))
+		// Blend speed is derived from potential update interval for smooth transitions
+		potUpdateSec := float32(cfg.Potential.UpdateSec)
+		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight), potUpdateSec)
 
 		// Particle renderer for floating resource particles
 		g.particleRenderer = renderer.NewParticleRenderer(int32(g.screenWidth), int32(g.screenHeight))

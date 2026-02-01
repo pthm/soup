@@ -12,8 +12,8 @@ import (
 // Cached config values for hot path (initialized by InitSensorCache)
 var (
 	cachedMinEffectiveness   float32
-	cachedPreyVisionZones    []config.VisionZone
-	cachedPredVisionZones    []config.VisionZone
+	cachedPreyVisionWeights  [NumSectors]float32
+	cachedPredVisionWeights  [NumSectors]float32
 	cachedResourceSampleDist float32
 	cachedForageRate         float32
 	cachedTransferEfficiency float32
@@ -28,8 +28,8 @@ var (
 func InitSensorCache() {
 	cfg := config.Cfg()
 	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
-	cachedPreyVisionZones = cfg.Capabilities.Prey.VisionZones
-	cachedPredVisionZones = cfg.Capabilities.Predator.VisionZones
+	cachedPreyVisionWeights = loadVisionWeights(cfg.Capabilities.Prey.VisionWeights, cfg.Capabilities.Prey.VisionZones)
+	cachedPredVisionWeights = loadVisionWeights(cfg.Capabilities.Predator.VisionWeights, cfg.Capabilities.Predator.VisionZones)
 	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
 	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
 	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)
@@ -91,6 +91,20 @@ func (b *sectorBin) sum() float32 {
 	return s
 }
 
+// minDist returns the nearest distance in the bin (0 if empty).
+func (b *sectorBin) minDist() float32 {
+	if b.count == 0 {
+		return 0
+	}
+	minDistSq := b.distSq[0]
+	for i := 1; i < b.count; i++ {
+		if b.distSq[i] < minDistSq {
+			minDistSq = b.distSq[i]
+		}
+	}
+	return fastSqrt(minDistSq)
+}
+
 // SectorBins holds per-sector top-k bins for both prey and predators.
 // Reuse across calls to avoid allocations.
 type SectorBins struct {
@@ -112,6 +126,8 @@ type SensorInputs struct {
 	Prey     [NumSectors]float32 // density of prey in each sector
 	Pred     [NumSectors]float32 // density of predators in each sector
 	Resource [NumSectors]float32 // resource level ahead in each sector
+	NearestPrey [NumSectors]float32 // nearest prey distance per sector (0 = none)
+	NearestPred [NumSectors]float32 // nearest predator distance per sector (0 = none)
 	Energy   float32             // self energy [0,1]
 	Speed    float32             // self speed normalized [0,1]
 }
@@ -203,14 +219,12 @@ func ComputeSensorsBounded(
 		lx := n.DX*cosH + n.DY*sinH
 		ly := -n.DX*sinH + n.DY*cosH
 
-		// Sector classification (no trig)
-		sectorIdx := sectorFromLocal(lx, ly)
-
-		// Compute weight
+		// Sector classification
 		relativeAngle := fastAtan2(ly, lx)
+		sectorIdx := sectorIndexFromAngle(relativeAngle)
 		dist := fastSqrt(n.DistSq)
 		distWeight := clamp01(1.0 - dist*invVisionRange)
-		effWeight := visionEffectiveness(relativeAngle, selfKind)
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
 		weight := distWeight * effWeight
 
 		// Insert into appropriate top-k bin
@@ -221,10 +235,12 @@ func ComputeSensorsBounded(
 		}
 	}
 
-	// Pass 2: Aggregate from selected neighbors
+	// Pass 2: Aggregate from selected neighbors and capture nearest distances
 	for i := 0; i < NumSectors; i++ {
 		inputs.Prey[i] = smoothSaturate(bins.Prey[i].sum())
 		inputs.Pred[i] = smoothSaturate(bins.Pred[i].sum())
+		inputs.NearestPrey[i] = bins.Prey[i].minDist()
+		inputs.NearestPred[i] = bins.Pred[i].minDist()
 	}
 
 	// Resource level per sector
@@ -253,48 +269,6 @@ func ComputeSensorsFromNeighbors(
 	)
 }
 
-// visionEffectiveness returns the signal effectiveness [0,1] for a given angle and entity kind.
-// Uses cached vision zones for performance.
-func visionEffectiveness(relAngle float32, kind components.Kind) float32 {
-	minEff := cachedMinEffectiveness
-
-	// Get zones for this kind (cached)
-	var zones []config.VisionZone
-	if kind == components.KindPredator {
-		zones = cachedPredVisionZones
-	} else {
-		zones = cachedPreyVisionZones
-	}
-
-	// If no zones defined, return minimum effectiveness
-	if len(zones) == 0 {
-		return minEff
-	}
-
-	// Calculate max effectiveness across all zones
-	maxEff := float32(0)
-	for _, zone := range zones {
-		// Angular distance from zone center (handle wraparound)
-		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
-		absAngleDist := absf(angleDist)
-
-		// Smooth falloff within zone width using cosine
-		// At center (dist=0): 1.0, at edge (dist=width): 0.0, beyond: 0.0
-		zoneWidth := float32(zone.Width)
-		if absAngleDist < zoneWidth {
-			// Cosine falloff: cos(0) = 1, cos(π/2) = 0
-			t := absAngleDist / zoneWidth * (math.Pi / 2)
-			zoneEff := float32(zone.Power) * fastCos(t)
-			if zoneEff > maxEff {
-				maxEff = zoneEff
-			}
-		}
-	}
-
-	// Combine with minimum effectiveness
-	return minEff + (1-minEff)*maxEff
-}
-
 // ComputeSensors calculates all sensor inputs for an entity.
 // Deprecated: Use ComputeSensorsFromNeighbors with QueryRadiusInto for better performance.
 func ComputeSensors(
@@ -317,8 +291,6 @@ func ComputeSensors(
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
 
-	sectorWidth := float32(2 * math.Pi / NumSectors)
-
 	// Process neighbors
 	for _, neighbor := range neighbors {
 		nPos := posMap.Get(neighbor)
@@ -339,28 +311,27 @@ func ComputeSensors(
 		angleToNeighbor := float32(math.Atan2(float64(dy), float64(dx)))
 		relativeAngle := normalizeAngle(angleToNeighbor - selfRot.Heading)
 
-		// Map to sector (full 360°, sector 2 = front)
-		shiftedAngle := relativeAngle + math.Pi
-		sectorIdx := int(shiftedAngle / sectorWidth)
-		if sectorIdx >= NumSectors {
-			sectorIdx = NumSectors - 1
-		}
-		if sectorIdx < 0 {
-			sectorIdx = 0
-		}
+		// Map to sector (full 360°)
+		sectorIdx := sectorIndexFromAngle(relativeAngle)
 
 		// Distance weight: closer = stronger signal
 		distWeight := clamp01(1.0 - dist/selfCaps.VisionRange)
 
 		// Effectiveness weight based on angle and self kind
-		effWeight := visionEffectiveness(relativeAngle, selfKind)
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
 		weight := distWeight * effWeight
 
 		// Accumulate by kind
 		if nOrg.Kind == components.KindPrey {
 			inputs.Prey[sectorIdx] += weight
+			if inputs.NearestPrey[sectorIdx] == 0 || dist < inputs.NearestPrey[sectorIdx] {
+				inputs.NearestPrey[sectorIdx] = dist
+			}
 		} else {
 			inputs.Pred[sectorIdx] += weight
+			if inputs.NearestPred[sectorIdx] == 0 || dist < inputs.NearestPred[sectorIdx] {
+				inputs.NearestPred[sectorIdx] = dist
+			}
 		}
 	}
 
@@ -380,9 +351,8 @@ func ComputeSensors(
 var sectorRelAngles [NumSectors]float32
 
 func init() {
-	sectorWidth := float32(2 * math.Pi / NumSectors)
 	for i := 0; i < NumSectors; i++ {
-		sectorRelAngles[i] = float32(i)*sectorWidth - math.Pi + sectorWidth/2
+		sectorRelAngles[i] = sectorCenterAngle(i)
 	}
 }
 
@@ -495,59 +465,6 @@ func absf(x float32) float32 {
 		return -x
 	}
 	return x
-}
-
-// sectorFromLocal determines sector index [0, NumSectors) from local frame coordinates.
-// lx = forward component, ly = leftward component (positive = left of heading).
-// Uses only comparisons - no trig, no division.
-// For NumSectors=8: sector 0 = back, sector 4 = front.
-func sectorFromLocal(lx, ly float32) int {
-	// tan(π/8) ≈ 0.4142 - boundary slope for 8 sectors (45° each, split at 22.5°)
-	const tanPi8 = 0.41421356
-
-	// Get absolute values for magnitude comparisons
-	alx := absf(lx)
-	aly := absf(ly)
-
-	if lx >= 0 {
-		// Front half
-		if ly >= 0 {
-			// Front-left quadrant (sectors 2, 3, 4)
-			if aly > alx {
-				return 2 // left
-			} else if aly > alx*tanPi8 {
-				return 3 // front-left
-			}
-			return 4 // front
-		} else {
-			// Front-right quadrant (sectors 4, 5, 6)
-			if aly > alx {
-				return 6 // right
-			} else if aly > alx*tanPi8 {
-				return 5 // front-right
-			}
-			return 4 // front
-		}
-	} else {
-		// Back half
-		if ly >= 0 {
-			// Back-left quadrant (sectors 0, 1, 2)
-			if aly > alx {
-				return 2 // left
-			} else if aly > alx*tanPi8 {
-				return 1 // back-left
-			}
-			return 0 // back
-		} else {
-			// Back-right quadrant (sectors 0, 6, 7)
-			if aly > alx {
-				return 6 // right
-			} else if aly > alx*tanPi8 {
-				return 7 // back-right
-			}
-			return 0 // back
-		}
-	}
 }
 
 // fastSqrt approximates sqrt(x) using the famous fast inverse sqrt + multiply.

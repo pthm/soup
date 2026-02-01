@@ -7,6 +7,7 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/config"
 )
 
 // Draw renders the game.
@@ -390,14 +391,19 @@ func (g *Game) updateLightRenderer() {
 		return
 	}
 
-	// Update potential texture periodically (every ~60 frames / 1 second)
-	if g.tick%60 == 0 {
+	// Update potential texture periodically (synced with potential.update_sec config)
+	cfg := config.Cfg()
+	updateIntervalTicks := int32(cfg.Potential.UpdateSec / cfg.Physics.DT)
+	if updateIntervalTicks < 1 {
+		updateIntervalTicks = 1
+	}
+	if g.tick%updateIntervalTicks == 0 {
 		pf := g.resourceField
 		g.lightRenderer.UpdatePotential(pf.Pot, pf.PotW, pf.PotH)
 	}
 
 	// Update blend progress
-	dt := float32(1.0 / 60.0) // Fixed timestep
+	dt := float32(cfg.Physics.DT)
 	g.lightRenderer.Update(dt)
 }
 

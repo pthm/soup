@@ -24,6 +24,7 @@ type Config struct {
 	Mutation     MutationConfig     `yaml:"mutation"`
 	Energy       EnergyConfig       `yaml:"energy"`
 	Resource     ResourceConfig     `yaml:"resource"`
+	Potential    PotentialConfig    `yaml:"potential"`
 	Neural       NeuralConfig       `yaml:"neural"`
 	Sensors      SensorsConfig      `yaml:"sensors"`
 	GPU          GPUConfig          `yaml:"gpu"`
@@ -73,14 +74,16 @@ type VisionZone struct {
 
 // PreyCapabilitiesConfig holds prey-specific capability parameters.
 type PreyCapabilitiesConfig struct {
-	VisionRange float64      `yaml:"vision_range"`
-	VisionZones []VisionZone `yaml:"vision_zones"`
+	VisionRange   float64      `yaml:"vision_range"`
+	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
+	VisionZones   []VisionZone `yaml:"vision_zones"`    // Deprecated: use vision_weights
 }
 
 // PredatorCapabilitiesConfig holds predator-specific capability parameters.
 type PredatorCapabilitiesConfig struct {
-	VisionRange float64      `yaml:"vision_range"`
-	VisionZones []VisionZone `yaml:"vision_zones"`
+	VisionRange   float64      `yaml:"vision_range"`
+	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
+	VisionZones   []VisionZone `yaml:"vision_zones"`    // Deprecated: use vision_weights
 }
 
 // CapabilitiesConfig holds entity capability defaults.
@@ -139,6 +142,17 @@ type ResourceConfig struct {
 	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
 	Contrast         float64 `yaml:"contrast"`          // FBM contrast exponent (higher = sparser patches)
+}
+
+// PotentialConfig holds potential field generation parameters.
+type PotentialConfig struct {
+	Scale      float64 `yaml:"scale"`      // Base noise frequency
+	Octaves    int     `yaml:"octaves"`    // FBM octaves (detail level)
+	Lacunarity float64 `yaml:"lacunarity"` // Frequency multiplier per octave
+	Gain       float64 `yaml:"gain"`       // Amplitude multiplier per octave
+	DriftX     float64 `yaml:"drift_x"`    // Horizontal drift rate
+	DriftY     float64 `yaml:"drift_y"`    // Vertical drift rate
+	UpdateSec  float64 `yaml:"update_sec"` // Rebuild interval in seconds
 }
 
 // EnergyConfig holds energy economics parameters.
@@ -280,7 +294,6 @@ type ParticleConfig struct {
 	FlowScale     float64 `yaml:"flow_scale"`      // Curl noise frequency
 	FlowOctaves   int     `yaml:"flow_octaves"`    // FBM detail level
 	FlowEvolution float64 `yaml:"flow_evolution"`  // Temporal drift rate for flow field
-	PotUpdateSec  float64 `yaml:"pot_update_sec"`  // Potential field rebuild interval
 }
 
 // DerivedConfig holds computed values derived from the loaded config.

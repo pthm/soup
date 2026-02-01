@@ -46,25 +46,14 @@ entity:
 capabilities:
   prey:
     vision_range: 100.0      # Slightly shorter range than predators
-    # Vision zones: (angle, width, power) define where vision is most effective
+    # Vision weights: per-sector effectiveness (0..1)
+    # Sector order: back, back-right, right, front-right, front, front-left, left, back-left
     # Prey have enhanced peripheral vision on both sides for threat detection
-    vision_zones:
-      - angle: 1.57          # +90° (left side)
-        width: 0.87          # ~50° half-width = 100° total zone
-        power: 1.0
-      - angle: -1.57         # -90° (right side)
-        width: 0.87          # ~50° half-width = 100° total zone
-        power: 1.0
-      - angle: 0.0           # front
-        width: 1.0           # ~60° half-width = 120° total zone
-        power: 0.3
+    vision_weights: [0.2, 0.4, 1.0, 0.6, 0.3, 0.6, 1.0, 0.4]
   predator:
     vision_range: 140.0      # Longer range for hunting
     # Predators have focused forward vision for tracking prey
-    vision_zones:
-      - angle: 0.0           # front
-        width: 1.05          # ~60° half-width = 120° total zone
-        power: 1.0
+    vision_weights: [0.2, 0.3, 0.4, 0.8, 1.0, 0.8, 0.4, 0.3]
   # Minimum signal effectiveness at worst angles (0-1)
   # Higher = more omnidirectional awareness, lower = stronger specialization
   min_effectiveness: 0.2
@@ -158,8 +147,22 @@ energy:
 resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   forage_efficiency: 1.0     # Fraction of removed resource that becomes energy (0-1)
-  contrast: 2.0              # FBM contrast exponent (higher = sparser oases, more barren areas)
+  contrast: 2.3              # FBM contrast exponent (higher = sharper edges, more defined hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
+
+# -----------------------------------------------------------------------------
+# Potential Field Generation
+# Controls the underlying FBM that determines resource hotspots and spawn rates.
+# The potential field evolves slowly over time, creating shifting oases.
+# -----------------------------------------------------------------------------
+potential:
+  scale: 5.0                 # Base noise frequency (lower = larger hotspots)
+  octaves: 2                 # FBM octaves (fewer = smoother, less noisy)
+  lacunarity: 2.0            # Frequency multiplier per octave
+  gain: 0.6                  # Amplitude multiplier per octave (higher = brighter peaks)
+  drift_x: 0.001             # Horizontal drift rate (glacial evolution)
+  drift_y: 0.0007            # Vertical drift rate (glacial evolution)
+  update_sec: 3.0            # Rebuild interval in seconds (affects visual smoothness)
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics
@@ -288,4 +291,3 @@ particles:
   flow_scale: 2.0            # Curl noise frequency (lower = larger features)
   flow_octaves: 2            # FBM detail level (fewer = smoother currents)
   flow_evolution: 0.03       # Temporal drift rate for flow field (lower = slower change)
-  pot_update_sec: 2.0        # Potential field rebuild interval (seconds)

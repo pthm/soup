@@ -180,6 +180,8 @@ Unspecified values use embedded defaults.
 | `telemetry` | Stats window, bookmark history |
 | `bookmarks` | Detection thresholds for evolutionary events |
 | `refugia` | Bite success reduction in resource-rich areas |
+| `potential` | FBM noise generation for resource hotspots (scale, octaves, drift, update interval) |
+| `particles` | Particle spawn rate, mass exchange rates, flow field parameters |
 
 ### Accessing Config in Code
 
@@ -308,6 +310,12 @@ Mass-conserving resource system with particle transport:
 | **RK2 advection** | Particles use midpoint integration for smooth trajectories |
 | **Deposit/pickup** | Particles gradually deposit mass to grid and entrain mass from dense regions |
 | **True depletion** | Prey grazing removes resource from grid cells |
+
+Key config parameters (`potential:` section):
+- `scale`: Base noise frequency (higher = smaller hotspots)
+- `octaves`: FBM detail level (more = finer features)
+- `drift_x`, `drift_y`: Horizontal/vertical drift rates for slow evolution
+- `update_sec`: Rebuild interval in seconds (visual blending syncs with this)
 
 Key config parameters (`particles:` section):
 - `spawn_rate`: Base particles/sec (scaled by potential)

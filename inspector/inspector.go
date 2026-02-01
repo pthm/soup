@@ -9,7 +9,6 @@ import (
 
 	"github.com/pthm-cable/soup/camera"
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/systems"
 )
@@ -279,9 +278,10 @@ func (ins *Inspector) Draw(
 	y += 20
 
 	if ins.lastInputs != nil {
-		y += DrawBarGroup(x, y, "Prey", ins.lastInputs.Prey[:], nil)
-		y += DrawBarGroup(x, y, "Pred", ins.lastInputs.Pred[:], nil)
-		y += DrawBarGroup(x, y, "Food", ins.lastInputs.Resource[:], nil)
+		labelOpts := map[string]string{"labels": "B, BR, R, FR, F, FL, L, BL"}
+		y += DrawBarGroup(x, y, "Prey", ins.lastInputs.Prey[:], labelOpts)
+		y += DrawBarGroup(x, y, "Pred", ins.lastInputs.Pred[:], labelOpts)
+		y += DrawBarGroup(x, y, "Food", ins.lastInputs.Resource[:], labelOpts)
 	} else {
 		rl.DrawText("(no sensor data)", x, y, 12, ColorLabelDim)
 		y += 16
@@ -325,7 +325,7 @@ func (ins *Inspector) calculatePanelHeight() int32 {
 	height += 20                           // radius
 	height += 12                           // separator
 	height += 20                           // sensors header
-	height += 34 * 3                       // sensor bars
+	height += 44 * 3                       // sensor bars (with labels)
 	height += 12                           // separator
 	height += 20                           // network header
 	height += 200                          // network diagram
@@ -365,30 +365,29 @@ func (ins *Inspector) DrawSelectionHighlight(
 
 	// Draw vision sectors if we have rotation, capabilities, and organism
 	if rot != nil && caps != nil && org != nil {
-		ins.drawVisionSectors(sx, sy, rot.Heading, caps.VisionRange*cam.Zoom, org.Kind)
+		ins.drawVisionSectors(sx, sy, rot.Heading, caps.VisionRange, cam.Zoom, org.Kind, ins.lastInputs)
 	}
 }
 
 // drawVisionSectors renders the full 360° vision field with effectiveness-based coloring.
-// Brighter sectors indicate higher effectiveness for the entity's kind.
-func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange float32, kind components.Kind) {
+// If sensor inputs are available, overlays nearest-distance wedges with density-based color.
+func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange, zoom float32, kind components.Kind, inputs *systems.SensorInputs) {
 	const numSectors = systems.NumSectors
-
-	sectorWidth := float32(2 * math.Pi / numSectors)
-	minEff := float32(config.Cfg().Capabilities.MinEffectiveness)
+	rangePx := visionRange * zoom
+	labels := [numSectors]string{"B", "BR", "R", "FR", "F", "FL", "L", "BL"}
 
 	// Draw each sector as a filled arc
 	for i := 0; i < numSectors; i++ {
-		// Sector angles (sector 2 = front at 0° relative to heading)
-		relAngle := float32(i)*sectorWidth - math.Pi + sectorWidth/2
-		startAngle := heading + relAngle - sectorWidth/2
-		endAngle := startAngle + sectorWidth
+		// Sector angles (relative to heading)
+		relStart, relEnd := systems.SectorAngles(i)
+		startAngle := heading + relStart
+		endAngle := heading + relEnd
 
-		// Calculate effectiveness for this sector's center angle
-		eff := visionEffectiveness(relAngle, kind, minEff)
+		// Calculate effectiveness for this sector
+		eff := systems.VisionEffectivenessForSector(i, kind)
 
-		// Color based on effectiveness: brighter = more effective
-		alpha := uint8(20 + eff*40) // 20-60 alpha range
+		// Base color based on effectiveness: brighter = more effective
+		alpha := uint8(12 + eff*28) // 12-40 alpha range
 		var color rl.Color
 		if kind == components.KindPredator {
 			// Predator: red-orange tones
@@ -398,65 +397,46 @@ func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange float32, kind
 			color = rl.Color{R: 100, G: uint8(150 + eff*100), B: 255, A: alpha}
 		}
 
-		// Draw sector as triangle fan
-		drawSectorFilled(x, y, visionRange, startAngle, endAngle, color)
+		// Draw base sector as triangle fan
+		drawSectorFilled(x, y, rangePx, startAngle, endAngle, color)
+
+		if inputs != nil {
+			preyLevel := clamp01(inputs.Prey[i])
+			predLevel := clamp01(inputs.Pred[i])
+
+			if inputs.NearestPrey[i] > 0 {
+				preyRadius := inputs.NearestPrey[i] * zoom
+				preyAlpha := uint8(20 + preyLevel*120)
+				preyColor := rl.Color{R: 80, G: 200, B: 255, A: preyAlpha}
+				drawSectorFilled(x, y, preyRadius, startAngle, endAngle, preyColor)
+			}
+			if inputs.NearestPred[i] > 0 {
+				predRadius := inputs.NearestPred[i] * zoom
+				predAlpha := uint8(20 + predLevel*120)
+				predColor := rl.Color{R: 255, G: 120, B: 80, A: predAlpha}
+				drawSectorFilled(x, y, predRadius, startAngle, endAngle, predColor)
+			}
+		}
 
 		// Draw sector edge lines
 		edgeColor := rl.Color{R: 200, G: 200, B: 200, A: 40}
-		drawSectorEdge(x, y, visionRange, startAngle, edgeColor)
+		drawSectorEdge(x, y, rangePx, startAngle, edgeColor)
+	}
+
+	// Sector labels (outer ring)
+	labelRadius := rangePx + 10
+	for i := 0; i < numSectors; i++ {
+		relStart, relEnd := systems.SectorAngles(i)
+		midAngle := heading + (relStart+relEnd)*0.5
+		lx := x + labelRadius*float32(math.Cos(float64(midAngle)))
+		ly := y + labelRadius*float32(math.Sin(float64(midAngle)))
+		label := labels[i]
+		textW := float32(rl.MeasureText(label, 10))
+		rl.DrawText(label, int32(lx-textW*0.5), int32(ly-5), 10, rl.Color{R: 230, G: 230, B: 230, A: 180})
 	}
 
 	// Draw outer circle
-	drawArc(x, y, visionRange, 0, 2*math.Pi, rl.Color{R: 200, G: 200, B: 200, A: 50})
-}
-
-// visionEffectiveness calculates effectiveness for a given angle and kind.
-// Uses configurable vision zones from config.
-func visionEffectiveness(relAngle float32, kind components.Kind, minEff float32) float32 {
-	cfg := config.Cfg().Capabilities
-
-	// Get zones for this kind
-	var zones []config.VisionZone
-	if kind == components.KindPredator {
-		zones = cfg.Predator.VisionZones
-	} else {
-		zones = cfg.Prey.VisionZones
-	}
-
-	// If no zones defined, return minimum effectiveness
-	if len(zones) == 0 {
-		return minEff
-	}
-
-	// Calculate max effectiveness across all zones
-	maxEff := float32(0)
-	for _, zone := range zones {
-		// Angular distance from zone center (handle wraparound)
-		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
-		absAngleDist := float32(math.Abs(float64(angleDist)))
-
-		// Smooth falloff within zone width using cosine
-		if absAngleDist < float32(zone.Width) {
-			t := absAngleDist / float32(zone.Width) * (math.Pi / 2)
-			zoneEff := float32(zone.Power) * float32(math.Cos(float64(t)))
-			if zoneEff > maxEff {
-				maxEff = zoneEff
-			}
-		}
-	}
-
-	// Combine with minimum effectiveness
-	return minEff + (1-minEff)*maxEff
-}
-
-// normalizeAngle wraps angle to [-π, π].
-func normalizeAngle(a float32) float32 {
-	if a > math.Pi {
-		a -= 2 * math.Pi
-	} else if a < -math.Pi {
-		a += 2 * math.Pi
-	}
-	return a
+	drawArc(x, y, rangePx, 0, 2*math.Pi, rl.Color{R: 200, G: 200, B: 200, A: 50})
 }
 
 // drawSectorFilled draws a filled pie sector.
@@ -506,4 +486,14 @@ func drawArc(cx, cy, radius, startAngle, endAngle float32, color rl.Color) {
 
 		rl.DrawLineV(rl.Vector2{X: x1, Y: y1}, rl.Vector2{X: x2, Y: y2}, color)
 	}
+}
+
+func clamp01(x float32) float32 {
+	if x < 0 {
+		return 0
+	}
+	if x > 1 {
+		return 1
+	}
+	return x
 }

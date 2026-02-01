@@ -60,13 +60,15 @@ type ParticleResourceField struct {
 	Time          float32
 	lastPotUpdate float32
 
-	// Noise parameters
+	// Potential field noise parameters
 	Seed       uint32
 	Scale      float32 // base noise scale
 	Octaves    int
 	Lacunarity float32
 	Gain       float32
 	Contrast   float32
+	DriftX     float32 // horizontal drift rate
+	DriftY     float32 // vertical drift rate
 
 	// Flow-specific
 	FlowScale     float32
@@ -89,15 +91,16 @@ type ParticleResourceField struct {
 
 // NewParticleResourceField creates a new particle-based resource field.
 func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int64) *ParticleResourceField {
-	cfg := config.Cfg().Particles
+	pcfg := config.Cfg().Particles
+	potCfg := config.Cfg().Potential
 
-	maxCount := cfg.MaxCount
+	maxCount := pcfg.MaxCount
 	if maxCount < 1 {
 		maxCount = 8000
 	}
 
 	// Flow field uses separate (typically lower) resolution
-	flowSize := cfg.FlowGridSize
+	flowSize := pcfg.FlowGridSize
 	if flowSize < 1 {
 		flowSize = 32 // Default to 32x32 if not configured
 	}
@@ -141,29 +144,31 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		worldW: worldW,
 		worldH: worldH,
 
-		// Noise params (match CPU resource field for consistency)
+		// Potential field noise params from config
 		Seed:       uint32(seed),
-		Scale:      4.0,
-		Octaves:    4,
-		Lacunarity: 2.0,
-		Gain:       0.5,
+		Scale:      float32(potCfg.Scale),
+		Octaves:    potCfg.Octaves,
+		Lacunarity: float32(potCfg.Lacunarity),
+		Gain:       float32(potCfg.Gain),
 		Contrast:   float32(config.Cfg().Resource.Contrast),
+		DriftX:     float32(potCfg.DriftX),
+		DriftY:     float32(potCfg.DriftY),
 
 		// Flow params from config
-		FlowScale:     float32(cfg.FlowScale),
-		FlowOctaves:   cfg.FlowOctaves,
-		FlowEvolution: float32(cfg.FlowEvolution),
-		FlowStrength:  float32(cfg.FlowStrength),
+		FlowScale:     float32(pcfg.FlowScale),
+		FlowOctaves:   pcfg.FlowOctaves,
+		FlowEvolution: float32(pcfg.FlowEvolution),
+		FlowStrength:  float32(pcfg.FlowStrength),
 
 		// Exchange rates from config
-		SpawnRate:   float32(cfg.SpawnRate),
-		DepositRate: float32(cfg.DepositRate),
-		PickupRate:  float32(cfg.PickupRate),
-		InitialMass: float32(cfg.InitialMass),
+		SpawnRate:   float32(pcfg.SpawnRate),
+		DepositRate: float32(pcfg.DepositRate),
+		PickupRate:  float32(pcfg.PickupRate),
+		InitialMass: float32(pcfg.InitialMass),
 
 		// Update intervals
-		FlowUpdateSec: float32(cfg.FlowUpdateSec),
-		PotUpdateSec:  float32(cfg.PotUpdateSec),
+		FlowUpdateSec: float32(pcfg.FlowUpdateSec),
+		PotUpdateSec:  float32(potCfg.UpdateSec),
 
 		rng: rand.New(rand.NewSource(seed)),
 	}
@@ -378,11 +383,9 @@ func (pf *ParticleResourceField) FlowData() ([]float32, []float32) {
 // --- Potential Field ---
 
 func (pf *ParticleResourceField) rebuildPotential(t float32) {
-	// Use time-based drift like CPUResourceField
-	driftX := float32(0.02)
-	driftY := float32(0.014)
-	du := pfFract(t * driftX)
-	dv := pfFract(t * driftY)
+	// Use configurable time-based drift for slow evolution
+	du := pfFract(t * pf.DriftX)
+	dv := pfFract(t * pf.DriftY)
 
 	for y := 0; y < pf.PotH; y++ {
 		v := (float32(y) + 0.5) / float32(pf.PotH)

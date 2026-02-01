@@ -3,6 +3,7 @@ package inspector
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -70,6 +71,11 @@ func DrawBarGroup(x, y int32, name string, values []float32, options map[string]
 	barWidth := int32(20)
 	barHeight := int32(30)
 	gap := int32(2)
+	labelHeight := int32(0)
+	labels := parseLabels(options, len(values))
+	if labels != nil {
+		labelHeight = 10
+	}
 
 	// Label
 	rl.DrawText(name, x, y, 14, ColorTextDim)
@@ -95,7 +101,19 @@ func DrawBarGroup(x, y int32, name string, values []float32, options map[string]
 		rl.DrawRectangle(barX+int32(i)*(barWidth+gap), fillY, barWidth, fillHeight, fillColor)
 	}
 
-	return barHeight + 4
+	if labels != nil {
+		labelY := y + barHeight + 2
+		for i, label := range labels {
+			if label == "" {
+				continue
+			}
+			lx := barX + int32(i)*(barWidth+gap) + barWidth/2
+			textW := int32(rl.MeasureText(label, 8))
+			rl.DrawText(label, lx-textW/2, labelY, 8, ColorTextDim)
+		}
+	}
+
+	return barHeight + labelHeight + 4
 }
 
 // DrawAngle renders a compass-style angle indicator.
@@ -180,6 +198,24 @@ func DrawField(x, y int32, field Field) int32 {
 	default:
 		return DrawLabel(x, y, field.Name, field.Value, field.Options)
 	}
+}
+
+func parseLabels(options map[string]string, count int) []string {
+	if options == nil {
+		return nil
+	}
+	raw, ok := options["labels"]
+	if !ok || raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) != count {
+		return nil
+	}
+	for i := 0; i < len(parts); i++ {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
 }
 
 // lerpColor interpolates between two colors.
