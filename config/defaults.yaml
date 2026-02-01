@@ -49,14 +49,14 @@ capabilities:
     # Vision weights: per-sector effectiveness (0..1)
     # Sector order: back, back-right, right, front-right, front, front-left, left, back-left
     # Prey have enhanced peripheral vision on both sides for threat detection
-    vision_weights: [0.2, 0.4, 1.0, 0.6, 0.3, 0.6, 1.0, 0.4]
+    vision_weights: [0.05, 0.6, 1.0, 0.6, 0.15, 0.6, 1.0, 0.6]
   predator:
     vision_range: 140.0      # Longer range for hunting
     # Predators have focused forward vision for tracking prey
-    vision_weights: [0.2, 0.3, 0.4, 0.8, 1.0, 0.8, 0.4, 0.3]
+    vision_weights: [0.0, 0.0, 0.0, 0.6, 1.0, 0.6, 0.0, 0.0]
   # Minimum signal effectiveness at worst angles (0-1)
   # Higher = more omnidirectional awareness, lower = stronger specialization
-  min_effectiveness: 0.2
+  min_effectiveness: 0.05
   # Shared movement capabilities
   max_speed: 80.0            # Maximum velocity magnitude (world units/sec)
   max_accel: 180.0           # Maximum acceleration for velocity smoothing

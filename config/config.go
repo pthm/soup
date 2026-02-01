@@ -64,26 +64,16 @@ type EntityConfig struct {
 	InitialEnergy float64 `yaml:"initial_energy"`
 }
 
-// VisionZone defines a zone of enhanced vision effectiveness.
-// Effectiveness is calculated as: power * smooth_falloff(angle_distance / width)
-type VisionZone struct {
-	Angle float64 `yaml:"angle"` // center angle in radians (0 = front, ±π/2 = sides)
-	Width float64 `yaml:"width"` // half-width in radians
-	Power float64 `yaml:"power"` // effectiveness multiplier (0-1)
-}
-
 // PreyCapabilitiesConfig holds prey-specific capability parameters.
 type PreyCapabilitiesConfig struct {
 	VisionRange   float64      `yaml:"vision_range"`
 	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
-	VisionZones   []VisionZone `yaml:"vision_zones"`    // Deprecated: use vision_weights
 }
 
 // PredatorCapabilitiesConfig holds predator-specific capability parameters.
 type PredatorCapabilitiesConfig struct {
 	VisionRange   float64      `yaml:"vision_range"`
 	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
-	VisionZones   []VisionZone `yaml:"vision_zones"`    // Deprecated: use vision_weights
 }
 
 // CapabilitiesConfig holds entity capability defaults.

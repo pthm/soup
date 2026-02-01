@@ -28,8 +28,8 @@ var (
 func InitSensorCache() {
 	cfg := config.Cfg()
 	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
-	cachedPreyVisionWeights = loadVisionWeights(cfg.Capabilities.Prey.VisionWeights, cfg.Capabilities.Prey.VisionZones)
-	cachedPredVisionWeights = loadVisionWeights(cfg.Capabilities.Predator.VisionWeights, cfg.Capabilities.Predator.VisionZones)
+	cachedPreyVisionWeights = loadVisionWeights(cfg.Capabilities.Prey.VisionWeights)
+	cachedPredVisionWeights = loadVisionWeights(cfg.Capabilities.Predator.VisionWeights)
 	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
 	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
 	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)

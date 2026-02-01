@@ -4,7 +4,6 @@ import (
 	"math"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 )
 
 // sectorWidth returns the angular width of a sector.
@@ -53,38 +52,12 @@ func VisionEffectivenessForSector(sectorIdx int, kind components.Kind) float32 {
 }
 
 // loadVisionWeights resolves per-sector weights from config, falling back to zones if provided.
-func loadVisionWeights(weights []float64, zones []config.VisionZone) [NumSectors]float32 {
+func loadVisionWeights(weights []float64) [NumSectors]float32 {
 	var out [NumSectors]float32
 	if len(weights) == NumSectors {
 		for i := 0; i < NumSectors; i++ {
 			out[i] = clamp01(float32(weights[i]))
 		}
-		return out
-	}
-	if len(zones) == 0 {
-		return out
-	}
-	for i := 0; i < NumSectors; i++ {
-		relAngle := sectorCenterAngle(i)
-		out[i] = clamp01(zoneEffectiveness(relAngle, zones))
 	}
 	return out
-}
-
-// zoneEffectiveness computes effectiveness at an angle based on legacy zones.
-func zoneEffectiveness(relAngle float32, zones []config.VisionZone) float32 {
-	maxEff := float32(0)
-	for _, zone := range zones {
-		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
-		absAngleDist := absf(angleDist)
-		zoneWidth := float32(zone.Width)
-		if absAngleDist < zoneWidth {
-			t := absAngleDist / zoneWidth * (math.Pi / 2)
-			zoneEff := float32(zone.Power) * fastCos(t)
-			if zoneEff > maxEff {
-				maxEff = zoneEff
-			}
-		}
-	}
-	return maxEff
 }
