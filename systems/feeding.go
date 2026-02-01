@@ -82,6 +82,7 @@ type FeedingSystem struct {
 	neuralMap   *ecs.Map[components.NeuralGenome]
 	floraSystem *FloraSystem // Lightweight flora system (set via SetFloraSystem)
 	spatialGrid *SpatialGrid // Spatial grid for O(1) lookups (set via SetSpatialGrid)
+	bounds      Bounds       // World bounds for toroidal distance calculations
 }
 
 // NewFeedingSystem creates a new feeding system.
@@ -100,6 +101,11 @@ func (s *FeedingSystem) SetFloraSystem(fs *FloraSystem) {
 // SetSpatialGrid sets the spatial grid for O(1) neighbor lookups.
 func (s *FeedingSystem) SetSpatialGrid(grid *SpatialGrid) {
 	s.spatialGrid = grid
+}
+
+// SetBounds sets the world bounds for toroidal distance calculations.
+func (s *FeedingSystem) SetBounds(bounds Bounds) {
+	s.bounds = bounds
 }
 
 // entityData holds data needed for capability matching.
@@ -234,7 +240,7 @@ func (s *FeedingSystem) collectFeedingSpatial(
 	if s.floraSystem != nil && wantsToEatFlora(org, myDigestive) {
 		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, feedingDistance)
 		for _, ref := range nearbyFlora {
-			dSq := distanceSq(centerX, centerY, ref.X, ref.Y)
+			dSq := ToroidalDistanceSq(centerX, centerY, ref.X, ref.Y, s.bounds.Width, s.bounds.Height)
 			if dSq > feedDistSq {
 				continue
 			}
@@ -275,7 +281,7 @@ func (s *FeedingSystem) collectFeedingSpatial(
 			}
 
 			targetPos := &faunaPos[idx]
-			dSq := distanceSq(centerX, centerY, targetPos.X, targetPos.Y)
+			dSq := ToroidalDistanceSq(centerX, centerY, targetPos.X, targetPos.Y, s.bounds.Width, s.bounds.Height)
 			if dSq > atkRangeSq {
 				continue
 			}
@@ -528,8 +534,8 @@ func (s *FeedingSystem) tryFeed(
 			continue
 		}
 
-		// Check distance from center
-		dSq := distanceSq(centerX, centerY, target.pos.X, target.pos.Y)
+		// Check distance from center using toroidal geometry
+		dSq := ToroidalDistanceSq(centerX, centerY, target.pos.X, target.pos.Y, s.bounds.Width, s.bounds.Height)
 		if dSq > feedDistSq {
 			continue
 		}

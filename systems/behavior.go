@@ -137,6 +137,8 @@ func (s *BehaviorSystem) GetPerfStats() BehaviorPerfStats {
 // Update runs the behavior system with actuator-driven neural control.
 func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
 	s.tick++
+	// Cache bounds for toroidal field computations
+	worldBounds = bounds
 
 	query := s.filter.Query()
 	for query.Next() {
@@ -252,6 +254,8 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 // Uses a 3-phase approach: collect data, parallel compute, apply results.
 func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositions, faunaPositions []components.Position, floraOrgs, faunaOrgs []*components.Organism, grid *SpatialGrid) {
 	s.tick++
+	// Cache bounds for toroidal field computations
+	worldBounds = bounds
 
 	// Phase 1: Build flora entity list once (shared read-only data)
 	s.floraEntities = s.floraEntities[:0]
@@ -761,9 +765,8 @@ func (s *BehaviorSystem) getBrainOutputs(
 	if s.floraSystem != nil {
 		nearbyFlora := s.floraSystem.GetNearbyFlora(centerX, centerY, effectiveRadius)
 		for _, ref := range nearbyFlora {
-			dx := ref.X - centerX
-			dy := ref.Y - centerY
-			if dx*dx+dy*dy <= radiusSq {
+			// Use toroidal distance for proper wrap-around
+			if ToroidalDistanceSq(centerX, centerY, ref.X, ref.Y, worldBounds.Width, worldBounds.Height) <= radiusSq {
 				foodTargets = append(foodTargets, FoodTarget{
 					PosX:        ref.X,
 					PosY:        ref.Y,
@@ -1197,12 +1200,10 @@ func gatherFoodTargetsSafe(
 ) []FoodTarget {
 	targets := make([]FoodTarget, 0, 32)
 
-	// Add flora within perception radius
+	// Add flora within perception radius (using toroidal distance)
 	radiusSq := perceptionRadius * perceptionRadius
 	for _, flora := range floraEntities {
-		dx := flora.X - centerX
-		dy := flora.Y - centerY
-		if dx*dx+dy*dy <= radiusSq {
+		if ToroidalDistanceSq(centerX, centerY, flora.X, flora.Y, worldBounds.Width, worldBounds.Height) <= radiusSq {
 			targets = append(targets, FoodTarget{
 				PosX:        flora.X,
 				PosY:        flora.Y,
@@ -1272,11 +1273,14 @@ func gatherThreatsSafe(
 
 // NeighborInfo holds data about a nearby same-species organism for boid calculations.
 type NeighborInfo struct {
-	PosX, PosY     float32 // World position
-	VelX, VelY     float32 // Velocity
-	BodyRadius     float32 // For surface-to-surface distance
-	SurfaceDistSq  float32 // Surface-to-surface distance squared
+	PosX, PosY    float32 // World position
+	VelX, VelY    float32 // Velocity
+	BodyRadius    float32 // For surface-to-surface distance
+	SurfaceDistSq float32 // Surface-to-surface distance squared
 }
+
+// worldBounds holds cached world dimensions for toroidal calculations.
+var worldBounds Bounds
 
 // computeBoidFields computes cohesion, alignment, separation fields from same-species neighbors.
 func computeBoidFields(
@@ -1293,7 +1297,7 @@ func computeBoidFields(
 	}
 
 	// Accumulators
-	var comX, comY float32       // Center of mass
+	var comDx, comDy float32     // Accumulated delta to center of mass (toroidal)
 	var avgVelX, avgVelY float32 // Average velocity
 	var sepX, sepY float32       // Separation force
 	var cohesionCount int
@@ -1303,18 +1307,17 @@ func computeBoidFields(
 	separationRadiusSq := float32(boidSeparationRadius * boidSeparationRadius * myBodyRadius * myBodyRadius)
 
 	for _, n := range neighbors {
-		// Compute surface-to-surface distance
-		dx := n.PosX - centerX
-		dy := n.PosY - centerY
+		// Compute toroidal delta to neighbor
+		dx, dy := ToroidalDelta(centerX, centerY, n.PosX, n.PosY, worldBounds.Width, worldBounds.Height)
 		centerDist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 		surfaceDist := centerDist - myBodyRadius - n.BodyRadius
 		if surfaceDist < 0 {
 			surfaceDist = 0
 		}
 
-		// Cohesion: accumulate center of mass
-		comX += n.PosX
-		comY += n.PosY
+		// Cohesion: accumulate delta to neighbor (not absolute position)
+		comDx += dx
+		comDy += dy
 		cohesionCount++
 
 		// Alignment: accumulate velocities
@@ -1339,13 +1342,11 @@ func computeBoidFields(
 		}
 	}
 
-	// Compute cohesion direction (to center of mass)
+	// Compute cohesion direction (toward center of mass using accumulated deltas)
 	if cohesionCount > 0 {
-		comX /= float32(cohesionCount)
-		comY /= float32(cohesionCount)
-		dx := comX - centerX
-		dy := comY - centerY
-		localFwd, localUp := worldToLocal(dx, dy, heading)
+		comDx /= float32(cohesionCount)
+		comDy /= float32(cohesionCount)
+		localFwd, localUp := worldToLocal(comDx, comDy, heading)
 		nx, ny, mag := normalizeVector(localFwd, localUp)
 		fields.CohesionFwd = nx
 		fields.CohesionUp = ny
@@ -1408,8 +1409,8 @@ func computeFoodFields(
 	meatWeight := digestiveSpectrum        // Carnivores prefer meat
 
 	for _, f := range foods {
-		dx := f.PosX - centerX
-		dy := f.PosY - centerY
+		// Use toroidal delta for proper wrap-around
+		dx, dy := ToroidalDelta(centerX, centerY, f.PosX, f.PosY, worldBounds.Width, worldBounds.Height)
 		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 		if dist < 1 {
 			dist = 1
@@ -1477,8 +1478,8 @@ func computeThreatInfo(
 			continue // Plants aren't threats
 		}
 
-		dx := t.X - centerX
-		dy := t.Y - centerY
+		// Use toroidal delta for proper wrap-around
+		dx, dy := ToroidalDelta(centerX, centerY, t.X, t.Y, worldBounds.Width, worldBounds.Height)
 		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 		if dist > perceptionRadius {
 			continue
@@ -1551,8 +1552,8 @@ func computeApproachInfo(
 			continue
 		}
 
-		dx := f.PosX - centerX
-		dy := f.PosY - centerY
+		// Use toroidal delta for proper wrap-around
+		dx, dy := ToroidalDelta(centerX, centerY, f.PosX, f.PosY, worldBounds.Width, worldBounds.Height)
 		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 
 		if dist < nearestFoodDist {
@@ -1595,8 +1596,8 @@ func computeApproachInfo(
 	foundMate := false
 
 	for _, n := range neighbors {
-		dx := n.PosX - centerX
-		dy := n.PosY - centerY
+		// Use toroidal delta for proper wrap-around
+		dx, dy := ToroidalDelta(centerX, centerY, n.PosX, n.PosY, worldBounds.Width, worldBounds.Height)
 		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 
 		if dist < nearestMateDist {

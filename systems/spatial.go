@@ -99,13 +99,12 @@ func (sg *SpatialGrid) GetNearbyFloraSafe(x, y, radius float32) []int {
 func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 	// Calculate grid cell range to check
 	cellRadius := int(radius/sg.cellWidth) + 1
+	// Cap cell radius to avoid excessive iteration (half the grid is max meaningful)
+	if cellRadius > spatialGridSize/2 {
+		cellRadius = spatialGridSize / 2
+	}
 
 	cx, cy := sg.worldToGrid(x, y)
-
-	minX := clampInt(cx-cellRadius, 0, spatialGridSize-1)
-	maxX := clampInt(cx+cellRadius, 0, spatialGridSize-1)
-	minY := clampInt(cy-cellRadius, 0, spatialGridSize-1)
-	maxY := clampInt(cy+cellRadius, 0, spatialGridSize-1)
 
 	// Use pre-allocated buffer, reset to zero length
 	var result *[]int
@@ -117,9 +116,11 @@ func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 		result = &sg.faunaBuf
 	}
 
-	// Collect all indices from nearby cells
-	for gy := minY; gy <= maxY; gy++ {
-		for gx := minX; gx <= maxX; gx++ {
+	// Collect all indices from nearby cells using modulo wrapping for toroidal geometry
+	for dy := -cellRadius; dy <= cellRadius; dy++ {
+		gy := (cy + dy + spatialGridSize) % spatialGridSize
+		for dx := -cellRadius; dx <= cellRadius; dx++ {
+			gx := (cx + dx + spatialGridSize) % spatialGridSize
 			if flora {
 				*result = append(*result, sg.floraGrid[gy][gx]...)
 			} else {
@@ -133,19 +134,21 @@ func (sg *SpatialGrid) getNearby(x, y, radius float32, flora bool) []int {
 
 func (sg *SpatialGrid) getNearbySafe(x, y, radius float32, flora bool) []int {
 	cellRadius := int(radius/sg.cellWidth) + 1
+	// Cap cell radius to avoid excessive iteration (half the grid is max meaningful)
+	if cellRadius > spatialGridSize/2 {
+		cellRadius = spatialGridSize / 2
+	}
 
 	cx, cy := sg.worldToGrid(x, y)
-
-	minX := clampInt(cx-cellRadius, 0, spatialGridSize-1)
-	maxX := clampInt(cx+cellRadius, 0, spatialGridSize-1)
-	minY := clampInt(cy-cellRadius, 0, spatialGridSize-1)
-	maxY := clampInt(cy+cellRadius, 0, spatialGridSize-1)
 
 	// Allocate new slice for thread safety
 	result := make([]int, 0, 32)
 
-	for gy := minY; gy <= maxY; gy++ {
-		for gx := minX; gx <= maxX; gx++ {
+	// Collect all indices from nearby cells using modulo wrapping for toroidal geometry
+	for dy := -cellRadius; dy <= cellRadius; dy++ {
+		gy := (cy + dy + spatialGridSize) % spatialGridSize
+		for dx := -cellRadius; dx <= cellRadius; dx++ {
+			gx := (cx + dx + spatialGridSize) % spatialGridSize
 			if flora {
 				result = append(result, sg.floraGrid[gy][gx]...)
 			} else {

@@ -13,6 +13,7 @@ import (
 type AllocationSystem struct {
 	filter      ecs.Filter4[components.Position, components.Organism, components.CellBuffer, components.Velocity]
 	floraSystem *FloraSystem
+	bounds      Bounds // World bounds for toroidal distance calculations
 }
 
 // NewAllocationSystem creates a new allocation system.
@@ -25,6 +26,11 @@ func NewAllocationSystem(w *ecs.World) *AllocationSystem {
 // SetFloraSystem sets the flora system reference for food queries.
 func (s *AllocationSystem) SetFloraSystem(fs *FloraSystem) {
 	s.floraSystem = fs
+}
+
+// SetBounds sets the world bounds for toroidal distance calculations.
+func (s *AllocationSystem) SetBounds(bounds Bounds) {
+	s.bounds = bounds
 }
 
 // getDigestiveSpectrum computes the digestive spectrum from cells.
@@ -106,7 +112,7 @@ func (s *AllocationSystem) hasFoodNearby(
 			}
 		} else if floraOrgs != nil {
 			for i := range floraPos {
-				if !floraOrgs[i].Dead && distanceSq(centerX, centerY, floraPos[i].X, floraPos[i].Y) < searchRadiusSq {
+				if !floraOrgs[i].Dead && ToroidalDistanceSq(centerX, centerY, floraPos[i].X, floraPos[i].Y, s.bounds.Width, s.bounds.Height) < searchRadiusSq {
 					return true
 				}
 			}
@@ -119,7 +125,7 @@ func (s *AllocationSystem) hasFoodNearby(
 			if faunaOrgs[i] == org || faunaOrgs[i].Dead {
 				continue
 			}
-			if distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
+			if ToroidalDistanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y, s.bounds.Width, s.bounds.Height) < searchRadiusSq {
 				return true
 			}
 		}
@@ -128,7 +134,7 @@ func (s *AllocationSystem) hasFoodNearby(
 	// Carrion eating: organisms with digestive spectrum > 0.3 can eat dead fauna
 	if digestiveSpectrum > 0.3 && faunaOrgs != nil {
 		for i := range faunaPos {
-			if faunaOrgs[i].Dead && distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) < searchRadiusSq {
+			if faunaOrgs[i].Dead && ToroidalDistanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y, s.bounds.Width, s.bounds.Height) < searchRadiusSq {
 				return true
 			}
 		}
@@ -166,7 +172,7 @@ func (s *AllocationSystem) hasThreatNearby(
 		if other == org || other.Dead {
 			continue
 		}
-		if distanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y) > threatRadiusSq {
+		if ToroidalDistanceSq(centerX, centerY, faunaPos[i].X, faunaPos[i].Y, s.bounds.Width, s.bounds.Height) > threatRadiusSq {
 			continue
 		}
 

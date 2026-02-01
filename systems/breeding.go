@@ -34,6 +34,7 @@ type BreedingSystem struct {
 	neatOpts    *neat.Options
 	genomeIDGen *neural.GenomeIDGenerator
 	cppnConfig  neural.CPPNConfig
+	bounds      Bounds // World bounds for toroidal distance calculations
 }
 
 // NewBreedingSystem creates a new breeding system.
@@ -46,6 +47,11 @@ func NewBreedingSystem(w *ecs.World, opts *neat.Options, idGen *neural.GenomeIDG
 		genomeIDGen: idGen,
 		cppnConfig:  cppnCfg,
 	}
+}
+
+// SetBounds sets the world bounds for toroidal distance calculations.
+func (s *BreedingSystem) SetBounds(bounds Bounds) {
+	s.bounds = bounds
 }
 
 // OrganismCreator is called to create new organisms.
@@ -169,7 +175,7 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 			}
 
 			// Must remain in contact
-			surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius)
+			surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius, s.bounds.Width, s.bounds.Height)
 			if surfaceDist > mateContactMargin {
 				a.org.MateProgress = 0
 				a.org.MatePartnerID = 0
@@ -293,9 +299,9 @@ func (s *BreedingSystem) Update(w *ecs.World, createOrganism OrganismCreator, cr
 }
 
 // computeSurfaceDistance returns the surface-to-surface distance between two organisms.
-func computeSurfaceDistance(ax, ay, ar, bx, by, br float32) float32 {
-	dx := bx - ax
-	dy := by - ay
+// Uses toroidal geometry for proper wrap-around at world edges.
+func computeSurfaceDistance(ax, ay, ar, bx, by, br, worldWidth, worldHeight float32) float32 {
+	dx, dy := ToroidalDelta(ax, ay, bx, by, worldWidth, worldHeight)
 	centerDist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 	return centerDist - ar - br
 }
@@ -319,7 +325,7 @@ func (s *BreedingSystem) canStartHandshake(a, b *breeder) bool {
 	}
 
 	// Must be in contact (surface-to-surface distance)
-	surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius)
+	surfaceDist := computeSurfaceDistance(a.centerX, a.centerY, a.radius, b.centerX, b.centerY, b.radius, s.bounds.Width, s.bounds.Height)
 	if surfaceDist > mateContactMargin {
 		return false
 	}
@@ -341,9 +347,22 @@ func computeBodyRadiusBreeding(cellCount int, cellSize float32) float32 {
 
 // breedSexual performs sexual reproduction between two organisms.
 func (s *BreedingSystem) breedSexual(a, b *breeder, createOrganism OrganismCreator, createNeuralOrganism NeuralOrganismCreator) {
-	// Position: midpoint between parents
-	x := (a.pos.X + b.pos.X) / 2
-	y := (a.pos.Y + b.pos.Y) / 2
+	// Position: midpoint between parents using toroidal geometry
+	// Use ToroidalDelta to find the shortest path between parents
+	dx, dy := ToroidalDelta(a.pos.X, a.pos.Y, b.pos.X, b.pos.Y, s.bounds.Width, s.bounds.Height)
+	x := a.pos.X + dx/2
+	y := a.pos.Y + dy/2
+	// Wrap to ensure valid position
+	if x < 0 {
+		x += s.bounds.Width
+	} else if x > s.bounds.Width {
+		x -= s.bounds.Width
+	}
+	if y < 0 {
+		y += s.bounds.Height
+	} else if y > s.bounds.Height {
+		y -= s.bounds.Height
+	}
 
 	// Check if both parents have neural genomes
 	neuralA := s.neuralMap.Get(a.entity)

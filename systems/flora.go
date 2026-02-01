@@ -234,13 +234,14 @@ func (fs *FloraSystem) applyFlowField(f *Flora) {
 }
 
 // GetNearbyFlora returns flora within radius of position for feeding queries.
+// Uses toroidal distance for proper wrap-around at world edges.
 func (fs *FloraSystem) GetNearbyFlora(x, y, radius float32) []FloraRef {
 	radiusSq := radius * radius
 	var refs []FloraRef
 
 	for i := range fs.Flora {
 		f := &fs.Flora[i]
-		if !f.Dead && distanceSq(f.X, f.Y, x, y) <= radiusSq {
+		if !f.Dead && ToroidalDistanceSq(f.X, f.Y, x, y, fs.bounds.Width, fs.bounds.Height) <= radiusSq {
 			refs = append(refs, FloraRef{Index: i, X: f.X, Y: f.Y, Energy: f.Energy})
 		}
 	}

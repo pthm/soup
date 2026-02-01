@@ -69,3 +69,39 @@ func distance(x1, y1, x2, y2 float32) float32 {
 func velocityMagnitude(vx, vy float32) float32 {
 	return float32(math.Sqrt(float64(vx*vx + vy*vy)))
 }
+
+// Toroidal distance functions for wrap-around world geometry
+
+// ToroidalDelta returns the shortest delta between two points in toroidal space.
+// The returned delta is the shortest path, which may wrap across world boundaries.
+func ToroidalDelta(x1, y1, x2, y2, width, height float32) (dx, dy float32) {
+	dx = x2 - x1
+	dy = y2 - y1
+
+	// Wrap dx to [-width/2, width/2]
+	if dx > width/2 {
+		dx -= width
+	} else if dx < -width/2 {
+		dx += width
+	}
+
+	// Wrap dy to [-height/2, height/2]
+	if dy > height/2 {
+		dy -= height
+	} else if dy < -height/2 {
+		dy += height
+	}
+
+	return dx, dy
+}
+
+// ToroidalDistanceSq returns the squared distance between two points in toroidal space.
+func ToroidalDistanceSq(x1, y1, x2, y2, width, height float32) float32 {
+	dx, dy := ToroidalDelta(x1, y1, x2, y2, width, height)
+	return dx*dx + dy*dy
+}
+
+// ToroidalDistance returns the Euclidean distance between two points in toroidal space.
+func ToroidalDistance(x1, y1, x2, y2, width, height float32) float32 {
+	return float32(math.Sqrt(float64(ToroidalDistanceSq(x1, y1, x2, y2, width, height))))
+}
