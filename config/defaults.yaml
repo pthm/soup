@@ -32,12 +32,32 @@ entity:
 
 # -----------------------------------------------------------------------------
 # Entity Capabilities
-# These define the physical abilities of all entities (prey and predators share these)
+# All entities have 360° vision divided into fixed sectors.
+# Effectiveness varies by angle using configurable vision zones.
 # -----------------------------------------------------------------------------
 capabilities:
-  vision_range: 120.0        # How far entities can see (world units)
-  fov: 2.4                   # Field of view in radians (~140 degrees)
-                             # Wider FOV = more awareness but less directional precision
+  prey:
+    vision_range: 100.0      # Slightly shorter range than predators
+    # Vision zones: (angle, width, power) define where vision is most effective
+    # Prey have enhanced peripheral vision on both sides for threat detection
+    vision_zones:
+      - angle: 1.57          # +90° (left side)
+        width: 0.87          # ~50° half-width = 100° total zone
+        power: 1.0
+      - angle: -1.57         # -90° (right side)
+        width: 0.87          # ~50° half-width = 100° total zone
+        power: 1.0
+  predator:
+    vision_range: 140.0      # Longer range for hunting
+    # Predators have focused forward vision for tracking prey
+    vision_zones:
+      - angle: 0.0           # front
+        width: 1.05          # ~60° half-width = 120° total zone
+        power: 1.0
+  # Minimum signal effectiveness at worst angles (0-1)
+  # Higher = more omnidirectional awareness, lower = stronger specialization
+  min_effectiveness: 0.2
+  # Shared movement capabilities
   max_speed: 80.0            # Maximum velocity magnitude (world units/sec)
   max_accel: 180.0           # Maximum acceleration for velocity smoothing
   max_turn_rate: 3.5         # Maximum rotation speed (radians/sec)
@@ -97,10 +117,10 @@ mutation:
 # -----------------------------------------------------------------------------
 energy:
   prey:
-    base_cost: 0.010         # Energy drain per second just for existing (metabolism)
-    move_cost: 0.030         # Additional cost multiplier for movement
+    base_cost: 0.015         # Energy drain per second just for existing (metabolism)
+    move_cost: 0.120         # Additional cost multiplier for movement (4x increase)
                              # Actual cost = move_cost * (speed/max_speed)^2 * dt
-    forage_rate: 0.045       # Energy gain per second at resource=1.0 when stationary
+    forage_rate: 0.035       # Energy gain per second at resource=1.0 when stationary
                              # Moving reduces foraging efficiency linearly with speed
   predator:
     base_cost: 0.016         # Higher base metabolism than prey (predator tax)
@@ -125,7 +145,7 @@ refugia:
 # WARNING: Changing these requires recompiling - they affect array sizes
 # -----------------------------------------------------------------------------
 neural:
-  num_hidden: 12             # Hidden layer neurons (must match neural/ffnn.go)
+  num_hidden: 16             # Hidden layer neurons (must match neural/ffnn.go)
   num_outputs: 3             # Output neurons: turn, thrust, bite (must match neural/ffnn.go)
 
 # -----------------------------------------------------------------------------
@@ -133,7 +153,7 @@ neural:
 # WARNING: num_sectors affects array sizes - requires recompile to change
 # -----------------------------------------------------------------------------
 sensors:
-  num_sectors: 5             # Vision divided into this many angular sectors
+  num_sectors: 8             # Vision divided into this many angular sectors (360°)
                              # More sectors = finer directional resolution
                              # Total inputs = num_sectors * 3 + 2 (must match systems/sensors.go)
   resource_sample_distance: 0.7  # How far ahead to sample resource field (fraction of vision_range)

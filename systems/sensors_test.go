@@ -13,9 +13,9 @@ func init() {
 
 func TestSensorInputsAsSlice(t *testing.T) {
 	inputs := SensorInputs{
-		Prey:     [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5},
-		Pred:     [NumSectors]float32{0.5, 0.4, 0.3, 0.2, 0.1},
-		Resource: [NumSectors]float32{0.0, 0.0, 0.0, 0.0, 0.0},
+		Prey:     [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
+		Pred:     [NumSectors]float32{0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1},
+		Resource: [NumSectors]float32{},
 		Energy:   0.8,
 		Speed:    0.5,
 	}
@@ -47,7 +47,7 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 	vel := components.Velocity{X: 1, Y: 0}
 	rot := components.Rotation{Heading: 0}
 	energy := components.Energy{Value: 0.8, Alive: true}
-	caps := components.DefaultCapabilities()
+	caps := components.DefaultCapabilities(components.KindPrey)
 
 	inputs := ComputeSensors(
 		pos, vel, rot, energy, caps, components.KindPrey,

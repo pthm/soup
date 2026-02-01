@@ -12,8 +12,8 @@ import (
 // - NumHidden = neural.num_hidden
 // - NumOutputs = neural.num_outputs
 const (
-	NumInputs  = 17 // K*3 sectors + 2 self-state (K=5)
-	NumHidden  = 12
+	NumInputs  = 26 // K*3 sectors + 2 self-state (K=8)
+	NumHidden  = 16
 	NumOutputs = 3 // turn, thrust, bite
 )
 

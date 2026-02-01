@@ -8,6 +8,7 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/systems"
 )
@@ -321,6 +322,7 @@ func (ins *Inspector) DrawSelectionHighlight(
 	bodyMap *ecs.Map1[components.Body],
 	rotMap *ecs.Map1[components.Rotation],
 	capsMap *ecs.Map1[components.Capabilities],
+	orgMap *ecs.Map1[components.Organism],
 ) {
 	if !ins.hasSelected {
 		return
@@ -330,6 +332,7 @@ func (ins *Inspector) DrawSelectionHighlight(
 	body := bodyMap.Get(ins.selected)
 	rot := rotMap.Get(ins.selected)
 	caps := capsMap.Get(ins.selected)
+	org := orgMap.Get(ins.selected)
 	if pos == nil || body == nil {
 		return
 	}
@@ -338,48 +341,101 @@ func (ins *Inspector) DrawSelectionHighlight(
 	radius := body.Radius * 1.8
 	rl.DrawCircleLines(int32(pos.X), int32(pos.Y), radius, rl.Yellow)
 
-	// Draw vision cone if we have rotation and capabilities
-	if rot != nil && caps != nil {
-		ins.drawVisionCone(pos.X, pos.Y, rot.Heading, caps.FOV, caps.VisionRange)
+	// Draw vision sectors if we have rotation, capabilities, and organism
+	if rot != nil && caps != nil && org != nil {
+		ins.drawVisionSectors(pos.X, pos.Y, rot.Heading, caps.VisionRange, org.Kind)
 	}
 }
 
-// drawVisionCone renders the 5-sector perception field.
-func (ins *Inspector) drawVisionCone(x, y, heading, fov, visionRange float32) {
-	const numSectors = 5
+// drawVisionSectors renders the full 360° vision field with effectiveness-based coloring.
+// Brighter sectors indicate higher effectiveness for the entity's kind.
+func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange float32, kind components.Kind) {
+	const numSectors = systems.NumSectors
 
-	halfFOV := fov / 2.0
-	sectorAngle := fov / float32(numSectors)
-
-	// Colors for sectors (alternating for visibility)
-	sectorColors := []rl.Color{
-		{R: 255, G: 255, B: 100, A: 30},
-		{R: 255, G: 200, B: 100, A: 25},
-	}
+	sectorWidth := float32(2 * math.Pi / numSectors)
+	minEff := float32(config.Cfg().Capabilities.MinEffectiveness)
 
 	// Draw each sector as a filled arc
 	for i := 0; i < numSectors; i++ {
-		// Sector start and end angles
-		startAngle := heading - halfFOV + float32(i)*sectorAngle
-		endAngle := startAngle + sectorAngle
+		// Sector angles (sector 2 = front at 0° relative to heading)
+		relAngle := float32(i)*sectorWidth - math.Pi + sectorWidth/2
+		startAngle := heading + relAngle - sectorWidth/2
+		endAngle := startAngle + sectorWidth
 
-		color := sectorColors[i%2]
+		// Calculate effectiveness for this sector's center angle
+		eff := visionEffectiveness(relAngle, kind, minEff)
+
+		// Color based on effectiveness: brighter = more effective
+		alpha := uint8(20 + eff*40) // 20-60 alpha range
+		var color rl.Color
+		if kind == components.KindPredator {
+			// Predator: red-orange tones
+			color = rl.Color{R: 255, G: uint8(150 + eff*100), B: 100, A: alpha}
+		} else {
+			// Prey: blue-cyan tones
+			color = rl.Color{R: 100, G: uint8(150 + eff*100), B: 255, A: alpha}
+		}
 
 		// Draw sector as triangle fan
 		drawSectorFilled(x, y, visionRange, startAngle, endAngle, color)
 
 		// Draw sector edge lines
-		edgeColor := rl.Color{R: 255, G: 255, B: 100, A: 60}
+		edgeColor := rl.Color{R: 200, G: 200, B: 200, A: 40}
 		drawSectorEdge(x, y, visionRange, startAngle, edgeColor)
 	}
 
-	// Draw final edge
-	finalAngle := heading + halfFOV
-	edgeColor := rl.Color{R: 255, G: 255, B: 100, A: 60}
-	drawSectorEdge(x, y, visionRange, finalAngle, edgeColor)
+	// Draw outer circle
+	drawArc(x, y, visionRange, 0, 2*math.Pi, rl.Color{R: 200, G: 200, B: 200, A: 50})
+}
 
-	// Draw outer arc
-	drawArc(x, y, visionRange, heading-halfFOV, heading+halfFOV, rl.Color{R: 255, G: 255, B: 100, A: 50})
+// visionEffectiveness calculates effectiveness for a given angle and kind.
+// Uses configurable vision zones from config.
+func visionEffectiveness(relAngle float32, kind components.Kind, minEff float32) float32 {
+	cfg := config.Cfg().Capabilities
+
+	// Get zones for this kind
+	var zones []config.VisionZone
+	if kind == components.KindPredator {
+		zones = cfg.Predator.VisionZones
+	} else {
+		zones = cfg.Prey.VisionZones
+	}
+
+	// If no zones defined, return minimum effectiveness
+	if len(zones) == 0 {
+		return minEff
+	}
+
+	// Calculate max effectiveness across all zones
+	maxEff := float32(0)
+	for _, zone := range zones {
+		// Angular distance from zone center (handle wraparound)
+		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
+		absAngleDist := float32(math.Abs(float64(angleDist)))
+
+		// Smooth falloff within zone width using cosine
+		if absAngleDist < float32(zone.Width) {
+			t := absAngleDist / float32(zone.Width) * (math.Pi / 2)
+			zoneEff := float32(zone.Power) * float32(math.Cos(float64(t)))
+			if zoneEff > maxEff {
+				maxEff = zoneEff
+			}
+		}
+	}
+
+	// Combine with minimum effectiveness
+	return minEff + (1-minEff)*maxEff
+}
+
+// normalizeAngle wraps angle to [-π, π].
+func normalizeAngle(a float32) float32 {
+	for a > math.Pi {
+		a -= 2 * math.Pi
+	}
+	for a < -math.Pi {
+		a += 2 * math.Pi
+	}
+	return a
 }
 
 // drawSectorFilled draws a filled pie sector.
@@ -396,10 +452,11 @@ func drawSectorFilled(cx, cy, radius, startAngle, endAngle float32, color rl.Col
 		x2 := cx + radius*float32(math.Cos(float64(a2)))
 		y2 := cy + radius*float32(math.Sin(float64(a2)))
 
+		// DrawTriangle requires counter-clockwise winding (screen coords: Y down)
 		rl.DrawTriangle(
 			rl.Vector2{X: cx, Y: cy},
-			rl.Vector2{X: x1, Y: y1},
 			rl.Vector2{X: x2, Y: y2},
+			rl.Vector2{X: x1, Y: y1},
 			color,
 		)
 	}

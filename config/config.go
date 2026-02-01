@@ -52,16 +52,38 @@ type EntityConfig struct {
 	InitialEnergy float64 `yaml:"initial_energy"`
 }
 
+// VisionZone defines a zone of enhanced vision effectiveness.
+// Effectiveness is calculated as: power * smooth_falloff(angle_distance / width)
+type VisionZone struct {
+	Angle float64 `yaml:"angle"` // center angle in radians (0 = front, ±π/2 = sides)
+	Width float64 `yaml:"width"` // half-width in radians
+	Power float64 `yaml:"power"` // effectiveness multiplier (0-1)
+}
+
+// PreyCapabilitiesConfig holds prey-specific capability parameters.
+type PreyCapabilitiesConfig struct {
+	VisionRange float64      `yaml:"vision_range"`
+	VisionZones []VisionZone `yaml:"vision_zones"`
+}
+
+// PredatorCapabilitiesConfig holds predator-specific capability parameters.
+type PredatorCapabilitiesConfig struct {
+	VisionRange float64      `yaml:"vision_range"`
+	VisionZones []VisionZone `yaml:"vision_zones"`
+}
+
 // CapabilitiesConfig holds entity capability defaults.
+// All entities have 360° vision; effectiveness varies by angle and kind.
 type CapabilitiesConfig struct {
-	VisionRange float64 `yaml:"vision_range"`
-	FOV         float64 `yaml:"fov"`
-	MaxSpeed    float64 `yaml:"max_speed"`
-	MaxAccel    float64 `yaml:"max_accel"`
-	MaxTurnRate float64 `yaml:"max_turn_rate"`
-	Drag        float64 `yaml:"drag"`
-	BiteRange   float64 `yaml:"bite_range"`
-	BiteCost    float64 `yaml:"bite_cost"`
+	Prey             PreyCapabilitiesConfig     `yaml:"prey"`
+	Predator         PredatorCapabilitiesConfig `yaml:"predator"`
+	MinEffectiveness float64                    `yaml:"min_effectiveness"`
+	MaxSpeed         float64                    `yaml:"max_speed"`
+	MaxAccel         float64                    `yaml:"max_accel"`
+	MaxTurnRate      float64                    `yaml:"max_turn_rate"`
+	Drag             float64                    `yaml:"drag"`
+	BiteRange        float64                    `yaml:"bite_range"`
+	BiteCost         float64                    `yaml:"bite_cost"`
 }
 
 // PopulationConfig holds population management parameters.

@@ -59,7 +59,7 @@ func (g *Game) updateBehaviorAndPhysics() {
 
 		// Compute sensors using precomputed neighbor data (avoids double distance calc)
 		sensorInputs := systems.ComputeSensorsFromNeighbors(
-			*vel, *rot, *energy, *caps,
+			*vel, *rot, *energy, *caps, org.Kind,
 			g.neighborBuf,
 			g.orgMap,
 			g.resourceField,

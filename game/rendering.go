@@ -28,7 +28,7 @@ func (g *Game) Draw() {
 	g.drawEntities()
 
 	// Draw selection highlight and vision cone
-	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap)
+	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap, g.orgMap)
 
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)

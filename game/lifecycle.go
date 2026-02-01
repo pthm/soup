@@ -39,7 +39,7 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 	rot := components.Rotation{Heading: heading, AngVel: 0}
 	body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
 	energy := components.Energy{Value: float32(cfg.Entity.InitialEnergy), Age: 0, Alive: true}
-	caps := components.DefaultCapabilities()
+	caps := components.DefaultCapabilities(kind)
 	// Add jitter to desync reproduction across the population
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 	org := components.Organism{ID: id, Kind: kind, ReproCooldown: float32(cfg.Reproduction.MaturityAge) + cooldownJitter}

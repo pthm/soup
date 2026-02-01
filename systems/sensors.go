@@ -11,10 +11,10 @@ import (
 
 // NumSectors is the number of vision sectors (compile-time constant for array sizing).
 // This value must match config.yaml sensors.num_sectors.
-const NumSectors = 5
+const NumSectors = 8
 
 // NumInputs is the total number of neural network inputs: NumSectors*3 + 2.
-const NumInputs = NumSectors*3 + 2 // 17 for K=5
+const NumInputs = NumSectors*3 + 2 // 26 for K=8
 
 // SensorInputs holds the computed sensor values for one entity.
 // Total: K*3 + 2 = 17 floats for K=5 sectors.
@@ -57,11 +57,13 @@ func (s *SensorInputs) AsSlice() []float32 {
 
 // ComputeSensorsFromNeighbors calculates sensor inputs using precomputed neighbor data.
 // This is the optimized path that avoids recomputing distances.
+// All entities have 360° vision; effectiveness varies by angle and selfKind.
 func ComputeSensorsFromNeighbors(
 	selfVel components.Velocity,
 	selfRot components.Rotation,
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
+	selfKind components.Kind,
 	neighbors []Neighbor,
 	orgMap *ecs.Map1[components.Organism],
 	resourceField ResourceSampler,
@@ -74,9 +76,8 @@ func ComputeSensorsFromNeighbors(
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
 
-	halfFOV := selfCaps.FOV / 2.0
-	halfSectors := float32(NumSectors-1) / 2.0 // 2.0 for K=5
 	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
+	sectorWidth := float32(2 * math.Pi / NumSectors)
 
 	// Process neighbors (already have DX, DY, DistSq from spatial query)
 	for i := range neighbors {
@@ -91,31 +92,30 @@ func ComputeSensorsFromNeighbors(
 		angleToNeighbor := float32(math.Atan2(float64(n.DY), float64(n.DX)))
 		relativeAngle := normalizeAngle(angleToNeighbor - selfRot.Heading)
 
-		// Check if within FOV
-		if relativeAngle < -halfFOV || relativeAngle > halfFOV {
-			continue
-		}
-
 		// Get organism kind
 		nOrg := orgMap.Get(n.E)
 		if nOrg == nil {
 			continue
 		}
 
-		// Map to sector
-		t := relativeAngle / halfFOV // [-1, 1]
-		sectorIdx := int(math.Round(float64(t * halfSectors)))
-		sectorIdx += NumSectors / 2 // shift to [0, NumSectors-1]
-
+		// Map to sector (full 360°, sector 2 = front)
+		// Shift angle from [-π, π] to [0, 2π) then divide by sector width
+		shiftedAngle := relativeAngle + math.Pi
+		sectorIdx := int(shiftedAngle / sectorWidth)
+		if sectorIdx >= NumSectors {
+			sectorIdx = NumSectors - 1
+		}
 		if sectorIdx < 0 {
 			sectorIdx = 0
-		} else if sectorIdx >= NumSectors {
-			sectorIdx = NumSectors - 1
 		}
 
 		// Distance weight using sqrt of precomputed DistSq
 		dist := float32(math.Sqrt(float64(n.DistSq)))
-		weight := clamp01(1.0 - dist/selfCaps.VisionRange)
+		distWeight := clamp01(1.0 - dist/selfCaps.VisionRange)
+
+		// Effectiveness weight based on angle and self kind
+		effWeight := visionEffectiveness(relativeAngle, selfKind)
+		weight := distWeight * effWeight
 
 		// Accumulate by kind
 		if nOrg.Kind == components.KindPrey {
@@ -131,10 +131,52 @@ func ComputeSensorsFromNeighbors(
 		inputs.Pred[i] = smoothSaturate(inputs.Pred[i])
 	}
 
-	// Resource level per sector
+	// Resource level per sector (full 360°)
 	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
 
 	return inputs
+}
+
+// visionEffectiveness returns the signal effectiveness [0,1] for a given angle and entity kind.
+// Uses configurable vision zones from config.
+func visionEffectiveness(relAngle float32, kind components.Kind) float32 {
+	cfg := config.Cfg().Capabilities
+	minEff := float32(cfg.MinEffectiveness)
+
+	// Get zones for this kind
+	var zones []config.VisionZone
+	if kind == components.KindPredator {
+		zones = cfg.Predator.VisionZones
+	} else {
+		zones = cfg.Prey.VisionZones
+	}
+
+	// If no zones defined, return minimum effectiveness
+	if len(zones) == 0 {
+		return minEff
+	}
+
+	// Calculate max effectiveness across all zones
+	maxEff := float32(0)
+	for _, zone := range zones {
+		// Angular distance from zone center (handle wraparound)
+		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
+		absAngleDist := float32(math.Abs(float64(angleDist)))
+
+		// Smooth falloff within zone width using cosine
+		// At center (dist=0): 1.0, at edge (dist=width): 0.0, beyond: 0.0
+		if absAngleDist < float32(zone.Width) {
+			// Cosine falloff: cos(0) = 1, cos(π/2) = 0
+			t := absAngleDist / float32(zone.Width) * (math.Pi / 2)
+			zoneEff := float32(zone.Power) * float32(math.Cos(float64(t)))
+			if zoneEff > maxEff {
+				maxEff = zoneEff
+			}
+		}
+	}
+
+	// Combine with minimum effectiveness
+	return minEff + (1-minEff)*maxEff
 }
 
 // ComputeSensors calculates all sensor inputs for an entity.
@@ -159,8 +201,7 @@ func ComputeSensors(
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
 
-	halfFOV := selfCaps.FOV / 2.0
-	halfSectors := float32(NumSectors-1) / 2.0 // 2.0 for K=5
+	sectorWidth := float32(2 * math.Pi / NumSectors)
 
 	// Process neighbors
 	for _, neighbor := range neighbors {
@@ -182,24 +223,22 @@ func ComputeSensors(
 		angleToNeighbor := float32(math.Atan2(float64(dy), float64(dx)))
 		relativeAngle := normalizeAngle(angleToNeighbor - selfRot.Heading)
 
-		// Check if within FOV
-		if relativeAngle < -halfFOV || relativeAngle > halfFOV {
-			continue
+		// Map to sector (full 360°, sector 2 = front)
+		shiftedAngle := relativeAngle + math.Pi
+		sectorIdx := int(shiftedAngle / sectorWidth)
+		if sectorIdx >= NumSectors {
+			sectorIdx = NumSectors - 1
 		}
-
-		// Map to sector
-		t := relativeAngle / halfFOV // [-1, 1]
-		sectorIdx := int(math.Round(float64(t * halfSectors)))
-		sectorIdx += NumSectors / 2 // shift to [0, NumSectors-1]
-
 		if sectorIdx < 0 {
 			sectorIdx = 0
-		} else if sectorIdx >= NumSectors {
-			sectorIdx = NumSectors - 1
 		}
 
 		// Distance weight: closer = stronger signal
-		weight := clamp01(1.0 - dist/selfCaps.VisionRange)
+		distWeight := clamp01(1.0 - dist/selfCaps.VisionRange)
+
+		// Effectiveness weight based on angle and self kind
+		effWeight := visionEffectiveness(relativeAngle, selfKind)
+		weight := distWeight * effWeight
 
 		// Accumulate by kind
 		if nOrg.Kind == components.KindPrey {
@@ -215,13 +254,13 @@ func ComputeSensors(
 		inputs.Pred[i] = smoothSaturate(inputs.Pred[i])
 	}
 
-	// Resource level per sector
+	// Resource level per sector (full 360°)
 	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
 
 	return inputs
 }
 
-// computeResourceSensors samples the resource field ahead in each sector.
+// computeResourceSensors samples the resource field in each sector (full 360°).
 func computeResourceSensors(pos components.Position, heading float32, caps components.Capabilities, field ResourceSampler) [NumSectors]float32 {
 	var res [NumSectors]float32
 
@@ -229,19 +268,20 @@ func computeResourceSensors(pos components.Position, heading float32, caps compo
 		return res
 	}
 
-	halfFOV := caps.FOV / 2.0
-	half := float32(NumSectors-1) / 2.0
+	sectorWidth := float32(2 * math.Pi / NumSectors)
 	sampleDist := caps.VisionRange * float32(config.Cfg().Sensors.ResourceSampleDistance)
 
 	for i := 0; i < NumSectors; i++ {
-		// Sector center angle
-		t := (float32(i) - half) / half // [-1, 1]
-		sectorAngle := heading + t*halfFOV
+		// Sector center angle (sector 2 = front at 0°)
+		// Sector i has center at: (i - NumSectors/2) * sectorWidth relative to heading
+		// With shift: center at (i * sectorWidth - π) relative to heading
+		relAngle := float32(i)*sectorWidth - math.Pi + sectorWidth/2
+		sectorAngle := heading + relAngle
 
 		dirX := float32(math.Cos(float64(sectorAngle)))
 		dirY := float32(math.Sin(float64(sectorAngle)))
 
-		// Sample point ahead in this sector
+		// Sample point in this sector's direction
 		sampleX := pos.X + dirX*sampleDist
 		sampleY := pos.Y + dirY*sampleDist
 
