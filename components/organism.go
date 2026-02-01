@@ -8,6 +8,18 @@ const (
 	KindPredator
 )
 
+// String returns a human-readable name for the kind.
+func (k Kind) String() string {
+	switch k {
+	case KindPrey:
+		return "prey"
+	case KindPredator:
+		return "predator"
+	default:
+		return "unknown"
+	}
+}
+
 // Energy tracks an entity's metabolic state.
 type Energy struct {
 	Value      float32 `inspect:"bar"`           // 0..1

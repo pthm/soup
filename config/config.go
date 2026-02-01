@@ -29,6 +29,7 @@ type Config struct {
 	Telemetry    TelemetryConfig    `yaml:"telemetry"`
 	Bookmarks    BookmarksConfig    `yaml:"bookmarks"`
 	Refugia      RefugiaConfig      `yaml:"refugia"`
+	HallOfFame   HallOfFameConfig   `yaml:"hall_of_fame"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
@@ -226,6 +227,33 @@ type StableEcosystemConfig struct {
 	MinPred       int     `yaml:"min_pred"`
 	CVThreshold   float64 `yaml:"cv_threshold"`
 	StableWindows int     `yaml:"stable_windows"`
+}
+
+// HallOfFameConfig holds hall of fame settings for intelligent reseeding.
+type HallOfFameConfig struct {
+	Enabled         bool                   `yaml:"enabled"`
+	Size            int                    `yaml:"size"`
+	ReseedThreshold int                    `yaml:"reseed_threshold"`
+	ReseedCount     int                    `yaml:"reseed_count"`
+	ReseedEnergy    float64                `yaml:"reseed_energy"`
+	Fitness         HallOfFameFitnessConfig `yaml:"fitness"`
+	Entry           HallOfFameEntryConfig   `yaml:"entry"`
+}
+
+// HallOfFameFitnessConfig holds fitness calculation weights.
+type HallOfFameFitnessConfig struct {
+	ChildrenWeight float64 `yaml:"children_weight"`
+	SurvivalWeight float64 `yaml:"survival_weight"`
+	KillsWeight    float64 `yaml:"kills_weight"`
+	ForageWeight   float64 `yaml:"forage_weight"`
+}
+
+// HallOfFameEntryConfig holds entry criteria thresholds.
+type HallOfFameEntryConfig struct {
+	MinChildren   int     `yaml:"min_children"`
+	MinSurvivalSec float64 `yaml:"min_survival_sec"`
+	MinForaging   float64 `yaml:"min_foraging"`
+	MinKills      int     `yaml:"min_kills"`
 }
 
 // DerivedConfig holds computed values derived from the loaded config.

@@ -232,3 +232,33 @@ bookmarks:
     cv_threshold: 0.04       # Coefficient of variation squared threshold
                              # Lower = stricter stability requirement
     stable_windows: 5        # Must maintain stability for this many consecutive windows
+
+# -----------------------------------------------------------------------------
+# Hall of Fame (Intelligent Reseeding)
+# When a species drops to critical levels, reseed from proven lineages instead
+# of random brains. This preserves selection pressure while preventing extinction.
+# -----------------------------------------------------------------------------
+hall_of_fame:
+  enabled: true              # Enable hall of fame reseeding
+  size: 30                   # Maximum entries per kind (prey/predator)
+  reseed_threshold: 2        # Reseed when population drops below this
+  reseed_count: 3            # Number of entities to reseed per check
+  reseed_energy: 0.9         # Initial energy for reseeded entities
+
+  # Fitness calculation weights (weighted score per kind)
+  # Prey:     children * 3.0 + survival_sec * 0.1 + total_foraged * 1.0
+  # Predator: children * 3.0 + survival_sec * 0.1 + kills * 2.0
+  fitness:
+    children_weight: 3.0     # Direct evolutionary fitness
+    survival_weight: 0.1     # Longevity contribution
+    kills_weight: 2.0        # Predator hunting success
+    forage_weight: 1.0       # Prey resource efficiency
+
+  # Entry criteria (organism must meet at least one set)
+  # Primary: reproduced at least once
+  # Secondary: survived long enough AND achieved something
+  entry:
+    min_children: 1          # Primary: reproduced at least once
+    min_survival_sec: 60.0   # Secondary: minimum survival time
+    min_foraging: 0.5        # Secondary (prey): minimum total foraged
+    min_kills: 1             # Secondary (predator): minimum kills

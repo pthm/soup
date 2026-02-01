@@ -97,6 +97,7 @@ type Game struct {
 	bookmarkDetector *telemetry.BookmarkDetector
 	lifetimeTracker  *telemetry.LifetimeTracker
 	perfCollector    *telemetry.PerfCollector
+	hallOfFame       *telemetry.HallOfFame
 	logStats         bool
 	snapshotDir      string
 	rngSeed          int64
@@ -177,6 +178,9 @@ func NewGameWithOptions(opts Options) *Game {
 	g.bookmarkDetector = telemetry.NewBookmarkDetector(cfg.Telemetry.BookmarkHistorySize)
 	g.lifetimeTracker = telemetry.NewLifetimeTracker()
 	g.perfCollector = telemetry.NewPerfCollector(cfg.Telemetry.PerfCollectorWindow)
+	if cfg.HallOfFame.Enabled {
+		g.hallOfFame = telemetry.NewHallOfFame(cfg.HallOfFame.Size, g.rng)
+	}
 
 	// Spatial grid
 	g.spatialGrid = systems.NewSpatialGrid(g.width, g.height, float32(cfg.Physics.GridCellSize))
