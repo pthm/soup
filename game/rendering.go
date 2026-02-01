@@ -16,8 +16,11 @@ func (g *Game) Draw() {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.Black)
 
-	// Water background
-	g.water.Draw(float32(g.tick) * 0.01)
+	// Light background (potential field as sunlight)
+	g.drawLightBackground()
+
+	// Draw floating resource particles (algae-like effect)
+	g.drawParticles()
 
 	// Debug overlays (drawn before entities so entities appear on top)
 	if g.debugMode && g.debugShowResource {
@@ -209,6 +212,64 @@ func resourceToColor(val float32, alpha uint8) rl.Color {
 	}
 
 	return rl.Color{R: r, G: g, B: b, A: alpha}
+}
+
+// drawLightBackground renders the potential field as dappled sunlight.
+func (g *Game) drawLightBackground() {
+	if g.lightRenderer == nil {
+		return
+	}
+
+	// Update potential texture periodically (every ~60 frames / 1 second)
+	if g.tick%60 == 0 {
+		pf := g.resourceField
+		g.lightRenderer.UpdatePotential(pf.Pot, pf.PotW, pf.PotH)
+	}
+
+	// Draw with caustics animation
+	// Pass dt for smooth blend transitions
+	dt := float32(1.0 / 60.0) // Fixed timestep
+	g.lightRenderer.Draw(float32(g.tick)*0.03, dt)
+}
+
+// drawParticles renders the floating resource particles with glow effect.
+func (g *Game) drawParticles() {
+	if g.particleRenderer == nil {
+		return
+	}
+
+	cam := g.camera
+	pf := g.resourceField
+
+	// Begin rendering particles to texture
+	g.particleRenderer.BeginParticles()
+
+	// Draw each active particle
+	for i := 0; i < pf.MaxCount; i++ {
+		if !pf.Active[i] {
+			continue
+		}
+
+		// Check if particle is visible
+		if !cam.IsVisible(pf.X[i], pf.Y[i], 10) {
+			continue
+		}
+
+		// Transform to screen coordinates
+		sx, sy := cam.WorldToScreen(pf.X[i], pf.Y[i])
+		g.particleRenderer.DrawParticleScaled(sx, sy, pf.Mass[i], cam.Zoom)
+
+		// Draw ghost copies for particles near world edges
+		ghosts := cam.GhostPositions(pf.X[i], pf.Y[i], 10)
+		for _, ghost := range ghosts {
+			g.particleRenderer.DrawParticleScaled(ghost.X, ghost.Y, pf.Mass[i], cam.Zoom)
+		}
+	}
+
+	g.particleRenderer.EndParticles()
+
+	// Draw the particle texture with glow shader
+	g.particleRenderer.Draw(float32(g.tick) * 0.05)
 }
 
 // drawOrientedTriangle draws a triangle pointing in the heading direction.

@@ -72,8 +72,9 @@ type Game struct {
 	parallel *parallelState
 
 	// Rendering
-	water     *renderer.WaterBackground
-	inspector *inspector.Inspector
+	lightRenderer    *renderer.LightRenderer
+	particleRenderer *renderer.ParticleRenderer
+	inspector        *inspector.Inspector
 
 	// State
 	tick       int32
@@ -211,8 +212,11 @@ func NewGameWithOptions(opts Options) *Game {
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
-		// Water background (uses screen dimensions)
-		g.water = renderer.NewWaterBackground(int32(g.screenWidth), int32(g.screenHeight))
+		// Light background (renders potential field as sunlight)
+		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight))
+
+		// Particle renderer for floating resource particles
+		g.particleRenderer = renderer.NewParticleRenderer(int32(g.screenWidth), int32(g.screenHeight))
 
 		// Inspector
 		g.inspector = inspector.NewInspector(int32(g.screenWidth), int32(g.screenHeight))
@@ -288,8 +292,11 @@ func (g *Game) simulationStep() {
 
 // Unload releases all resources.
 func (g *Game) Unload() {
-	if g.water != nil {
-		g.water.Unload()
+	if g.lightRenderer != nil {
+		g.lightRenderer.Unload()
+	}
+	if g.particleRenderer != nil {
+		g.particleRenderer.Unload()
 	}
 }
 

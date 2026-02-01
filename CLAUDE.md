@@ -11,6 +11,69 @@ go test ./...           # Run tests
 
 Controls: `Space` pause, `<`/`>` adjust steps-per-update (1-10x), click to inspect entity
 
+## Code Search with `ck`
+
+Use `ck` for semantic code search instead of grep/ripgrep. It understands meaning, not just keywords.
+
+### Search Modes
+
+| Mode | Command | Use Case |
+|------|---------|----------|
+| Semantic | `ck --sem "concept"` | Find by meaning ("error handling", "entity spawning") |
+| Lexical | `ck --lex "keyword"` | Full-text search for exact terms |
+| Hybrid | `ck --hybrid "query"` | Combined regex + semantic |
+| Regex | `ck --regex "pattern"` | Traditional pattern matching |
+
+### Examples
+
+```bash
+# Find authentication/energy validation logic
+ck --sem "energy validation" src/
+
+# Find specific function names
+ck --lex "spawnEntity" .
+
+# High-confidence semantic results
+ck --sem --threshold 0.8 "neural network forward pass" neural/
+```
+
+### When to Fallback to grep/ripgrep
+
+Use grep/ripgrep if:
+- `ck` is not installed or not working
+- Searching for exact regex patterns with complex syntax
+- Need line numbers and file context in standard format
+
+## Library Documentation with Context7
+
+Use the Context7 MCP server to fetch up-to-date documentation for libraries used in this project.
+
+### Key Libraries
+
+| Library | Description |
+|---------|-------------|
+| `mlange-42/ark` | ECS library for entity-component-system architecture |
+| `gen2brain/raylib-go` | Go bindings for raylib graphics library |
+| `gopkg.in/yaml.v3` | YAML parsing for configuration |
+
+### Usage
+
+First resolve the library ID, then query documentation:
+
+```
+# Step 1: Resolve library ID
+mcp__context7__resolve-library-id(libraryName: "raylib-go", query: "how to load shaders")
+
+# Step 2: Query docs with the resolved ID
+mcp__context7__query-docs(libraryId: "/gen2brain/raylib-go", query: "LoadShader usage")
+```
+
+### Common Queries
+
+- **ark ECS**: "how to create entities", "query filters", "component mappers"
+- **raylib-go**: "shader uniforms", "texture creation", "drawing primitives"
+- **yaml.v3**: "unmarshal embedded files", "custom unmarshaler"
+
 ## CLI Options
 
 | Flag | Default | Description |
@@ -223,7 +286,8 @@ GPU-accelerated visuals using raylib:
 
 | File | Purpose |
 |------|---------|
-| `water.go` | Animated Perlin noise water background |
+| `light.go` | Renders potential field as dappled sunlight with caustics |
+| `particles.go` | GPU-rendered floating particles with glow/twinkling |
 | `flowfield_gpu.go` | GPU-computed flow field texture for visual effects |
 
 ### Particle Resource Field (`systems/particle_resource.go`)
