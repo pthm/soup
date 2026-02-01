@@ -11,6 +11,7 @@ import (
 
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/game"
+	"github.com/pthm-cable/soup/systems"
 )
 
 func main() {
@@ -32,6 +33,9 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := config.Cfg()
+
+	// Initialize cached config values for hot paths
+	systems.InitSensorCache()
 
 	// Set up seed
 	rngSeed := *seed

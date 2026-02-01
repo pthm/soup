@@ -9,6 +9,7 @@ import (
 
 func init() {
 	config.MustInit("")
+	InitSensorCache()
 }
 
 func TestSensorInputsAsSlice(t *testing.T) {

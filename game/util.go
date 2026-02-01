@@ -2,12 +2,12 @@ package game
 
 import "math"
 
-// normalizeAngle wraps angle to [-pi, pi].
+// normalizeAngle wraps angle to [-pi, pi] with single-step correction.
+// Safe when angle changes are bounded (heading += small_delta per tick).
 func normalizeAngle(a float32) float32 {
-	for a > math.Pi {
+	if a > math.Pi {
 		a -= 2 * math.Pi
-	}
-	for a < -math.Pi {
+	} else if a < -math.Pi {
 		a += 2 * math.Pi
 	}
 	return a

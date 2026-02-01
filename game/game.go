@@ -70,7 +70,6 @@ type Game struct {
 
 	// Rendering
 	water     *renderer.WaterBackground
-	flow      *renderer.GPUFlowField
 	inspector *inspector.Inspector
 
 	// State
@@ -180,9 +179,6 @@ func NewGameWithOptions(opts Options) *Game {
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
-		// GPU flow field (visual only, not used in simulation)
-		g.flow = renderer.NewGPUFlowField(g.width, g.height)
-
 		// Water background
 		g.water = renderer.NewWaterBackground(int32(g.width), int32(g.height))
 
@@ -214,12 +210,6 @@ func (g *Game) Update() {
 // simulationStep runs a single tick of the simulation.
 func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
-
-	// Update flow field (only if available - nil in headless mode initially)
-	g.perfCollector.StartPhase(telemetry.PhaseFlowField)
-	if g.flow != nil {
-		g.flow.Update(g.tick, float32(g.tick)*0.01)
-	}
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)
@@ -261,9 +251,6 @@ func (g *Game) simulationStep() {
 func (g *Game) Unload() {
 	if g.water != nil {
 		g.water.Unload()
-	}
-	if g.flow != nil {
-		g.flow.Unload()
 	}
 	if g.gpuResourceField != nil {
 		g.gpuResourceField.Unload()

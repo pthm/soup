@@ -21,6 +21,12 @@ type GPUResourceField struct {
 	screenWidth  float32
 	screenHeight float32
 
+	// Precomputed for fast sampling
+	invScreenWidth  float32
+	invScreenHeight float32
+	widthF          float32
+	heightF         float32
+
 	// Whether field has been computed
 	initialized bool
 }
@@ -30,11 +36,15 @@ func NewGPUResourceField(screenWidth, screenHeight float32) *GPUResourceField {
 	textureSize := config.Cfg().GPU.ResourceTextureSize
 
 	rf := &GPUResourceField{
-		width:        textureSize,
-		height:       textureSize,
-		screenWidth:  screenWidth,
-		screenHeight: screenHeight,
-		resourceData: make([]float32, textureSize*textureSize),
+		width:           textureSize,
+		height:          textureSize,
+		screenWidth:     screenWidth,
+		screenHeight:    screenHeight,
+		resourceData:    make([]float32, textureSize*textureSize),
+		invScreenWidth:  float32(textureSize) / screenWidth,
+		invScreenHeight: float32(textureSize) / screenHeight,
+		widthF:          float32(textureSize),
+		heightF:         float32(textureSize),
 	}
 
 	// Load the resource field shader
@@ -100,13 +110,21 @@ func (rf *GPUResourceField) readbackData() {
 // Sample returns the resource value at a world position.
 // O(1) lookup into cached data. Returns value in [0, 1].
 func (rf *GPUResourceField) Sample(worldX, worldY float32) float32 {
-	// Map world coords to texture coords
-	texX := int(worldX / rf.screenWidth * float32(rf.width))
-	texY := int(worldY / rf.screenHeight * float32(rf.height))
+	// Map world coords to texture coords (precomputed scale)
+	texX := int(worldX * rf.invScreenWidth)
+	texY := int(worldY * rf.invScreenHeight)
 
-	// Wrap around edges (toroidal)
-	texX = ((texX % rf.width) + rf.width) % rf.width
-	texY = ((texY % rf.height) + rf.height) % rf.height
+	// Fast wrap (coords are usually in valid range)
+	if texX < 0 {
+		texX += rf.width
+	} else if texX >= rf.width {
+		texX -= rf.width
+	}
+	if texY < 0 {
+		texY += rf.height
+	} else if texY >= rf.height {
+		texY -= rf.height
+	}
 
 	return rf.resourceData[texY*rf.width+texX]
 }

@@ -1,8 +1,6 @@
 package game
 
 import (
-	"math"
-
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
@@ -94,23 +92,23 @@ func (g *Game) updateBehaviorAndPhysics() {
 		rot.Heading += effectiveTurnRate
 		rot.Heading = normalizeAngle(rot.Heading)
 
-		// Compute desired velocity from heading
+		// Compute desired velocity from heading (use fast trig)
 		targetSpeed := thrust * caps.MaxSpeed * dt
-		desiredVelX := float32(math.Cos(float64(rot.Heading))) * targetSpeed
-		desiredVelY := float32(math.Sin(float64(rot.Heading))) * targetSpeed
+		desiredVelX := fastCos(rot.Heading) * targetSpeed
+		desiredVelY := fastSin(rot.Heading) * targetSpeed
 
 		// Smooth velocity change
 		accelFactor := caps.MaxAccel * dt * 0.01
 		vel.X += (desiredVelX - vel.X) * accelFactor
 		vel.Y += (desiredVelY - vel.Y) * accelFactor
 
-		// Apply drag
-		dragFactor := float32(math.Exp(-float64(caps.Drag * dt)))
+		// Apply drag (use fast exp)
+		dragFactor := fastExp(-caps.Drag * dt)
 		vel.X *= dragFactor
 		vel.Y *= dragFactor
 
-		// Clamp speed
-		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		// Clamp speed (use fast sqrt)
+		speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
 		maxSpeed := caps.MaxSpeed * dt
 		if speed > maxSpeed {
 			scale := maxSpeed / speed

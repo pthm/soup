@@ -1,8 +1,6 @@
 package systems
 
 import (
-	"math"
-
 	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/config"
 )
@@ -77,15 +75,15 @@ func UpdatePreyForage(
 		return
 	}
 
-	// Compute speed ratio [0, 1]
-	speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+	// Compute speed ratio [0, 1] (use fast sqrt)
+	speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
 	speedRatio := speed / caps.MaxSpeed
 	if speedRatio > 1 {
 		speedRatio = 1
 	}
 
 	// Gain is higher when slow (grazing), lower when running
-	forageRate := float32(config.Cfg().Energy.Prey.ForageRate)
+	forageRate := cachedForageRate
 	gain := resourceHere * forageRate * (1 - speedRatio) * dt
 	energy.Value += gain
 
@@ -113,8 +111,7 @@ func TransferEnergy(
 	}
 
 	preyEnergy.Value -= actual
-	efficiency := float32(config.Cfg().Energy.Predator.TransferEfficiency)
-	predatorEnergy.Value += actual * efficiency
+	predatorEnergy.Value += actual * cachedTransferEfficiency
 
 	// Check prey death
 	if preyEnergy.Value <= 0 {

@@ -429,10 +429,9 @@ func visionEffectiveness(relAngle float32, kind components.Kind, minEff float32)
 
 // normalizeAngle wraps angle to [-π, π].
 func normalizeAngle(a float32) float32 {
-	for a > math.Pi {
+	if a > math.Pi {
 		a -= 2 * math.Pi
-	}
-	for a < -math.Pi {
+	} else if a < -math.Pi {
 		a += 2 * math.Pi
 	}
 	return a

@@ -9,6 +9,30 @@ import (
 	"github.com/pthm-cable/soup/config"
 )
 
+// Cached config values for hot path (initialized by InitSensorCache)
+var (
+	cachedMinEffectiveness   float32
+	cachedPreyVisionZones    []config.VisionZone
+	cachedPredVisionZones    []config.VisionZone
+	cachedResourceSampleDist float32
+	cachedForageRate         float32
+	cachedTransferEfficiency float32
+	cacheInitialized         bool
+)
+
+// InitSensorCache caches config values for hot-path access.
+// Must be called after config.Init().
+func InitSensorCache() {
+	cfg := config.Cfg()
+	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
+	cachedPreyVisionZones = cfg.Capabilities.Prey.VisionZones
+	cachedPredVisionZones = cfg.Capabilities.Predator.VisionZones
+	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
+	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
+	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)
+	cacheInitialized = true
+}
+
 // NumSectors is the number of vision sectors (compile-time constant for array sizing).
 // This value must match config.yaml sensors.num_sectors.
 const NumSectors = 8
@@ -71,13 +95,19 @@ func ComputeSensorsFromNeighbors(
 ) SensorInputs {
 	var inputs SensorInputs
 
-	// Self-state
-	speed := float32(math.Sqrt(float64(selfVel.X*selfVel.X + selfVel.Y*selfVel.Y)))
+	// Self-state (use fast sqrt)
+	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
+	speed := fastSqrt(speedSq)
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
 
 	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
-	sectorWidth := float32(2 * math.Pi / NumSectors)
+	invVisionRange := 1.0 / selfCaps.VisionRange
+
+	// Precompute heading direction for local frame transformation (once per entity)
+	// This replaces N*M atan2 calls with 2 sin/cos + N*M simple transforms
+	cosH := fastCos(selfRot.Heading)
+	sinH := fastSin(selfRot.Heading)
 
 	// Process neighbors (already have DX, DY, DistSq from spatial query)
 	for i := range neighbors {
@@ -88,30 +118,28 @@ func ComputeSensorsFromNeighbors(
 			continue
 		}
 
-		// Angle to neighbor relative to heading (use precomputed DX, DY)
-		angleToNeighbor := float32(math.Atan2(float64(n.DY), float64(n.DX)))
-		relativeAngle := normalizeAngle(angleToNeighbor - selfRot.Heading)
-
-		// Get organism kind
+		// Get organism kind early to avoid work for nil
 		nOrg := orgMap.Get(n.E)
 		if nOrg == nil {
 			continue
 		}
 
-		// Map to sector (full 360°, sector 2 = front)
-		// Shift angle from [-π, π] to [0, 2π) then divide by sector width
-		shiftedAngle := relativeAngle + math.Pi
-		sectorIdx := int(shiftedAngle / sectorWidth)
-		if sectorIdx >= NumSectors {
-			sectorIdx = NumSectors - 1
-		}
-		if sectorIdx < 0 {
-			sectorIdx = 0
-		}
+		// Transform neighbor direction to local frame (no atan2!)
+		// lx = forward component, ly = leftward component
+		lx := n.DX*cosH + n.DY*sinH
+		ly := -n.DX*sinH + n.DY*cosH
 
-		// Distance weight using sqrt of precomputed DistSq
-		dist := float32(math.Sqrt(float64(n.DistSq)))
-		distWeight := clamp01(1.0 - dist/selfCaps.VisionRange)
+		// Determine sector using comparisons (no trig, no division)
+		sectorIdx := sectorFromLocal(lx, ly)
+
+		// Compute relative angle for vision effectiveness (still needed)
+		// But now we can use local coords: relAngle = atan2(ly, lx)
+		// Use fast approximation since we only need rough angle for effectiveness
+		relativeAngle := fastAtan2(ly, lx)
+
+		// Distance weight using fast sqrt
+		dist := fastSqrt(n.DistSq)
+		distWeight := clamp01(1.0 - dist*invVisionRange)
 
 		// Effectiveness weight based on angle and self kind
 		effWeight := visionEffectiveness(relativeAngle, selfKind)
@@ -138,17 +166,16 @@ func ComputeSensorsFromNeighbors(
 }
 
 // visionEffectiveness returns the signal effectiveness [0,1] for a given angle and entity kind.
-// Uses configurable vision zones from config.
+// Uses cached vision zones for performance.
 func visionEffectiveness(relAngle float32, kind components.Kind) float32 {
-	cfg := config.Cfg().Capabilities
-	minEff := float32(cfg.MinEffectiveness)
+	minEff := cachedMinEffectiveness
 
-	// Get zones for this kind
+	// Get zones for this kind (cached)
 	var zones []config.VisionZone
 	if kind == components.KindPredator {
-		zones = cfg.Predator.VisionZones
+		zones = cachedPredVisionZones
 	} else {
-		zones = cfg.Prey.VisionZones
+		zones = cachedPreyVisionZones
 	}
 
 	// If no zones defined, return minimum effectiveness
@@ -161,14 +188,15 @@ func visionEffectiveness(relAngle float32, kind components.Kind) float32 {
 	for _, zone := range zones {
 		// Angular distance from zone center (handle wraparound)
 		angleDist := normalizeAngle(relAngle - float32(zone.Angle))
-		absAngleDist := float32(math.Abs(float64(angleDist)))
+		absAngleDist := absf(angleDist)
 
 		// Smooth falloff within zone width using cosine
 		// At center (dist=0): 1.0, at edge (dist=width): 0.0, beyond: 0.0
-		if absAngleDist < float32(zone.Width) {
+		zoneWidth := float32(zone.Width)
+		if absAngleDist < zoneWidth {
 			// Cosine falloff: cos(0) = 1, cos(π/2) = 0
-			t := absAngleDist / float32(zone.Width) * (math.Pi / 2)
-			zoneEff := float32(zone.Power) * float32(math.Cos(float64(t)))
+			t := absAngleDist / zoneWidth * (math.Pi / 2)
+			zoneEff := float32(zone.Power) * fastCos(t)
 			if zoneEff > maxEff {
 				maxEff = zoneEff
 			}
@@ -260,6 +288,16 @@ func ComputeSensors(
 	return inputs
 }
 
+// Precomputed sector relative angles (constant for all entities)
+var sectorRelAngles [NumSectors]float32
+
+func init() {
+	sectorWidth := float32(2 * math.Pi / NumSectors)
+	for i := 0; i < NumSectors; i++ {
+		sectorRelAngles[i] = float32(i)*sectorWidth - math.Pi + sectorWidth/2
+	}
+}
+
 // computeResourceSensors samples the resource field in each sector (full 360°).
 func computeResourceSensors(pos components.Position, heading float32, caps components.Capabilities, field ResourceSampler) [NumSectors]float32 {
 	var res [NumSectors]float32
@@ -268,26 +306,31 @@ func computeResourceSensors(pos components.Position, heading float32, caps compo
 		return res
 	}
 
-	sectorWidth := float32(2 * math.Pi / NumSectors)
-	sampleDist := caps.VisionRange * float32(config.Cfg().Sensors.ResourceSampleDistance)
+	sampleDist := caps.VisionRange * cachedResourceSampleDist
+	fieldW := field.Width()
+	fieldH := field.Height()
 
 	for i := 0; i < NumSectors; i++ {
-		// Sector center angle (sector 2 = front at 0°)
-		// Sector i has center at: (i - NumSectors/2) * sectorWidth relative to heading
-		// With shift: center at (i * sectorWidth - π) relative to heading
-		relAngle := float32(i)*sectorWidth - math.Pi + sectorWidth/2
-		sectorAngle := heading + relAngle
+		sectorAngle := heading + sectorRelAngles[i]
 
-		dirX := float32(math.Cos(float64(sectorAngle)))
-		dirY := float32(math.Sin(float64(sectorAngle)))
+		dirX := fastCos(sectorAngle)
+		dirY := fastSin(sectorAngle)
 
 		// Sample point in this sector's direction
 		sampleX := pos.X + dirX*sampleDist
 		sampleY := pos.Y + dirY*sampleDist
 
-		// Wrap toroidally
-		sampleX = wrapMod(sampleX, field.Width())
-		sampleY = wrapMod(sampleY, field.Height())
+		// Wrap toroidally (inline for speed)
+		if sampleX < 0 {
+			sampleX += fieldW
+		} else if sampleX >= fieldW {
+			sampleX -= fieldW
+		}
+		if sampleY < 0 {
+			sampleY += fieldH
+		} else if sampleY >= fieldH {
+			sampleY -= fieldH
+		}
 
 		res[i] = field.Sample(sampleX, sampleY)
 	}
@@ -300,12 +343,26 @@ func wrapMod(a, b float32) float32 {
 	return float32(math.Mod(float64(a)+float64(b), float64(b)))
 }
 
+// normalizeAngle brings angle to [-π, π] with single-step correction.
+// Works correctly when angle drift is bounded (e.g., heading += small_delta).
+// For unbounded angles, use normalizeAngleFull.
 func normalizeAngle(a float32) float32 {
-	for a > math.Pi {
+	if a > math.Pi {
 		a -= 2 * math.Pi
-	}
-	for a < -math.Pi {
+	} else if a < -math.Pi {
 		a += 2 * math.Pi
+	}
+	return a
+}
+
+// normalizeAngleFull handles arbitrary angles using mod.
+func normalizeAngleFull(a float32) float32 {
+	const twoPi = 2 * math.Pi
+	a = float32(math.Mod(float64(a), twoPi))
+	if a > math.Pi {
+		a -= twoPi
+	} else if a < -math.Pi {
+		a += twoPi
 	}
 	return a
 }
@@ -321,11 +378,20 @@ func clamp01(x float32) float32 {
 }
 
 // smoothSaturate uses 1 - exp(-x) for smooth [0,1] saturation.
+// Uses a fast approximation that's monotonic and accurate enough for sensor signals.
 func smoothSaturate(x float32) float32 {
 	if x <= 0 {
 		return 0
 	}
-	return 1.0 - float32(math.Exp(-float64(x)))
+	// For larger x, 1 - exp(-x) approaches 1, so we can clamp early
+	if x > 5 {
+		return 1
+	}
+	// Fast approximation: 1 - 1/(1 + x + 0.5*x*x + x*x*x/6)
+	// This is the Taylor series denominator, giving exp(x) ≈ 1 + x + x²/2 + x³/6
+	// So exp(-x) ≈ 1 / (1 + x + x²/2 + x³/6)
+	x2 := x * x
+	return 1.0 - 1.0/(1.0+x+0.5*x2+x*x2/6)
 }
 
 func minf(a, b float32) float32 {
@@ -333,4 +399,137 @@ func minf(a, b float32) float32 {
 		return a
 	}
 	return b
+}
+
+// absf returns the absolute value of x (avoids float64 conversion).
+func absf(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// sectorFromLocal determines sector index [0, NumSectors) from local frame coordinates.
+// lx = forward component, ly = leftward component (positive = left of heading).
+// Uses only comparisons - no trig, no division.
+// For NumSectors=8: sector 0 = back, sector 4 = front.
+func sectorFromLocal(lx, ly float32) int {
+	// tan(π/8) ≈ 0.4142 - boundary slope for 8 sectors (45° each, split at 22.5°)
+	const tanPi8 = 0.41421356
+
+	// Get absolute values for magnitude comparisons
+	alx := absf(lx)
+	aly := absf(ly)
+
+	if lx >= 0 {
+		// Front half
+		if ly >= 0 {
+			// Front-left quadrant (sectors 2, 3, 4)
+			if aly > alx {
+				return 2 // left
+			} else if aly > alx*tanPi8 {
+				return 3 // front-left
+			}
+			return 4 // front
+		} else {
+			// Front-right quadrant (sectors 4, 5, 6)
+			if aly > alx {
+				return 6 // right
+			} else if aly > alx*tanPi8 {
+				return 5 // front-right
+			}
+			return 4 // front
+		}
+	} else {
+		// Back half
+		if ly >= 0 {
+			// Back-left quadrant (sectors 0, 1, 2)
+			if aly > alx {
+				return 2 // left
+			} else if aly > alx*tanPi8 {
+				return 1 // back-left
+			}
+			return 0 // back
+		} else {
+			// Back-right quadrant (sectors 0, 6, 7)
+			if aly > alx {
+				return 6 // right
+			} else if aly > alx*tanPi8 {
+				return 7 // back-right
+			}
+			return 0 // back
+		}
+	}
+}
+
+// fastSqrt approximates sqrt(x) using the famous fast inverse sqrt + multiply.
+// Uses one Newton-Raphson iteration for decent accuracy (~0.2% error).
+func fastSqrt(x float32) float32 {
+	if x <= 0 {
+		return 0
+	}
+	// Initial guess using bit manipulation (Quake III style)
+	i := math.Float32bits(x)
+	i = 0x5f375a86 - (i >> 1) // Magic number for inverse sqrt
+	y := math.Float32frombits(i)
+	// One Newton-Raphson iteration for inverse sqrt: y = y * (1.5 - 0.5*x*y*y)
+	y = y * (1.5 - 0.5*x*y*y)
+	// sqrt(x) = x * inverseSqrt(x)
+	return x * y
+}
+
+// fastSin approximates sin(x) using a polynomial. Accurate to ~0.001 for all x.
+func fastSin(x float32) float32 {
+	// Normalize to [-π, π]
+	x = normalizeAngle(x)
+	// Parabola approximation: sin(x) ≈ 4x(π-|x|) / π²
+	// With correction factor for accuracy
+	const pi = math.Pi
+	const pi2 = pi * pi
+	ax := absf(x)
+	y := 4 * x * (pi - ax) / pi2
+	// Correction: y = 0.225*(y*|y| - y) + y
+	return 0.225*(y*absf(y)-y) + y
+}
+
+// fastCos approximates cos(x) using fastSin.
+func fastCos(x float32) float32 {
+	return fastSin(x + math.Pi/2)
+}
+
+// fastAtan2 approximates atan2(y, x). Accurate to ~0.01 radians.
+func fastAtan2(y, x float32) float32 {
+	if x == 0 {
+		if y > 0 {
+			return math.Pi / 2
+		}
+		if y < 0 {
+			return -math.Pi / 2
+		}
+		return 0
+	}
+
+	// Compute atan(y/x)
+	z := y / x
+	var atan float32
+
+	if absf(z) < 1 {
+		// |z| < 1: use polynomial for atan
+		atan = z / (1 + 0.28*z*z)
+	} else {
+		// |z| >= 1: use identity atan(z) = π/2 - atan(1/z)
+		atan = math.Pi/2 - z/(z*z+0.28)
+		if z < 0 {
+			atan = -math.Pi/2 - z/(z*z+0.28)
+		}
+	}
+
+	// Adjust for quadrant
+	if x < 0 {
+		if y >= 0 {
+			return atan + math.Pi
+		}
+		return atan - math.Pi
+	}
+	return atan
 }

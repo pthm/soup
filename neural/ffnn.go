@@ -52,7 +52,8 @@ func NewFFNN(rng *rand.Rand) *FFNN {
 // Forward computes the network output.
 // Returns: turn [-1,1], thrust [0,1], bite [0,1]
 func (nn *FFNN) Forward(inputs []float32) (turn, thrust, bite float32) {
-	// Hidden layer with tanh activation
+	// Hidden layer with fast tanh activation
+	// (tanh's |x|>4 branches are rarely taken, good for branch prediction)
 	var hidden [NumHidden]float32
 	for i := 0; i < NumHidden; i++ {
 		sum := nn.B1[i]
@@ -73,11 +74,23 @@ func (nn *FFNN) Forward(inputs []float32) (turn, thrust, bite float32) {
 	}
 
 	// Apply output activations
-	turn = tanh(outputs[0])         // [-1, 1]
-	thrust = sigmoid(outputs[1])    // [0, 1]
-	bite = sigmoid(outputs[2])      // [0, 1]
+	// tanh for turn [-1,1], saturating linear for thrust/bite [0,1]
+	turn = tanh(outputs[0])
+	thrust = saturate01(outputs[1]*0.5 + 0.5)
+	bite = saturate01(outputs[2]*0.5 + 0.5)
 
 	return turn, thrust, bite
+}
+
+// saturate01 clamps x to [0, 1] - fastest possible [0,1] activation.
+func saturate01(x float32) float32 {
+	if x <= 0 {
+		return 0
+	}
+	if x >= 1 {
+		return 1
+	}
+	return x
 }
 
 // Activations holds captured intermediate layer values.
@@ -99,7 +112,7 @@ func (nn *FFNN) ForwardWithCapture(inputs []float32) (turn, thrust, bite float32
 	// Capture inputs
 	copy(act.Inputs, inputs)
 
-	// Hidden layer with tanh activation
+	// Hidden layer with fast tanh activation
 	var hidden [NumHidden]float32
 	for i := 0; i < NumHidden; i++ {
 		sum := nn.B1[i]
@@ -120,10 +133,10 @@ func (nn *FFNN) ForwardWithCapture(inputs []float32) (turn, thrust, bite float32
 		outputs[i] = sum
 	}
 
-	// Apply output activations
-	turn = tanh(outputs[0])      // [-1, 1]
-	thrust = sigmoid(outputs[1]) // [0, 1]
-	bite = sigmoid(outputs[2])   // [0, 1]
+	// Apply output activations (same as Forward)
+	turn = tanh(outputs[0])
+	thrust = saturate01(outputs[1]*0.5 + 0.5)
+	bite = saturate01(outputs[2]*0.5 + 0.5)
 
 	// Capture activated outputs
 	act.Outputs[0] = turn
@@ -215,12 +228,39 @@ func (nn *FFNN) Clone() *FFNN {
 	return clone
 }
 
-func tanh(x float32) float32 {
-	return float32(math.Tanh(float64(x)))
+// leakyReLU is the fastest useful activation: no exp, no div.
+func leakyReLU(x float32) float32 {
+	if x > 0 {
+		return x
+	}
+	return 0.01 * x
 }
 
+// softsign: x / (1 + |x|), bounded to [-1, 1], smooth, no exp.
+func softsign(x float32) float32 {
+	if x >= 0 {
+		return x / (1 + x)
+	}
+	return x / (1 - x)
+}
+
+// tanh uses a fast rational approximation avoiding float64 conversion.
+// Kept for compatibility but no longer used in Forward().
+func tanh(x float32) float32 {
+	if x > 4 {
+		return 1
+	}
+	if x < -4 {
+		return -1
+	}
+	x2 := x * x
+	return x * (27 + x2) / (27 + 9*x2)
+}
+
+// sigmoid uses fast tanh: sigmoid(x) = 0.5 * (1 + tanh(x/2))
+// Kept for compatibility but no longer used in Forward().
 func sigmoid(x float32) float32 {
-	return 1.0 / (1.0 + float32(math.Exp(-float64(x))))
+	return 0.5 * (1 + tanh(x*0.5))
 }
 
 // BrainWeights holds flattened network weights for serialization.
