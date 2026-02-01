@@ -14,10 +14,10 @@ import (
 
 // Breeding constants
 const (
-	BreedIntentThreshold = 0.5  // Brain output threshold for breeding intent
-	MinEnergyRatio       = 0.5  // Minimum energy ratio for reproduction (legacy)
-	AsexualEnergyCost    = 15.0 // Energy cost for asexual reproduction
-	SexualEnergyCost     = 12.0 // Energy cost for sexual reproduction (per parent)
+	BreedIntentThreshold = 0.5   // Brain output threshold for breeding intent
+	MinEnergyRatio       = 0.5   // Minimum energy ratio for reproduction (legacy)
+	AsexualEnergyCost    = 15.0  // Energy cost for asexual reproduction
+	SexualEnergyCost     = 12.0  // Energy cost for sexual reproduction (per parent)
 	MateProximity        = 100.0 // Maximum distance for finding mates (for partner search)
 
 	// Mating handshake parameters (from neural/config.go)

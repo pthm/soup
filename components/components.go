@@ -62,7 +62,7 @@ type Organism struct {
 
 	// Allocation and shape
 	AllocationMode AllocationMode
-	DeadTime       int32 // Ticks since death (for removal)
+	DeadTime       int32        // Ticks since death (for removal)
 	ShapeMetrics   ShapeMetrics // Physical shape characteristics
 	ActiveThrust   float32      // Thrust magnitude this tick (for energy cost)
 	OBB            CollisionOBB // Collision bounding box computed from cells
@@ -75,10 +75,13 @@ type Organism struct {
 	UThrottle    float32 // Brain output: 0 to 1, forward throttle
 	AttackIntent float32 // Brain output: 0-1, >0.5 means attack
 	MateIntent   float32 // Brain output: 0-1, >0.5 means ready to mate
+	AngVel       float32 // Angular velocity (radians per tick)
+	DensitySame  float32 // Local same-species density [0,1]
 
 	// Previous outputs for jitter detection (energy cost)
 	PrevUTurn     float32
 	PrevUThrottle float32
+	PrevAngVel    float32
 
 	// Last brain inputs (for debugging/inspection)
 	LastInputs [30]float32 // Last sensory inputs fed to brain
@@ -108,8 +111,8 @@ type Cell struct {
 	Alive  bool
 
 	// Function selection (from CPPN)
-	PrimaryType   neural.CellType // Main function
-	SecondaryType neural.CellType // Optional secondary function (CellTypeNone if none)
+	PrimaryType       neural.CellType // Main function
+	SecondaryType     neural.CellType // Optional secondary function (CellTypeNone if none)
 	PrimaryStrength   float32         // Effective primary strength
 	SecondaryStrength float32         // Effective secondary strength
 

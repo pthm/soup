@@ -12,6 +12,8 @@ import (
 	"github.com/pthm-cable/soup/systems"
 )
 
+const generationTickInterval = 1500
+
 // Update handles input and runs the simulation for graphics mode.
 func (g *Game) Update() {
 	// Handle input
@@ -132,7 +134,9 @@ func (g *Game) runSimulationStep() {
 	measure("allocation", func() { g.allocation.Update(floraPos, faunaPos, floraOrgs, faunaOrgs) })
 
 	// Run systems (parallel brain evaluation)
-	measure("behavior", func() { g.behavior.UpdateParallel(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid) })
+	measure("behavior", func() {
+		g.behavior.UpdateParallel(g.world, g.bounds, floraPos, faunaPos, floraOrgs, faunaOrgs, g.spatialGrid)
+	})
 	measure("physics", func() { g.physics.Update(g.world) })
 
 	// Apply flora-fauna collisions (fast organisms push flora away)
@@ -248,8 +252,8 @@ func (g *Game) cleanupDead() {
 		g.world.RemoveEntity(e)
 	}
 
-	// Update generations periodically (every 3000 ticks ≈ 50 seconds at normal speed)
-	if g.tick%3000 == 0 && g.tick > 0 {
+	// Update generations periodically (every 1500 ticks ≈ 25 seconds at normal speed)
+	if g.tick%generationTickInterval == 0 && g.tick > 0 {
 		g.speciesManager.EndGeneration()
 	}
 }

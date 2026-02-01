@@ -27,16 +27,28 @@ const (
 	deadSinkRate       = 0.02 // Downward drift rate for dead organisms
 
 	// Capability thresholds
-	minSensorGain    = float32(0.1)
-	minActuatorGain  = float32(0.1)
-	capabilityScale  = 4.0 // Denominator for capability scaling
+	minSensorGain   = float32(0.1)
+	minActuatorGain = float32(0.1)
+	capabilityScale = 4.0 // Denominator for capability scaling
 
 	// Parallel processing threshold
 	minOrganismsForParallel = 100 // Below this, goroutine overhead exceeds benefits
 
 	// Boid field parameters (matching neural/config.go)
-	boidSeparationRadius = 3.0  // In body lengths
+	boidSeparationRadius  = 3.0 // In body lengths
 	boidExpectedNeighbors = 10.0
+
+	// Output smoothing and soft-clamping (reduces maxed-out controls and oscillation)
+	controlSmoothing = 0.25
+	actionSmoothing  = 0.35
+	turnSoftness     = 0.9
+	throttleSoften   = 0.08
+
+	// Angular velocity model (more natural turning)
+	turnDamping      = 0.35
+	turnAccelScale   = 0.6
+	maxAngularVel    = 0.18
+	turnSpeedPenalty = 0.7
 )
 
 // BehaviorPerfStats tracks subsystem timings within the behavior system.
@@ -74,6 +86,7 @@ type organismTask struct {
 
 	// Output data (written during parallel phase)
 	outputs      neural.BehaviorOutputs
+	densitySame  float32
 	lastInputs   [30]float32 // Store inputs for debugging
 	flowX, flowY float32
 	hasBrain     bool
@@ -169,6 +182,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		} else {
 			outputs = neural.DefaultOutputs()
 		}
+		outputs = applyOutputSmoothing(org, outputs)
 
 		// Store brain outputs
 		org.UTurn = outputs.UTurn
@@ -176,16 +190,32 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
+		var speed float32
 
-		// HEADING-AS-STATE: Integrate heading from turn rate
-		// Turn rate is scaled by morphology - asymmetric actuators affect turning
-		// Allow some turning even at low throttle to enable arrival behavior
+		// Calculate effective max speed and acceleration based on actuator capability
+		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, cells)
+
+		// HEADING-AS-STATE: Integrate heading via angular velocity
+		// Turn acceleration is scaled by morphology and penalized at high speed
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, cells)
 		turnThrottle := outputs.UThrottle
 		if turnThrottle < minTurnThrottle {
 			turnThrottle = minTurnThrottle
 		}
-		org.Heading += outputs.UTurn * effectiveTurnRate * turnThrottle
+		speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		speedNorm := float32(0.0)
+		if effectiveMaxSpeed > 0.01 {
+			speedNorm = clamp01(speed / effectiveMaxSpeed)
+		}
+		turnAccel := outputs.UTurn * effectiveTurnRate * turnAccelScale * turnThrottle * (1.0 - speedNorm*turnSpeedPenalty)
+		org.AngVel += turnAccel
+		org.AngVel -= org.AngVel * turnDamping
+		if org.AngVel > maxAngularVel {
+			org.AngVel = maxAngularVel
+		} else if org.AngVel < -maxAngularVel {
+			org.AngVel = -maxAngularVel
+		}
+		org.Heading += org.AngVel
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -205,7 +235,6 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		flowX, flowY := s.getFlowFieldForce(centerX, centerY, org, bounds)
 
 		// Calculate effective max speed and acceleration based on actuator capability
-		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, cells)
 		maxAccel := getMaxAcceleration(cells, org.ShapeMetrics.Drag)
 
 		// HEADING-AS-STATE: Desired velocity is along heading, scaled by throttle
@@ -232,7 +261,7 @@ func (s *BehaviorSystem) Update(w *ecs.World, bounds Bounds, floraPositions, fau
 		vel.Y += accelY + flowY
 
 		// Clamp to effective max speed
-		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
 		if speed > effectiveMaxSpeed {
 			scale := effectiveMaxSpeed / speed
 			vel.X *= scale
@@ -436,22 +465,40 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 
 		// Apply brain outputs
 		outputs := task.outputs
+		outputs = applyOutputSmoothing(org, outputs)
 		org.UTurn = outputs.UTurn
 		org.UThrottle = outputs.UThrottle
 		org.AttackIntent = outputs.AttackIntent
 		org.MateIntent = outputs.MateIntent
 		org.BreedIntent = outputs.MateIntent // Alias for compatibility
 		org.LastInputs = task.lastInputs     // Store for debugging
+		org.DensitySame = task.densitySame
+		var speed float32
 
-		// HEADING-AS-STATE: Integrate heading from turn rate
-		// Turn rate is scaled by morphology - asymmetric actuators affect turning
-		// Allow some turning even at low throttle to enable arrival behavior
+		// Calculate effective max speed and acceleration based on actuator capability
+		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, task.cells)
+
+		// HEADING-AS-STATE: Integrate heading via angular velocity
+		// Turn acceleration is scaled by morphology and penalized at high speed
 		effectiveTurnRate := getEffectiveTurnRate(neural.TurnRateMax, outputs.UTurn, task.cells)
 		turnThrottle := outputs.UThrottle
 		if turnThrottle < minTurnThrottle {
 			turnThrottle = minTurnThrottle
 		}
-		org.Heading += outputs.UTurn * effectiveTurnRate * turnThrottle
+		speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		speedNorm := float32(0.0)
+		if effectiveMaxSpeed > 0.01 {
+			speedNorm = clamp01(speed / effectiveMaxSpeed)
+		}
+		turnAccel := outputs.UTurn * effectiveTurnRate * turnAccelScale * turnThrottle * (1.0 - speedNorm*turnSpeedPenalty)
+		org.AngVel += turnAccel
+		org.AngVel -= org.AngVel * turnDamping
+		if org.AngVel > maxAngularVel {
+			org.AngVel = maxAngularVel
+		} else if org.AngVel < -maxAngularVel {
+			org.AngVel = -maxAngularVel
+		}
+		org.Heading += org.AngVel
 
 		// Normalize heading to [-π, π]
 		for org.Heading > math.Pi {
@@ -465,7 +512,6 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		sinH := float32(math.Sin(float64(org.Heading)))
 
 		// Calculate effective max speed and acceleration based on actuator capability
-		effectiveMaxSpeed := getEffectiveMaxSpeed(org.MaxSpeed, task.cells)
 		maxAccel := getMaxAcceleration(task.cells, org.ShapeMetrics.Drag)
 
 		// HEADING-AS-STATE: Desired velocity is along heading, scaled by throttle
@@ -492,7 +538,7 @@ func (s *BehaviorSystem) UpdateParallel(w *ecs.World, bounds Bounds, floraPositi
 		vel.Y += accelY + task.flowY
 
 		// Clamp to effective max speed
-		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
 		if speed > effectiveMaxSpeed {
 			scale := effectiveMaxSpeed / speed
 			vel.X *= scale
@@ -583,6 +629,7 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 			effectiveRadius,
 			neighbors,
 		)
+		task.densitySame = boidFields.DensitySame
 
 		foodFields := computeFoodFields(
 			centerX, centerY,
@@ -646,7 +693,6 @@ func (s *BehaviorSystem) processTaskRange(start, end int, faunaPos []components.
 		}
 	}
 }
-
 
 // getFlowFieldForceParallel calculates flow field without organism pointer (thread-safe).
 func (s *BehaviorSystem) getFlowFieldForceParallel(x, y float32, shapeMetrics components.ShapeMetrics, energy, maxEnergy, bodyRadius float32, _ Bounds) (float32, float32) {
@@ -823,6 +869,7 @@ func (s *BehaviorSystem) getBrainOutputs(
 		effectiveRadius,
 		neighbors,
 	)
+	org.DensitySame = boidFields.DensitySame
 
 	foodFields := computeFoodFields(
 		centerX, centerY,
@@ -893,8 +940,6 @@ func (s *BehaviorSystem) getBrainOutputs(
 
 	return neural.DecodeOutputs(rawOutputs)
 }
-
-
 
 func (s *BehaviorSystem) getFlowFieldForce(x, y float32, org *components.Organism, _ Bounds) (float32, float32) {
 	noiseX := s.noise.Noise3D(float64(x)*flowScale, float64(y)*flowScale, float64(s.tick)*flowTimeScale)
@@ -1006,6 +1051,31 @@ func getEffectiveMaxSpeed(baseSpeed float32, cells *components.CellBuffer) float
 	return baseSpeed * scale
 }
 
+func softenTurn(uTurn float32) float32 {
+	return float32(math.Tanh(float64(uTurn) * turnSoftness))
+}
+
+func softenThrottle(uThrottle float32) float32 {
+	uThrottle = clamp01(uThrottle)
+	return uThrottle * (1.0 - throttleSoften*uThrottle)
+}
+
+func smoothControl(prev, target, rate float32) float32 {
+	return prev + (target-prev)*rate
+}
+
+func applyOutputSmoothing(org *components.Organism, outputs neural.BehaviorOutputs) neural.BehaviorOutputs {
+	outputs.UTurn = softenTurn(outputs.UTurn)
+	outputs.UThrottle = softenThrottle(outputs.UThrottle)
+
+	outputs.UTurn = smoothControl(org.UTurn, outputs.UTurn, controlSmoothing)
+	outputs.UThrottle = smoothControl(org.UThrottle, outputs.UThrottle, controlSmoothing)
+	outputs.AttackIntent = smoothControl(org.AttackIntent, outputs.AttackIntent, actionSmoothing)
+	outputs.MateIntent = smoothControl(org.MateIntent, outputs.MateIntent, actionSmoothing)
+
+	return outputs
+}
+
 // getMaxAcceleration computes max acceleration based on actuator strength and drag.
 // More actuators = faster acceleration, higher drag = slower acceleration.
 func getMaxAcceleration(cells *components.CellBuffer, drag float32) float32 {
@@ -1022,9 +1092,9 @@ func getMaxAcceleration(cells *components.CellBuffer, drag float32) float32 {
 
 // Morphology-based movement constants
 const (
-	turnBiasScale    = 0.5  // How much turn bias affects turn rate (0.5 = ±50% at max bias)
-	thrustBiasScale  = 0.4  // How much thrust bias affects forward speed (0.4 = ±40% at max bias)
-	minTurnThrottle  = 0.3  // Minimum throttle factor for turning (allows turning while slowing down)
+	turnBiasScale   = 0.5 // How much turn bias affects turn rate (0.5 = ±50% at max bias)
+	thrustBiasScale = 0.4 // How much thrust bias affects forward speed (0.4 = ±40% at max bias)
+	minTurnThrottle = 0.3 // Minimum throttle factor for turning (allows turning while slowing down)
 )
 
 // getEffectiveTurnRate computes the turn rate scaled by morphology.
@@ -1375,6 +1445,16 @@ func computeBoidFields(
 
 	// Density
 	fields.DensitySame = clampFloat(float32(len(neighbors))/boidExpectedNeighbors, 0, 1)
+
+	// Soften cohesion/alignment, boost separation to reduce milling
+	fields.CohesionFwd *= 0.7
+	fields.CohesionUp *= 0.7
+	fields.CohesionMag *= 0.7
+	fields.AlignmentFwd *= 0.7
+	fields.AlignmentUp *= 0.7
+	fields.SeparationFwd *= 1.2
+	fields.SeparationUp *= 1.2
+	fields.SeparationMag = clampFloat(fields.SeparationMag*1.2, 0, 1)
 
 	return fields
 }

@@ -20,18 +20,25 @@ const (
 
 	// Movement costs - PRIMARY selective pressure (NON-LINEAR)
 	// Quadratic cost curve: efficient cruising, expensive bursting
-	movementCostBase  = 0.008  // Base cost coefficient (quadratic: speed² * base)
-	thrustCostBase    = 0.010  // Cost for actual acceleration/thrust
-	massScaleExponent = 0.5    // Larger organisms pay more to move (was 0.4)
+	movementCostBase  = 0.02 // Base cost coefficient (quadratic: speed² * base)
+	thrustCostBase    = 0.02 // Cost for actual acceleration/thrust
+	massScaleExponent = 0.5  // Larger organisms pay more to move (was 0.4)
 
 	// Jitter penalty - penalizes rapid direction changes
 	// Encourages smooth movement, discourages oscillation
-	jitterCostBase = 0.004 // Cost per unit of direction change
+	jitterCostBase = 0.005 // Cost per unit of direction change
 
 	// Turn penalty - sharp turns while moving cost more
 	// Multiplier: 1.0 (straight) to 1.0 + turnCostMultiplier (max turn)
-	turnCostMultiplier = 0.8 // 80% extra cost at maximum turn rate
-	turnCostBase       = 0.004 // Base cost for turning, even at low throttle
+	turnCostMultiplier = 1.0   // 100% extra cost at maximum turn rate
+	turnCostBase       = 0.005 // Base cost for turning, even at low throttle
+
+	// Control effort - discourages pegged outputs even when stationary
+	controlEffortCost = 0.006
+
+	// Curvature/rotation costs - discourage tight circles
+	curvatureCostBase   = 0.06  // Scales with speed^2 * |angular velocity|
+	angularJerkCostBase = 0.012 // Penalizes rapid changes in angular velocity
 
 	// Energy capacity
 	baseEnergy        = 100.0 // Minimum energy capacity
@@ -45,13 +52,13 @@ const (
 // EnergySystem handles organism energy updates with brain-output-driven costs.
 // This creates evolutionary pressure for efficient, context-sensitive behavior.
 type EnergySystem struct {
-	filter ecs.Filter3[components.Position, components.Organism, components.CellBuffer]
+	filter ecs.Filter4[components.Position, components.Velocity, components.Organism, components.CellBuffer]
 }
 
 // NewEnergySystem creates a new energy system.
 func NewEnergySystem(w *ecs.World) *EnergySystem {
 	return &EnergySystem{
-		filter: *ecs.NewFilter3[components.Position, components.Organism, components.CellBuffer](w),
+		filter: *ecs.NewFilter4[components.Position, components.Velocity, components.Organism, components.CellBuffer](w),
 	}
 }
 
@@ -59,7 +66,7 @@ func NewEnergySystem(w *ecs.World) *EnergySystem {
 func (s *EnergySystem) Update(w *ecs.World) {
 	query := s.filter.Query()
 	for query.Next() {
-		_, org, cells := query.Get()
+		_, vel, org, cells := query.Get()
 
 		if org.Dead {
 			continue
@@ -97,6 +104,7 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		turnPenalty := 1.0 + float32(math.Abs(float64(org.UTurn)))*turnCostMultiplier
 		movementCost := throttleSquared * turnPenalty * movementCostBase * massFactor * armorPen
 		turnCost := float32(math.Abs(float64(org.UTurn))) * turnCostBase * massFactor * armorPen
+		effortCost := (float32(math.Abs(float64(org.UTurn))) + org.UThrottle) * controlEffortCost * massFactor * armorPen
 
 		// JITTER PENALTY: penalize rapid turn/throttle changes
 		// Discourages oscillating, rewards smooth trajectories
@@ -109,13 +117,21 @@ func (s *EnergySystem) Update(w *ecs.World) {
 		org.PrevUTurn = org.UTurn
 		org.PrevUThrottle = org.UThrottle
 
+		// Curvature + angular jerk costs (penalize tight circles and rapid direction flips)
+		speed := float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		densityPenalty := 1.0 + org.DensitySame*2.0
+		curvatureCost := curvatureCostBase * speed * speed * float32(math.Abs(float64(org.AngVel))) * massFactor * armorPen * densityPenalty
+		deltaAngVel := org.AngVel - org.PrevAngVel
+		angularJerkCost := float32(math.Abs(float64(deltaAngVel))) * angularJerkCostBase * massFactor * armorPen
+		org.PrevAngVel = org.AngVel
+
 		// Actual acceleration cost (ActiveThrust set by behavior system)
 		// High drag = more energy to move
 		thrustCost := org.ActiveThrust * thrustCostBase * massFactor * armorPen * org.ShapeMetrics.Drag
 		org.ActiveThrust = 0 // Reset for next tick
 
 		// === TOTAL ENERGY DRAIN ===
-		totalDrain := baseDrain + intentCost + movementCost + turnCost + jitterCost + thrustCost
+		totalDrain := baseDrain + intentCost + movementCost + turnCost + effortCost + jitterCost + curvatureCost + angularJerkCost + thrustCost
 
 		// Minimum drain (can't gain energy from just photosynthesis without feeding)
 		if totalDrain < 0.0001 {

@@ -26,9 +26,9 @@ const (
 
 // Boid field parameters
 const (
-	ExpectedNeighbors  = 10.0 // Expected number of neighbors for density normalization
-	SeparationRadius   = 3.0  // Separation radius in body lengths
-	BaseCellSize       = 6.0  // Reference cell size for normalization
+	ExpectedNeighbors = 10.0 // Expected number of neighbors for density normalization
+	SeparationRadius  = 3.0  // Separation radius in body lengths
+	BaseCellSize      = 6.0  // Reference cell size for normalization
 )
 
 // Attack parameters
@@ -42,8 +42,8 @@ const (
 // Mating parameters
 const (
 	MateContactMargin = 5.0  // Extra margin for mating proximity
-	MateDwellTime     = 60   // Ticks required in contact to mate
-	MateEnergyRatio   = 0.35 // Minimum energy ratio for mating
+	MateDwellTime     = 50   // Ticks required in contact to mate
+	MateEnergyRatio   = 0.33 // Minimum energy ratio for mating
 )
 
 // CPPNInputs is the number of inputs to the CPPN.
@@ -77,23 +77,23 @@ const CPPNFunctionalOutputs = 5 // sensor, actuator, mouth, digestive, reproduct
 
 // Cell function selection constants
 const (
-	SecondaryThreshold    = 0.25 // Minimum value for secondary function
-	MixedPrimaryPenalty   = 0.85 // Primary strength multiplier when secondary exists
-	MixedSecondaryScale   = 0.35 // Secondary strength multiplier
-	StructuralDragCost    = 0.1  // Drag increase per unit structural armor
-	StorageMetabolicCost  = 0.05 // Metabolic increase per unit storage capacity
+	SecondaryThreshold   = 0.25 // Minimum value for secondary function
+	MixedPrimaryPenalty  = 0.85 // Primary strength multiplier when secondary exists
+	MixedSecondaryScale  = 0.35 // Secondary strength multiplier
+	StructuralDragCost   = 0.1  // Drag increase per unit structural armor
+	StorageMetabolicCost = 0.05 // Metabolic increase per unit storage capacity
 )
 
 // CellType represents the functional type of a cell.
 type CellType uint8
 
 const (
-	CellTypeNone        CellType = iota // No function (sentinel for no secondary)
-	CellTypeSensor                      // Sensing cell, contributes to perception
-	CellTypeActuator                    // Motor cell, contributes to thrust
-	CellTypeMouth                       // Mouth cell, for feeding
-	CellTypeDigestive                   // Digestive cell, determines diet efficiency
-	CellTypeReproductive                // Reproductive cell, for breeding
+	CellTypeNone         CellType = iota // No function (sentinel for no secondary)
+	CellTypeSensor                       // Sensing cell, contributes to perception
+	CellTypeActuator                     // Motor cell, contributes to thrust
+	CellTypeMouth                        // Mouth cell, for feeding
+	CellTypeDigestive                    // Digestive cell, determines diet efficiency
+	CellTypeReproductive                 // Reproductive cell, for breeding
 )
 
 // CellTypeName returns a human-readable name for the cell type.
@@ -216,11 +216,11 @@ func DefaultNEATOptions() *neat.Options {
 		TraitMutationPower: 1.0,
 
 		// Weight mutation
-		WeightMutPower: 2.5,
+		WeightMutPower: 2.0,
 
 		// Structural mutation rates
-		MutateAddNodeProb:      0.10,
-		MutateAddLinkProb:      0.15,
+		MutateAddNodeProb:      0.12,
+		MutateAddLinkProb:      0.18,
 		MutateToggleEnableProb: 0.01,
 
 		// Weight mutation probability
@@ -237,18 +237,17 @@ func DefaultNEATOptions() *neat.Options {
 
 		// Speciation - Lower threshold to capture initial population diversity
 		// Initial organisms have varied CPPN weights, need sensitive threshold
-		CompatThreshold: 1.2,
+		CompatThreshold: 1.25,
 		DisjointCoeff:   1.0,
 		ExcessCoeff:     1.0,
 		MutdiffCoeff:    0.4, // Reduce weight difference sensitivity
 
 		// Species management
-		DropOffAge:      25,  // Give species more time to improve (was 15)
-		SurvivalThresh:  0.3, // Top 30% survive to reproduce (was 20%)
+		DropOffAge:      15,   // Faster turnover for stagnating species
+		SurvivalThresh:  0.25, // Top 25% survive to reproduce
 		AgeSignificance: 1.0,
 
 		// Population (used as reference, actual pop managed by simulation)
 		PopSize: 150,
 	}
 }
-

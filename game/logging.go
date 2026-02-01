@@ -213,16 +213,22 @@ func (g *Game) logNeuralStats() {
 			stats.TotalOffspring, stats.AverageStaleness)
 	}
 
-	// Count neural organisms
+	// Count neural organisms and aggregate control outputs
 	neuralCount := 0
 	var totalNodes, totalGenes int
 	var minNodes, maxNodes int = 9999, 0
 	var minGenes, maxGenes int = 9999, 0
+	var sumTurn, sumAbsTurn, maxAbsTurn float64
+	var sumThrottle, maxThrottle float64
+	var sumAngVel, sumAbsAngVel, maxAbsAngVel float64
+	var sumSpeed, maxSpeed float64
+	highTurn := 0
+	highThrottle := 0
 
 	query := g.allOrgFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
-		_, _, org, _ := query.Get()
+		_, vel, org, _ := query.Get()
 
 		if org.Dead {
 			continue
@@ -230,6 +236,36 @@ func (g *Game) logNeuralStats() {
 
 		if g.neuralGenomeMap.Has(entity) {
 			neuralCount++
+			absTurn := math.Abs(float64(org.UTurn))
+			absAngVel := math.Abs(float64(org.AngVel))
+			sumTurn += float64(org.UTurn)
+			sumAbsTurn += absTurn
+			if absTurn > maxAbsTurn {
+				maxAbsTurn = absTurn
+			}
+			sumThrottle += float64(org.UThrottle)
+			if float64(org.UThrottle) > maxThrottle {
+				maxThrottle = float64(org.UThrottle)
+			}
+			sumAngVel += float64(org.AngVel)
+			sumAbsAngVel += absAngVel
+			if absAngVel > maxAbsAngVel {
+				maxAbsAngVel = absAngVel
+			}
+			if absTurn > 0.8 {
+				highTurn++
+			}
+			if org.UThrottle > 0.8 {
+				highThrottle++
+			}
+			if vel != nil {
+				speed := math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y))
+				sumSpeed += speed
+				if speed > maxSpeed {
+					maxSpeed = speed
+				}
+			}
+
 			neuralGenome := g.neuralGenomeMap.Get(entity)
 			if neuralGenome != nil && neuralGenome.BrainGenome != nil {
 				nodes := len(neuralGenome.BrainGenome.Nodes)
@@ -266,12 +302,37 @@ func (g *Game) logNeuralStats() {
 		avgNodes = float64(totalNodes) / float64(neuralCount)
 		avgGenes = float64(totalGenes) / float64(neuralCount)
 	}
+	avgTurn := 0.0
+	avgAbsTurn := 0.0
+	avgThrottle := 0.0
+	avgAngVel := 0.0
+	avgAbsAngVel := 0.0
+	avgSpeed := 0.0
+	pctHighTurn := 0.0
+	pctHighThrottle := 0.0
+	if neuralCount > 0 {
+		n := float64(neuralCount)
+		avgTurn = sumTurn / n
+		avgAbsTurn = sumAbsTurn / n
+		avgThrottle = sumThrottle / n
+		avgAngVel = sumAngVel / n
+		avgAbsAngVel = sumAbsAngVel / n
+		avgSpeed = sumSpeed / n
+		pctHighTurn = (float64(highTurn) / n) * 100.0
+		pctHighThrottle = (float64(highThrottle) / n) * 100.0
+	}
 
 	Logf("╠══════════════════════════════════════════════════════════════════╣")
 	Logf("║ Neural Organisms: %d", neuralCount)
 	Logf("║ Brain Complexity:")
 	Logf("║   Nodes: avg=%.1f, min=%d, max=%d", avgNodes, minNodes, maxNodes)
 	Logf("║   Genes: avg=%.1f, min=%d, max=%d", avgGenes, minGenes, maxGenes)
+	Logf("║ Controls: turn avg=%.2f abs=%.2f max=%.2f | throttle avg=%.2f max=%.2f",
+		avgTurn, avgAbsTurn, maxAbsTurn, avgThrottle, maxThrottle)
+	Logf("║ Rotation: angVel avg=%.3f abs=%.3f max=%.3f | speed avg=%.2f max=%.2f",
+		avgAngVel, avgAbsAngVel, maxAbsAngVel, avgSpeed, maxSpeed)
+	Logf("║ Saturation: |turn|>0.8: %.1f%% | throttle>0.8: %.1f%%",
+		pctHighTurn, pctHighThrottle)
 
 	if len(topSpecies) > 0 {
 		Logf("╠══════════════════════════════════════════════════════════════════╣")
@@ -326,10 +387,11 @@ func (g *Game) logNeuralStats() {
 				modeName = "BREED"
 			}
 
-			Logf("║   Entity %d @ (%.0f,%.0f) v=(%.1f,%.1f) spd=%.1f mode=%s: species=%d, gen=%d, cells=%d, energy=%.0f/%.0f",
+			Logf("║   Entity %d @ (%.0f,%.0f) v=(%.1f,%.1f) spd=%.1f mode=%s: species=%d, gen=%d, cells=%d, energy=%.0f/%.0f | out(turn=%.2f thr=%.2f ang=%.2f atk=%.2f mate=%.2f)",
 				entity.ID(), pos.X, pos.Y, vel.X, vel.Y, speed, modeName,
 				neuralGenome.SpeciesID, neuralGenome.Generation,
-				cells.Count, org.Energy, org.MaxEnergy)
+				cells.Count, org.Energy, org.MaxEnergy,
+				org.UTurn, org.UThrottle, org.AngVel, org.AttackIntent, org.MateIntent)
 			count++
 		}
 	}
