@@ -12,6 +12,7 @@ const (
 	OverlaySpeciesColors    OverlayID = "species_colors"
 	OverlayCapabilityColors OverlayID = "capability_colors"
 	OverlayPerceptionCones  OverlayID = "perception_cones"
+	OverlayBehaviorInspect  OverlayID = "behavior_inspect"
 	OverlayFlowField        OverlayID = "flow_field"
 	OverlayPathfinding      OverlayID = "pathfinding"
 	OverlayCellTypes        OverlayID = "cell_types"
@@ -87,6 +88,15 @@ func (r *OverlayRegistry) registerDefaults() {
 		Description: "Show perception cones for selected organism",
 		Key:         rl.KeyV,
 		KeyLabel:    "V",
+		Category:    "perception",
+	})
+
+	r.Register(OverlayDescriptor{
+		ID:          OverlayBehaviorInspect,
+		Name:        "Behavior Inspect",
+		Description: "Show selected perception vectors + relative highlights",
+		Key:         rl.KeyI,
+		KeyLabel:    "I",
 		Category:    "perception",
 	})
 

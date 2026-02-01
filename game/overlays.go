@@ -7,6 +7,8 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
+	"github.com/pthm-cable/soup/neural"
+	"github.com/pthm-cable/soup/systems"
 	"github.com/pthm-cable/soup/ui"
 )
 
@@ -31,6 +33,8 @@ func (g *Game) drawActiveOverlays() {
 		switch id {
 		case ui.OverlayPerceptionCones:
 			g.drawPerceptionCones()
+		case ui.OverlayBehaviorInspect:
+			g.drawBehaviorInspectOverlay()
 		case ui.OverlayPathfinding:
 			g.drawPathfindingOverlay()
 		case ui.OverlayCollisionBoxes:
@@ -40,9 +44,237 @@ func (g *Game) drawActiveOverlays() {
 			g.drawFlowVectors()
 		case ui.OverlayOrientation:
 			g.drawOrientationDebug()
-		// Species and capability colors are handled in drawOrganism
+			// Species and capability colors are handled in drawOrganism
 		}
 	}
+}
+
+const (
+	behaviorInspectMinSensorGain   = float32(0.1)
+	behaviorInspectCapabilityScale = 4.0
+)
+
+func (g *Game) drawBehaviorInspectOverlay() {
+	if !g.hasSelection || !g.world.Alive(g.selectedEntity) {
+		return
+	}
+
+	posMap := ecs.NewMap[components.Position](g.world)
+	orgMap := ecs.NewMap[components.Organism](g.world)
+	cellMap := ecs.NewMap[components.CellBuffer](g.world)
+
+	if !posMap.Has(g.selectedEntity) || !orgMap.Has(g.selectedEntity) {
+		return
+	}
+
+	pos := posMap.Get(g.selectedEntity)
+	org := orgMap.Get(g.selectedEntity)
+	cells := cellMap.Get(g.selectedEntity)
+
+	centerX, centerY := g.getOrganismCenter(pos, org)
+
+	var caps components.Capabilities
+	if cells != nil {
+		caps = cells.ComputeCapabilities()
+	}
+	digestiveSpectrum := caps.DigestiveSpectrum()
+	composition := caps.Composition()
+	armor := caps.StructuralArmor
+
+	effectiveRadius := g.getEffectivePerceptionRadius(org.PerceptionRadius, cells)
+	if effectiveRadius <= 0 {
+		return
+	}
+
+	selectedSpeciesID := 0
+	if g.neuralGenomeMap.Has(g.selectedEntity) {
+		if ng := g.neuralGenomeMap.Get(g.selectedEntity); ng != nil {
+			selectedSpeciesID = ng.SpeciesID
+		}
+	}
+
+	foodColor := rl.Color{R: 110, G: 220, B: 120, A: 180}
+	mateColor := rl.Color{R: 240, G: 120, B: 200, A: 200}
+	threatColor := rl.Color{R: 230, G: 90, B: 90, A: 200}
+	radiusColor := rl.Color{R: 200, G: 200, B: 200, A: 40}
+
+	rl.DrawCircleLines(int32(centerX), int32(centerY), effectiveRadius, radiusColor)
+
+	var nearestFoodDist float32 = effectiveRadius + 1
+	var nearestFoodX, nearestFoodY float32
+	var nearestMateDist float32 = effectiveRadius + 1
+	var nearestMateX, nearestMateY float32
+	var nearestThreatScore float32
+	var nearestThreatX, nearestThreatY float32
+
+	plantPreference := 1.0 - digestiveSpectrum
+	meatPreference := digestiveSpectrum
+
+	for i := range g.floraSystem.Flora {
+		flora := &g.floraSystem.Flora[i]
+		if flora.Dead {
+			continue
+		}
+		if plantPreference < 0.3 {
+			continue
+		}
+
+		dx, dy := systems.ToroidalDelta(centerX, centerY, flora.X, flora.Y, g.bounds.Width, g.bounds.Height)
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		if dist > effectiveRadius {
+			continue
+		}
+
+		rl.DrawCircleLines(int32(flora.X), int32(flora.Y), flora.Size+2, foodColor)
+
+		if dist < nearestFoodDist {
+			nearestFoodDist = dist
+			nearestFoodX = flora.X
+			nearestFoodY = flora.Y
+		}
+	}
+
+	query := g.allOrgFilter.Query()
+	for query.Next() {
+		entity := query.Entity()
+		if entity == g.selectedEntity {
+			continue
+		}
+
+		pos, _, otherOrg, otherCells := query.Get()
+
+		dx, dy := systems.ToroidalDelta(centerX, centerY, pos.X, pos.Y, g.bounds.Width, g.bounds.Height)
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		if dist > effectiveRadius {
+			continue
+		}
+
+		isMate := false
+		if selectedSpeciesID > 0 && g.neuralGenomeMap.Has(entity) {
+			if ng := g.neuralGenomeMap.Get(entity); ng != nil && ng.SpeciesID == selectedSpeciesID {
+				isMate = !otherOrg.Dead
+			}
+		}
+
+		otherDigestive := float32(0.5)
+		if otherCells != nil {
+			otherCaps := otherCells.ComputeCapabilities()
+			otherDigestive = otherCaps.DigestiveSpectrum()
+		}
+
+		threatScore := float32(0)
+		if !otherOrg.Dead {
+			threatLevel := neural.ThreatLevel(otherDigestive, composition, armor)
+			proximity := 1.0 - (dist / effectiveRadius)
+			if proximity < 0 {
+				proximity = 0
+			}
+			threatScore = threatLevel * proximity
+		}
+
+		isFood := meatPreference >= 0.3
+
+		bodyRadius := otherOrg.BodyRadius
+		if bodyRadius < 1 {
+			bodyRadius = otherOrg.CellSize
+		}
+
+		switch {
+		case isMate:
+			rl.DrawCircleLines(int32(pos.X), int32(pos.Y), bodyRadius+3, mateColor)
+			if dist < nearestMateDist {
+				nearestMateDist = dist
+				nearestMateX = pos.X
+				nearestMateY = pos.Y
+			}
+		case threatScore > 0.1:
+			alpha := uint8(120 + clamp01(threatScore)*100)
+			rl.DrawCircleLines(int32(pos.X), int32(pos.Y), bodyRadius+3, rl.Color{R: threatColor.R, G: threatColor.G, B: threatColor.B, A: alpha})
+			if threatScore > nearestThreatScore {
+				nearestThreatScore = threatScore
+				nearestThreatX = pos.X
+				nearestThreatY = pos.Y
+			}
+		case isFood:
+			rl.DrawCircleLines(int32(pos.X), int32(pos.Y), bodyRadius+2, foodColor)
+			if dist < nearestFoodDist {
+				nearestFoodDist = dist
+				nearestFoodX = pos.X
+				nearestFoodY = pos.Y
+			}
+		}
+	}
+
+	if nearestFoodDist <= effectiveRadius {
+		g.drawVectorArrow(centerX, centerY, nearestFoodX, nearestFoodY, foodColor, "F")
+	}
+	if nearestMateDist <= effectiveRadius {
+		g.drawVectorArrow(centerX, centerY, nearestMateX, nearestMateY, mateColor, "M")
+	}
+	if nearestThreatScore > 0.1 {
+		g.drawVectorArrow(centerX, centerY, nearestThreatX, nearestThreatY, threatColor, "T")
+	}
+}
+
+func (g *Game) getOrganismCenter(pos *components.Position, org *components.Organism) (float32, float32) {
+	cosH := float32(math.Cos(float64(org.Heading)))
+	sinH := float32(math.Sin(float64(org.Heading)))
+	centerX := pos.X + org.OBB.OffsetX*cosH - org.OBB.OffsetY*sinH
+	centerY := pos.Y + org.OBB.OffsetX*sinH + org.OBB.OffsetY*cosH
+	return centerX, centerY
+}
+
+func (g *Game) getEffectivePerceptionRadius(baseRadius float32, cells *components.CellBuffer) float32 {
+	totalGain := float32(0)
+	if cells != nil {
+		for i := uint8(0); i < cells.Count; i++ {
+			totalGain += cells.Cells[i].GetSensorStrength()
+		}
+	}
+	if totalGain < behaviorInspectMinSensorGain {
+		totalGain = behaviorInspectMinSensorGain
+	}
+	scale := float32(0.5 + math.Min(1.0, float64(totalGain)/behaviorInspectCapabilityScale))
+	return baseRadius * scale
+}
+
+func (g *Game) drawVectorArrow(startX, startY, endX, endY float32, color rl.Color, label string) {
+	rl.DrawLine(int32(startX), int32(startY), int32(endX), int32(endY), color)
+
+	dx := endX - startX
+	dy := endY - startY
+	length := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+	if length < 0.1 {
+		return
+	}
+
+	dirX := dx / length
+	dirY := dy / length
+	headLen := float32(10)
+	headAngle := float32(math.Pi / 6)
+	angle := float32(math.Atan2(float64(dirY), float64(dirX)))
+
+	leftX := endX - headLen*float32(math.Cos(float64(angle)-float64(headAngle)))
+	leftY := endY - headLen*float32(math.Sin(float64(angle)-float64(headAngle)))
+	rightX := endX - headLen*float32(math.Cos(float64(angle)+float64(headAngle)))
+	rightY := endY - headLen*float32(math.Sin(float64(angle)+float64(headAngle)))
+
+	rl.DrawLine(int32(endX), int32(endY), int32(leftX), int32(leftY), color)
+	rl.DrawLine(int32(endX), int32(endY), int32(rightX), int32(rightY), color)
+
+	if label != "" {
+		rl.DrawText(label, int32(endX)+4, int32(endY)-4, 12, color)
+	}
+}
+
+func clamp01(v float32) float32 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 // drawPerceptionCones draws vision cones for the selected organism.
