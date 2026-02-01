@@ -439,18 +439,19 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 		}
 
 		state := telemetry.EntityState{
-			ID:            org.ID,
-			Kind:          org.Kind,
-			X:             pos.X,
-			Y:             pos.Y,
-			VelX:          vel.X,
-			VelY:          vel.Y,
-			Heading:       rot.Heading,
-			Energy:        energy.Value,
-			Age:           energy.Age,
-			ReproCooldown: org.ReproCooldown,
-			Brain:         brain.MarshalWeights(),
-			Lifetime:      lifetime,
+			ID:             org.ID,
+			Kind:           org.Kind,
+			X:              pos.X,
+			Y:              pos.Y,
+			VelX:           vel.X,
+			VelY:           vel.Y,
+			Heading:        rot.Heading,
+			Energy:         energy.Value,
+			Age:            energy.Age,
+			ReproCooldown:  org.ReproCooldown,
+			DigestCooldown: org.DigestCooldown,
+			Brain:          brain.MarshalWeights(),
+			Lifetime:       lifetime,
 		}
 
 		snapshot.Entities = append(snapshot.Entities, state)
@@ -580,12 +581,22 @@ func (g *Game) updateBehaviorAndPhysics() {
 
 // updateFeeding handles predator attacks.
 func (g *Game) updateFeeding() {
+	cfg := config.Cfg()
+	digestTime := float32(cfg.Energy.Predator.DigestTime)
+	refugiaStrength := float32(cfg.Refugia.Strength)
+
 	query := g.entityFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
 		pos, _, _, _, energy, caps, org := query.Get()
 
 		if !energy.Alive || org.Kind != components.KindPredator {
+			continue
+		}
+
+		// Skip if still digesting from a previous kill
+		if org.DigestCooldown > 0 {
+			g.collector.RecordBiteBlockedByDigest()
 			continue
 		}
 
@@ -605,12 +616,27 @@ func (g *Game) updateFeeding() {
 				continue
 			}
 
+			// Get prey position for refugia check
+			nPos := g.posMap.Get(neighbor)
+			if nPos == nil {
+				continue
+			}
+
 			// Get prey energy directly via mapper
 			nEnergy := g.energyMap.Get(neighbor)
 			if nEnergy != nil && nEnergy.Alive {
 				// Record bite attempt
 				g.collector.RecordBiteAttempt()
 				g.lifetimeTracker.RecordBiteAttempt(org.ID)
+
+				// Refugia mechanic: high-resource zones protect prey
+				resourceHere := g.resourceField.Sample(nPos.X, nPos.Y)
+				successProb := 1.0 - refugiaStrength*resourceHere
+				if g.rng.Float32() > successProb {
+					// Bite missed due to refugia protection
+					g.collector.RecordBiteMissedRefugia()
+					break // one attempt per tick
+				}
 
 				preyWasAlive := nEnergy.Alive
 
@@ -626,6 +652,8 @@ func (g *Game) updateFeeding() {
 					if preyWasAlive && !nEnergy.Alive {
 						g.collector.RecordKill()
 						g.lifetimeTracker.RecordKill(org.ID)
+						// Start digestion cooldown after a kill
+						org.DigestCooldown = digestTime
 					}
 				}
 
@@ -712,17 +740,28 @@ func (g *Game) cleanupDead() {
 	}
 }
 
-// updateCooldowns decrements reproduction cooldowns.
+// updateCooldowns decrements reproduction and digestion cooldowns.
 func (g *Game) updateCooldowns() {
 	dt := config.Cfg().Derived.DT32
 	query := g.entityFilter.Query()
 	for query.Next() {
 		_, _, _, _, energy, _, org := query.Get()
 
-		if energy.Alive && org.ReproCooldown > 0 {
+		if !energy.Alive {
+			continue
+		}
+
+		if org.ReproCooldown > 0 {
 			org.ReproCooldown -= dt
 			if org.ReproCooldown < 0 {
 				org.ReproCooldown = 0
+			}
+		}
+
+		if org.DigestCooldown > 0 {
+			org.DigestCooldown -= dt
+			if org.DigestCooldown < 0 {
+				org.DigestCooldown = 0
 			}
 		}
 	}

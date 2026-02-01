@@ -100,7 +100,7 @@ energy:
     base_cost: 0.010         # Energy drain per second just for existing (metabolism)
     move_cost: 0.030         # Additional cost multiplier for movement
                              # Actual cost = move_cost * (speed/max_speed)^2 * dt
-    forage_rate: 0.060       # Energy gain per second at resource=1.0 when stationary
+    forage_rate: 0.045       # Energy gain per second at resource=1.0 when stationary
                              # Moving reduces foraging efficiency linearly with speed
   predator:
     base_cost: 0.016         # Higher base metabolism than prey (predator tax)
@@ -109,6 +109,16 @@ energy:
     bite_reward: 0.35        # Base energy transferred per successful bite
     transfer_efficiency: 0.8 # Fraction of taken energy predator actually receives
                              # Models energy loss in food chain transfer
+    digest_time: 1.5         # Seconds after a kill before predator can bite again
+
+# -----------------------------------------------------------------------------
+# Refugia Mechanics
+# High-resource zones provide protection for prey
+# -----------------------------------------------------------------------------
+refugia:
+  strength: 0.5              # Bite success = 1 - strength * resourceHere
+                             # At strength=0.5 and resource=1.0: 50% bite success
+                             # At strength=0.5 and resource=0.5: 75% bite success
 
 # -----------------------------------------------------------------------------
 # Neural Network Architecture

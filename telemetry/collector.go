@@ -12,13 +12,15 @@ type Collector struct {
 	windowStartTick int32
 
 	// Event counters for current window
-	preyBirths  int
-	predBirths  int
-	preyDeaths  int
-	predDeaths  int
-	bitesAttempted int
-	bitesHit    int
-	kills       int
+	preyBirths          int
+	predBirths          int
+	preyDeaths          int
+	predDeaths          int
+	bitesAttempted      int
+	bitesHit            int
+	kills               int
+	bitesBlockedDigest  int
+	bitesMissedRefugia  int
 }
 
 // NewCollector creates a new stats collector.
@@ -51,6 +53,16 @@ func (c *Collector) RecordBiteHit() {
 // RecordKill records a kill.
 func (c *Collector) RecordKill() {
 	c.kills++
+}
+
+// RecordBiteBlockedByDigest records a bite blocked by digestion cooldown.
+func (c *Collector) RecordBiteBlockedByDigest() {
+	c.bitesBlockedDigest++
+}
+
+// RecordBiteMissedRefugia records a bite that missed due to refugia protection.
+func (c *Collector) RecordBiteMissedRefugia() {
+	c.bitesMissedRefugia++
 }
 
 // RecordBirth records a birth event.
@@ -114,11 +126,13 @@ func (c *Collector) Flush(
 		PreyDeaths: c.preyDeaths,
 		PredDeaths: c.predDeaths,
 
-		BitesAttempted: c.bitesAttempted,
-		BitesHit:       c.bitesHit,
-		Kills:          c.kills,
-		HitRate:        hitRate,
-		KillRate:       killRate,
+		BitesAttempted:     c.bitesAttempted,
+		BitesHit:           c.bitesHit,
+		Kills:              c.kills,
+		BitesBlockedDigest: c.bitesBlockedDigest,
+		BitesMissedRefugia: c.bitesMissedRefugia,
+		HitRate:            hitRate,
+		KillRate:           killRate,
 
 		PreyEnergyMean: preyMean,
 		PreyEnergyP10:  preyP10,
@@ -142,6 +156,8 @@ func (c *Collector) Flush(
 	c.bitesAttempted = 0
 	c.bitesHit = 0
 	c.kills = 0
+	c.bitesBlockedDigest = 0
+	c.bitesMissedRefugia = 0
 
 	return stats
 }

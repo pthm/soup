@@ -27,6 +27,7 @@ type Config struct {
 	GPU          GPUConfig          `yaml:"gpu"`
 	Telemetry    TelemetryConfig    `yaml:"telemetry"`
 	Bookmarks    BookmarksConfig    `yaml:"bookmarks"`
+	Refugia      RefugiaConfig      `yaml:"refugia"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
@@ -116,6 +117,12 @@ type PredatorEnergyConfig struct {
 	BiteCost           float64 `yaml:"bite_cost"`
 	BiteReward         float64 `yaml:"bite_reward"`
 	TransferEfficiency float64 `yaml:"transfer_efficiency"`
+	DigestTime         float64 `yaml:"digest_time"`
+}
+
+// RefugiaConfig holds refugia mechanics parameters.
+type RefugiaConfig struct {
+	Strength float64 `yaml:"strength"`
 }
 
 // NeuralConfig holds neural network parameters.

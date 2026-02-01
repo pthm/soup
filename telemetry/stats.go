@@ -22,11 +22,13 @@ type WindowStats struct {
 	PredDeaths  int
 
 	// Hunting
-	BitesAttempted int
-	BitesHit       int
-	Kills          int
-	HitRate        float64 // BitesHit / BitesAttempted (0 if no attempts)
-	KillRate       float64 // Kills / BitesHit (0 if no hits)
+	BitesAttempted     int
+	BitesHit           int
+	Kills              int
+	BitesBlockedDigest int     // Bites blocked by digestion cooldown
+	BitesMissedRefugia int     // Bites that missed due to refugia protection
+	HitRate            float64 // BitesHit / BitesAttempted (0 if no attempts)
+	KillRate           float64 // Kills / BitesHit (0 if no hits)
 
 	// Energy distribution (sampled at window end)
 	PreyEnergyMean float64
@@ -110,6 +112,8 @@ func (s WindowStats) LogValue() slog.Value {
 		slog.Int("bites_attempted", s.BitesAttempted),
 		slog.Int("bites_hit", s.BitesHit),
 		slog.Int("kills", s.Kills),
+		slog.Int("bites_blocked_digest", s.BitesBlockedDigest),
+		slog.Int("bites_missed_refugia", s.BitesMissedRefugia),
 		slog.Float64("hit_rate", s.HitRate),
 		slog.Float64("kill_rate", s.KillRate),
 		slog.Float64("prey_energy_mean", s.PreyEnergyMean),
@@ -138,6 +142,8 @@ func (s WindowStats) LogStats() {
 		"bites_attempted", s.BitesAttempted,
 		"bites_hit", s.BitesHit,
 		"kills", s.Kills,
+		"bites_blocked_digest", s.BitesBlockedDigest,
+		"bites_missed_refugia", s.BitesMissedRefugia,
 		"hit_rate", s.HitRate,
 		"kill_rate", s.KillRate,
 		"prey_energy_mean", s.PreyEnergyMean,

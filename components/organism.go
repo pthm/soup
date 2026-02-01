@@ -17,7 +17,8 @@ type Energy struct {
 
 // Organism bundles identity, kind, and reproduction state.
 type Organism struct {
-	ID            uint32  `inspect:"label"`
-	Kind          Kind    `inspect:"label"`
-	ReproCooldown float32 `inspect:"label,fmt:%.1fs"` // seconds until can reproduce again
+	ID             uint32  `inspect:"label"`
+	Kind           Kind    `inspect:"label"`
+	ReproCooldown  float32 `inspect:"label,fmt:%.1fs"` // seconds until can reproduce again
+	DigestCooldown float32 `inspect:"label,fmt:%.1fs"` // seconds until can bite again (predators only)
 }
