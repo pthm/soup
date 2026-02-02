@@ -15,7 +15,7 @@ import (
 
 // Panel dimensions
 const (
-	PanelWidth   = 320
+	PanelWidth   = 380
 	PanelPadding = 10
 	HeaderHeight = 30
 )
@@ -190,7 +190,7 @@ func (ins *Inspector) Draw(
 	pos := posMap.Get(ins.selected)
 	vel := velMap.Get(ins.selected)
 	rot := rotMap.Get(ins.selected)
-	body := bodyMap.Get(ins.selected)
+	_ = bodyMap.Get(ins.selected) // body available but not currently displayed
 	energy := energyMap.Get(ins.selected)
 	_ = capsMap.Get(ins.selected) // capabilities available but not currently displayed
 	org := orgMap.Get(ins.selected)
@@ -233,23 +233,55 @@ func (ins *Inspector) Draw(
 	x := ins.panelX + PanelPadding
 
 	// Entity info section
-	kindStr := "Prey"
-	if org.Kind == components.KindPredator {
-		kindStr = "Predator"
+	ins.drawSectionHeader(x, y, "ORGANISM")
+	y += 20
+
+	// Identity row
+	kindStr := "Herbivore"
+	if org.Diet >= 0.5 {
+		kindStr = "Carnivore"
 	}
-	rl.DrawText(fmt.Sprintf("ID: %d  Kind: %s", org.ID, kindStr), x, y, 14, ColorHeaderText)
-	y += 22
+	rl.DrawText(fmt.Sprintf("ID: %d", org.ID), x, y, 14, ColorHeaderText)
+	rl.DrawText(kindStr, x+80, y, 14, ColorHeaderText)
+	y += 18
+
+	// Archetype and Clade
+	rl.DrawText(fmt.Sprintf("Archetype: %d", org.FounderArchetypeID), x, y, 12, ColorText)
+	rl.DrawText(fmt.Sprintf("Clade: %d", org.CladeID), x+120, y, 12, ColorText)
+	y += 16
+
+	// Diet bar
+	y += DrawBar(x, y, "Diet", org.Diet, nil)
+
+	// Energy bar
+	if energy != nil {
+		y += DrawBar(x, y, "Energy", energy.Value, nil)
+	}
+
+	// Age
+	if energy != nil {
+		y += DrawLabel(x, y, "Age", fmt.Sprintf("%.1fs", energy.Age), nil)
+	}
 
 	// Separator
+	y += 4
 	rl.DrawLine(x, y, ins.panelX+PanelWidth-PanelPadding, y, ColorPanelBorder)
 	y += 8
+
+	// State section
+	ins.drawSectionHeader(x, y, "STATE")
+	y += 20
 
 	// Position
 	y += DrawLabel(x, y, "Position", fmt.Sprintf("(%.0f, %.0f)", pos.X, pos.Y), nil)
 
 	// Velocity
 	if vel != nil {
-		y += DrawLabel(x, y, "Velocity", fmt.Sprintf("(%.1f, %.1f)", vel.X, vel.Y), nil)
+		speed := float32(0)
+		if vel.X != 0 || vel.Y != 0 {
+			speed = float32(math.Sqrt(float64(vel.X*vel.X + vel.Y*vel.Y)))
+		}
+		y += DrawLabel(x, y, "Speed", fmt.Sprintf("%.1f", speed), nil)
 	}
 
 	// Rotation
@@ -257,15 +289,12 @@ func (ins *Inspector) Draw(
 		y += DrawAngle(x, y, "Heading", rot.Heading, nil)
 	}
 
-	// Energy
-	if energy != nil {
-		y += DrawBar(x, y, "Energy", energy.Value, nil)
-		y += DrawLabel(x, y, "Age", fmt.Sprintf("%.1fs", energy.Age), nil)
+	// Cooldowns (if any)
+	if org.ReproCooldown > 0 {
+		y += DrawLabel(x, y, "Repro CD", fmt.Sprintf("%.1fs", org.ReproCooldown), nil)
 	}
-
-	// Body
-	if body != nil {
-		y += DrawLabel(x, y, "Radius", fmt.Sprintf("%.1f", body.Radius), nil)
+	if org.DigestCooldown > 0 {
+		y += DrawLabel(x, y, "Digest CD", fmt.Sprintf("%.1fs", org.DigestCooldown), nil)
 	}
 
 	// Separator
@@ -279,9 +308,9 @@ func (ins *Inspector) Draw(
 
 	if ins.lastInputs != nil {
 		labelOpts := map[string]string{"labels": "B, BR, R, FR, F, FL, L, BL"}
-		y += DrawBarGroup(x, y, "Prey", ins.lastInputs.Prey[:], labelOpts)
-		y += DrawBarGroup(x, y, "Pred", ins.lastInputs.Pred[:], labelOpts)
-		y += DrawBarGroup(x, y, "Food", ins.lastInputs.Resource[:], labelOpts)
+		y += DrawBarGroup(x, y, "Food", ins.lastInputs.Food[:], labelOpts)
+		y += DrawBarGroup(x, y, "Threat", ins.lastInputs.Threat[:], labelOpts)
+		y += DrawBarGroup(x, y, "Kin", ins.lastInputs.Kin[:], labelOpts)
 	} else {
 		rl.DrawText("(no sensor data)", x, y, 12, ColorLabelDim)
 		y += 16
@@ -301,7 +330,7 @@ func (ins *Inspector) Draw(
 		nn = brains[org.ID]
 	}
 
-	networkHeight := int32(200)
+	networkHeight := int32(320)
 	DrawNetworkDiagram(x, y, PanelWidth-2*PanelPadding, networkHeight, nn, ins.lastAct)
 }
 
@@ -315,20 +344,32 @@ func (ins *Inspector) drawSectionHeader(x, y int32, title string) {
 func (ins *Inspector) calculatePanelHeight() int32 {
 	// Base height
 	height := HeaderHeight + PanelPadding // header
-	height += 22                           // ID line
-	height += 8                            // separator
-	height += 20                           // position
-	height += 20                           // velocity
-	height += 44                           // rotation (angle widget)
-	height += 18                           // energy bar
-	height += 20                           // age
-	height += 20                           // radius
-	height += 12                           // separator
-	height += 20                           // sensors header
-	height += 44 * 3                       // sensor bars (with labels)
-	height += 12                           // separator
-	height += 20                           // network header
-	height += 200                          // network diagram
+
+	// Organism section
+	height += 20  // section header
+	height += 18  // ID + kind row
+	height += 16  // archetype + clade row
+	height += 18  // diet bar
+	height += 18  // energy bar
+	height += 20  // age
+	height += 12  // separator
+
+	// State section
+	height += 20 // section header
+	height += 20 // position
+	height += 20 // speed
+	height += 44 // rotation (angle widget)
+	height += 40 // estimated cooldowns (may not always show)
+	height += 12 // separator
+
+	// Sensors section
+	height += 20      // sensors header
+	height += 44 * 3  // sensor bars (with labels)
+	height += 12      // separator
+
+	// Network section
+	height += 20  // network header
+	height += 320 // network diagram (increased)
 	height += PanelPadding
 
 	return int32(height)
@@ -401,20 +442,20 @@ func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange, zoom float32
 		drawSectorFilled(x, y, rangePx, startAngle, endAngle, color)
 
 		if inputs != nil {
-			preyLevel := clamp01(inputs.Prey[i])
-			predLevel := clamp01(inputs.Pred[i])
+			foodLevel := clamp01(inputs.Food[i])
+			threatLevel := clamp01(inputs.Threat[i])
 
-			if inputs.NearestPrey[i] > 0 {
-				preyRadius := inputs.NearestPrey[i] * zoom
-				preyAlpha := uint8(20 + preyLevel*120)
-				preyColor := rl.Color{R: 80, G: 200, B: 255, A: preyAlpha}
-				drawSectorFilled(x, y, preyRadius, startAngle, endAngle, preyColor)
+			if inputs.NearestFood[i] > 0 {
+				foodRadius := inputs.NearestFood[i] * zoom
+				foodAlpha := uint8(20 + foodLevel*120)
+				foodColor := rl.Color{R: 80, G: 220, B: 80, A: foodAlpha} // Green for food
+				drawSectorFilled(x, y, foodRadius, startAngle, endAngle, foodColor)
 			}
-			if inputs.NearestPred[i] > 0 {
-				predRadius := inputs.NearestPred[i] * zoom
-				predAlpha := uint8(20 + predLevel*120)
-				predColor := rl.Color{R: 255, G: 120, B: 80, A: predAlpha}
-				drawSectorFilled(x, y, predRadius, startAngle, endAngle, predColor)
+			if inputs.NearestThreat[i] > 0 {
+				threatRadius := inputs.NearestThreat[i] * zoom
+				threatAlpha := uint8(20 + threatLevel*120)
+				threatColor := rl.Color{R: 255, G: 80, B: 80, A: threatAlpha} // Red for threat
+				drawSectorFilled(x, y, threatRadius, startAngle, endAngle, threatColor)
 			}
 		}
 

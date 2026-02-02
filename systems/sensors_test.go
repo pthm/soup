@@ -14,32 +14,36 @@ func init() {
 
 func TestSensorInputsAsSlice(t *testing.T) {
 	inputs := SensorInputs{
-		Prey:     [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
-		Pred:     [NumSectors]float32{0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1},
-		Resource: [NumSectors]float32{},
-		Energy:   0.8,
-		Speed:    0.5,
+		Food:   [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
+		Threat: [NumSectors]float32{0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1},
+		Kin:    [NumSectors]float32{},
+		Energy: 0.8,
+		Speed:  0.5,
+		Diet:   0.3,
 	}
 
 	slice := inputs.AsSlice()
 
-	if len(slice) != NumSectors*3+2 {
-		t.Errorf("AsSlice wrong length: got %d, want %d", len(slice), NumSectors*3+2)
+	if len(slice) != NumSectors*3+3 {
+		t.Errorf("AsSlice wrong length: got %d, want %d", len(slice), NumSectors*3+3)
 	}
 
-	// Check prey values
+	// Check food values
 	for i := 0; i < NumSectors; i++ {
-		if slice[i] != inputs.Prey[i] {
-			t.Errorf("Prey[%d] mismatch: got %f, want %f", i, slice[i], inputs.Prey[i])
+		if slice[i] != inputs.Food[i] {
+			t.Errorf("Food[%d] mismatch: got %f, want %f", i, slice[i], inputs.Food[i])
 		}
 	}
 
-	// Check energy and speed
+	// Check energy, speed, and diet
 	if slice[NumSectors*3] != inputs.Energy {
 		t.Errorf("Energy mismatch: got %f, want %f", slice[NumSectors*3], inputs.Energy)
 	}
 	if slice[NumSectors*3+1] != inputs.Speed {
 		t.Errorf("Speed mismatch: got %f, want %f", slice[NumSectors*3+1], inputs.Speed)
+	}
+	if slice[NumSectors*3+2] != inputs.Diet {
+		t.Errorf("Diet mismatch: got %f, want %f", slice[NumSectors*3+2], inputs.Diet)
 	}
 }
 
@@ -52,17 +56,21 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 
 	inputs := ComputeSensors(
 		pos, vel, rot, energy, caps, components.KindPrey,
-		nil, nil, nil, nil, // neighbors, posMap, orgMap, resourceField
+		0.0, // selfDiet (herbivore)
+		nil, nil, nil, // neighbors, posMap, orgMap
 		1280, 720,
 	)
 
-	// With no neighbors, prey and pred should be zero
+	// With no neighbors, food, threat, and kin should be zero
 	for i := 0; i < NumSectors; i++ {
-		if inputs.Prey[i] != 0 {
-			t.Errorf("Prey[%d] should be 0, got %f", i, inputs.Prey[i])
+		if inputs.Food[i] != 0 {
+			t.Errorf("Food[%d] should be 0, got %f", i, inputs.Food[i])
 		}
-		if inputs.Pred[i] != 0 {
-			t.Errorf("Pred[%d] should be 0, got %f", i, inputs.Pred[i])
+		if inputs.Threat[i] != 0 {
+			t.Errorf("Threat[%d] should be 0, got %f", i, inputs.Threat[i])
+		}
+		if inputs.Kin[i] != 0 {
+			t.Errorf("Kin[%d] should be 0, got %f", i, inputs.Kin[i])
 		}
 	}
 

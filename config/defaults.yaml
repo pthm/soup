@@ -195,9 +195,14 @@ neural:
 sensors:
   num_sectors: 8             # Vision divided into this many angular sectors (360°)
                              # More sectors = finer directional resolution
-                             # Total inputs = num_sectors * 3 + 2 (must match systems/sensors.go)
+                             # Total inputs = num_sectors * 3 + 3 (must match systems/sensors.go)
   resource_sample_distance: 0.7  # How far ahead to sample resource field (fraction of vision_range)
                                  # Higher = entities "see" resources further away
+  diet_threshold: 0.2        # Min diet difference to register as food/threat
+                             # e.g., with threshold=0.2, only organisms with diet 0.2+ lower
+                             # are seen as food, and 0.2+ higher as threat
+  kin_range: 0.2             # Diet range for kin detection (similar diet organisms)
+                             # Organisms within this diet difference are seen as kin
 
 # -----------------------------------------------------------------------------
 # GPU Rendering

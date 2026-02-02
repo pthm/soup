@@ -208,6 +208,8 @@ type NeuralConfig struct {
 type SensorsConfig struct {
 	NumSectors             int     `yaml:"num_sectors"`
 	ResourceSampleDistance float64 `yaml:"resource_sample_distance"`
+	DietThreshold          float64 `yaml:"diet_threshold"` // Min diet difference to register as food/threat
+	KinRange               float64 `yaml:"kin_range"`      // Diet range for kin detection
 }
 
 // GPUConfig holds GPU rendering parameters.
@@ -312,7 +314,7 @@ type ParticleConfig struct {
 // DerivedConfig holds computed values derived from the loaded config.
 type DerivedConfig struct {
 	DT32           float32          // Physics.DT as float32
-	NumInputs      int              // Sensors.NumSectors*3 + 2
+	NumInputs      int              // Sensors.NumSectors*3 + 3
 	ScreenW32      float32          // Screen.Width as float32
 	ScreenH32      float32          // Screen.Height as float32
 	WorldW32       float32          // Effective world width as float32
@@ -379,7 +381,7 @@ func Load(path string) (*Config, error) {
 // computeDerived calculates values derived from loaded config.
 func (c *Config) computeDerived() {
 	c.Derived.DT32 = float32(c.Physics.DT)
-	c.Derived.NumInputs = c.Sensors.NumSectors*3 + 2
+	c.Derived.NumInputs = c.Sensors.NumSectors*3 + 3 // food, threat, kin + energy, speed, diet
 	c.Derived.ScreenW32 = float32(c.Screen.Width)
 	c.Derived.ScreenH32 = float32(c.Screen.Height)
 

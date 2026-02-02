@@ -9,11 +9,17 @@ import (
 )
 
 // Input labels for the neural network visualization.
+// Order: Food[8], Threat[8], Kin[8], Energy, Speed, Diet
+// Sector order: B, BR, R, FR, F, FL, L, BL
 var InputLabels = []string{
-	"Prey L2", "Prey L1", "Prey C", "Prey R1", "Prey R2",
-	"Pred L2", "Pred L1", "Pred C", "Pred R1", "Pred R2",
-	"Wall L2", "Wall L1", "Wall C", "Wall R1", "Wall R2",
-	"Energy", "Speed",
+	// Food (8 sectors)
+	"Food B", "Food BR", "Food R", "Food FR", "Food F", "Food FL", "Food L", "Food BL",
+	// Threat (8 sectors)
+	"Thrt B", "Thrt BR", "Thrt R", "Thrt FR", "Thrt F", "Thrt FL", "Thrt L", "Thrt BL",
+	// Kin (8 sectors)
+	"Kin B", "Kin BR", "Kin R", "Kin FR", "Kin F", "Kin FL", "Kin L", "Kin BL",
+	// Self state
+	"Energy", "Speed", "Diet",
 }
 
 // Output labels for the neural network visualization.

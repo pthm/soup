@@ -28,7 +28,10 @@ var (
 	cachedPredBaseCost float32
 	cachedPreyMoveCost float32
 	cachedPredMoveCost float32
-	cacheInitialized   bool
+	// Diet-relative sensor thresholds
+	cachedDietThreshold float32
+	cachedKinRange      float32
+	cacheInitialized    bool
 )
 
 // InitSensorCache caches config values for hot-path access.
@@ -51,6 +54,9 @@ func InitSensorCache() {
 	cachedPredBaseCost = float32(cfg.Energy.Predator.BaseCost)
 	cachedPreyMoveCost = float32(cfg.Energy.Prey.MoveCost)
 	cachedPredMoveCost = float32(cfg.Energy.Predator.MoveCost)
+	// Diet-relative sensor thresholds
+	cachedDietThreshold = float32(cfg.Sensors.DietThreshold)
+	cachedKinRange = float32(cfg.Sensors.KinRange)
 	cacheInitialized = true
 }
 
@@ -58,8 +64,8 @@ func InitSensorCache() {
 // This value must match config.yaml sensors.num_sectors.
 const NumSectors = 8
 
-// NumInputs is the total number of neural network inputs: NumSectors*3 + 2.
-const NumInputs = NumSectors*3 + 2 // 26 for K=8
+// NumInputs is the total number of neural network inputs: NumSectors*3 + 3.
+const NumInputs = NumSectors*3 + 3 // 27 for K=8 (food, threat, kin, energy, speed, diet)
 
 // TopKPerSector is the max neighbors kept per (sector, kind) for bounded sensing.
 // Total max neighbors processed = NumSectors * 2 * TopKPerSector = 32 for k=2.
@@ -120,52 +126,61 @@ func (b *sectorBin) minDist() float32 {
 	return fastSqrt(minDistSq)
 }
 
-// SectorBins holds per-sector top-k bins for both prey and predators.
+// SectorBins holds per-sector top-k bins for food organisms, threat, and kin.
+// Resource-based food is sampled separately and blended in.
 // Reuse across calls to avoid allocations.
 type SectorBins struct {
-	Prey [NumSectors]sectorBin
-	Pred [NumSectors]sectorBin
+	FoodOrg [NumSectors]sectorBin // edible organisms
+	Threat  [NumSectors]sectorBin // organisms that can eat me
+	Kin     [NumSectors]sectorBin // similar diet organisms
 }
 
 // Clear resets all bins for reuse.
 func (s *SectorBins) Clear() {
 	for i := 0; i < NumSectors; i++ {
-		s.Prey[i].count = 0
-		s.Pred[i].count = 0
+		s.FoodOrg[i].count = 0
+		s.Threat[i].count = 0
+		s.Kin[i].count = 0
 	}
 }
 
 // SensorInputs holds the computed sensor values for one entity.
-// Total: K*3 + 2 = 17 floats for K=5 sectors.
+// Total: K*3 + 3 = 27 floats for K=8 sectors.
+// Channels are diet-relative: food (can eat), threat (can eat me), kin (similar diet).
 type SensorInputs struct {
-	Prey     [NumSectors]float32 // density of prey in each sector
-	Pred     [NumSectors]float32 // density of predators in each sector
-	Resource [NumSectors]float32 // resource level ahead in each sector
-	NearestPrey [NumSectors]float32 // nearest prey distance per sector (0 = none)
-	NearestPred [NumSectors]float32 // nearest predator distance per sector (0 = none)
-	Energy   float32             // self energy [0,1]
-	Speed    float32             // self speed normalized [0,1]
+	Food   [NumSectors]float32 // organisms with much lower diet (edible)
+	Threat [NumSectors]float32 // organisms with much higher diet (dangerous)
+	Kin    [NumSectors]float32 // organisms with similar diet
+	// Nearest distances for inspector (not fed to neural network)
+	NearestFood   [NumSectors]float32 // nearest food distance per sector (0 = none)
+	NearestThreat [NumSectors]float32 // nearest threat distance per sector (0 = none)
+	Energy        float32             // self energy [0,1]
+	Speed         float32             // self speed normalized [0,1]
+	Diet          float32             // self diet [0,1] (0=herbivore, 1=carnivore)
 }
 
 // FillSlice writes sensor inputs into dst (must be len >= NumInputs).
 // Returns dst for convenience. Use this to avoid allocations.
+// Order: Food[K], Threat[K], Kin[K], Energy, Speed, Diet
 func (s *SensorInputs) FillSlice(dst []float32) []float32 {
 	idx := 0
 	for i := 0; i < NumSectors; i++ {
-		dst[idx] = s.Prey[i]
+		dst[idx] = s.Food[i]
 		idx++
 	}
 	for i := 0; i < NumSectors; i++ {
-		dst[idx] = s.Pred[i]
+		dst[idx] = s.Threat[i]
 		idx++
 	}
 	for i := 0; i < NumSectors; i++ {
-		dst[idx] = s.Resource[i]
+		dst[idx] = s.Kin[i]
 		idx++
 	}
 	dst[idx] = s.Energy
 	idx++
 	dst[idx] = s.Speed
+	idx++
+	dst[idx] = s.Diet
 	return dst[:NumInputs]
 }
 
@@ -177,14 +192,33 @@ func (s *SensorInputs) AsSlice() []float32 {
 }
 
 // ComputeSensorsBounded calculates sensor inputs with bounded neighbor processing.
-// Uses per-sector top-k sampling to cap work at O(NumSectors * TopKPerSector * 2).
+// Uses per-sector top-k sampling to cap work at O(NumSectors * TopKPerSector * 3).
 // bins must be provided and will be cleared before use.
+//
+// Channels:
+//   - Food: weighted blend of resource field and edible organisms
+//     Food[k] = (1-diet)*FoodRes[k] + diet*FoodOrg[k]
+//   - Threat: organisms that can eat me (edibility of me to them)
+//   - Kin: organisms from same lineage (clade/archetype based)
+//
+// Edibility function: edibility(pred, prey) = pred.diet * (1 - prey.diet)
+//   - Carnivore eating herbivore: 1.0 * 1.0 = 1.0 (high)
+//   - Herbivore eating anything: 0.0 * x = 0.0 (can't hunt)
+//   - Omnivore eating herbivore: 0.5 * 1.0 = 0.5 (moderate)
+//
+// Kin signal based on lineage:
+//   - Same CladeID: 1.0 (direct relatives)
+//   - Same ArchetypeID, different Clade: 0.5 (same species)
+//   - Different ArchetypeID: 0.0 (different species)
 func ComputeSensorsBounded(
 	selfVel components.Velocity,
 	selfRot components.Rotation,
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
 	selfKind components.Kind,
+	selfDiet float32,
+	selfCladeID uint64,
+	selfArchetypeID uint8,
 	neighbors []Neighbor,
 	orgMap *ecs.Map1[components.Organism],
 	resourceField ResourceSampler,
@@ -198,6 +232,7 @@ func ComputeSensorsBounded(
 	speed := fastSqrt(speedSq)
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
+	inputs.Diet = selfDiet
 
 	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
 	invVisionRange := 1.0 / selfCaps.VisionRange
@@ -215,7 +250,7 @@ func ComputeSensorsBounded(
 		maxProcess = MaxQueryResults
 	}
 
-	// Pass 1: Classify and insert into top-k bins
+	// Pass 1: Classify neighbors using edibility model
 	for i := 0; i < maxProcess; i++ {
 		n := &neighbors[i]
 
@@ -224,7 +259,7 @@ func ComputeSensorsBounded(
 			continue
 		}
 
-		// Get organism kind
+		// Get neighbor organism
 		nOrg := orgMap.Get(n.E)
 		if nOrg == nil {
 			continue
@@ -240,26 +275,74 @@ func ComputeSensorsBounded(
 		dist := fastSqrt(n.DistSq)
 		distWeight := clamp01(1.0 - dist*invVisionRange)
 		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
-		weight := distWeight * effWeight
+		baseWeight := distWeight * effWeight
 
-		// Insert into appropriate top-k bin
-		if nOrg.Kind == components.KindPrey {
-			bins.Prey[sectorIdx].insert(n.DistSq, weight)
-		} else {
-			bins.Pred[sectorIdx].insert(n.DistSq, weight)
+		// Edibility model: edibility(pred, prey) = pred.diet * (1 - prey.diet)
+		// Can I eat them? (I'm the predator)
+		edSelf := selfDiet * (1.0 - nOrg.Diet)
+		// Can they eat me? (They're the predator)
+		edOther := nOrg.Diet * (1.0 - selfDiet)
+
+		// Kin detection based on lineage (clade/archetype)
+		// Same clade = 1.0, same archetype = 0.5, different archetype = 0.0
+		var kinSimilarity float32
+		if nOrg.CladeID == selfCladeID {
+			kinSimilarity = 1.0 // Direct relatives
+		} else if nOrg.FounderArchetypeID == selfArchetypeID {
+			kinSimilarity = 0.5 // Same species, different lineage
+		}
+
+		// Food (edible organisms): weight by how edible they are to me
+		if edSelf > 0.05 { // Small threshold to filter noise
+			weight := baseWeight * edSelf
+			bins.FoodOrg[sectorIdx].insert(n.DistSq, weight)
+		}
+
+		// Threat: weight by how edible I am to them
+		if edOther > 0.05 {
+			weight := baseWeight * edOther
+			bins.Threat[sectorIdx].insert(n.DistSq, weight)
+		}
+
+		// Kin: same lineage organisms (same clade or archetype)
+		if kinSimilarity > 0 {
+			weight := baseWeight * kinSimilarity
+			bins.Kin[sectorIdx].insert(n.DistSq, weight)
 		}
 	}
 
-	// Pass 2: Aggregate from selected neighbors and capture nearest distances
-	for i := 0; i < NumSectors; i++ {
-		inputs.Prey[i] = smoothSaturate(bins.Prey[i].sum())
-		inputs.Pred[i] = smoothSaturate(bins.Pred[i].sum())
-		inputs.NearestPrey[i] = bins.Prey[i].minDist()
-		inputs.NearestPred[i] = bins.Pred[i].minDist()
+	// Pass 2: Aggregate and blend signals
+	// Sample resource field for herbivore food component
+	var resourceSignals [NumSectors]float32
+	if resourceField != nil {
+		resourceSignals = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
 	}
 
-	// Resource level per sector
-	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
+	// Blend weights based on diet:
+	// - Herbivores (diet=0): Food = 100% resource, 0% organisms
+	// - Carnivores (diet=1): Food = 0% resource, 100% organisms
+	// - Omnivores (diet=0.5): Food = 50% resource, 50% organisms
+	wRes := 1.0 - selfDiet // Resource weight
+	wOrg := selfDiet       // Organism weight
+
+	for i := 0; i < NumSectors; i++ {
+		// Resource-based food (for herbivores)
+		foodRes := resourceSignals[i]
+
+		// Organism-based food (for carnivores)
+		foodOrg := smoothSaturate(bins.FoodOrg[i].sum())
+
+		// Blended food signal
+		inputs.Food[i] = clamp01(wRes*foodRes + wOrg*foodOrg)
+
+		// Threat and Kin
+		inputs.Threat[i] = smoothSaturate(bins.Threat[i].sum())
+		inputs.Kin[i] = smoothSaturate(bins.Kin[i].sum())
+
+		// Nearest distances (for visualization)
+		inputs.NearestFood[i] = bins.FoodOrg[i].minDist()
+		inputs.NearestThreat[i] = bins.Threat[i].minDist()
+	}
 
 	return inputs
 }
@@ -272,6 +355,9 @@ func ComputeSensorsFromNeighbors(
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
 	selfKind components.Kind,
+	selfDiet float32,
+	selfCladeID uint64,
+	selfArchetypeID uint8,
 	neighbors []Neighbor,
 	orgMap *ecs.Map1[components.Organism],
 	resourceField ResourceSampler,
@@ -279,7 +365,8 @@ func ComputeSensorsFromNeighbors(
 ) SensorInputs {
 	var bins SectorBins
 	return ComputeSensorsBounded(
-		selfVel, selfRot, selfEnergy, selfCaps, selfKind,
+		selfVel, selfRot, selfEnergy, selfCaps, selfKind, selfDiet,
+		selfCladeID, selfArchetypeID,
 		neighbors, orgMap, resourceField, selfPos, &bins,
 	)
 }
@@ -293,10 +380,10 @@ func ComputeSensors(
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
 	selfKind components.Kind,
+	selfDiet float32,
 	neighbors []ecs.Entity,
 	posMap *ecs.Map1[components.Position],
 	orgMap *ecs.Map1[components.Organism],
-	resourceField ResourceSampler,
 	worldWidth, worldHeight float32,
 ) SensorInputs {
 	var inputs SensorInputs
@@ -305,6 +392,14 @@ func ComputeSensors(
 	speed := float32(math.Sqrt(float64(selfVel.X*selfVel.X + selfVel.Y*selfVel.Y)))
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
 	inputs.Energy = clamp01(selfEnergy.Value)
+	inputs.Diet = selfDiet
+
+	// Diet thresholds
+	dietThreshold := cachedDietThreshold
+	kinRange := cachedKinRange
+
+	// Accumulators for smooth saturation
+	var foodAcc, threatAcc, kinAcc [NumSectors]float32
 
 	// Process neighbors
 	for _, neighbor := range neighbors {
@@ -334,30 +429,43 @@ func ComputeSensors(
 
 		// Effectiveness weight based on angle and self kind
 		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
-		weight := distWeight * effWeight
 
-		// Accumulate by kind
-		if nOrg.Kind == components.KindPrey {
-			inputs.Prey[sectorIdx] += weight
-			if inputs.NearestPrey[sectorIdx] == 0 || dist < inputs.NearestPrey[sectorIdx] {
-				inputs.NearestPrey[sectorIdx] = dist
+		// Diet-relative classification
+		dietDiff := nOrg.Diet - selfDiet
+
+		if dietDiff < -dietThreshold {
+			// Food: neighbor has much lower diet
+			dietMag := minf(1.0, -dietDiff)
+			weight := distWeight * effWeight * dietMag
+			foodAcc[sectorIdx] += weight
+			if inputs.NearestFood[sectorIdx] == 0 || dist < inputs.NearestFood[sectorIdx] {
+				inputs.NearestFood[sectorIdx] = dist
+			}
+		} else if dietDiff > dietThreshold {
+			// Threat: neighbor has much higher diet
+			dietMag := minf(1.0, dietDiff)
+			weight := distWeight * effWeight * dietMag
+			threatAcc[sectorIdx] += weight
+			if inputs.NearestThreat[sectorIdx] == 0 || dist < inputs.NearestThreat[sectorIdx] {
+				inputs.NearestThreat[sectorIdx] = dist
 			}
 		} else {
-			inputs.Pred[sectorIdx] += weight
-			if inputs.NearestPred[sectorIdx] == 0 || dist < inputs.NearestPred[sectorIdx] {
-				inputs.NearestPred[sectorIdx] = dist
+			// Kin: similar diet
+			kinWeight := 1.0 - absf(dietDiff)/kinRange
+			if kinWeight < 0 {
+				kinWeight = 0
 			}
+			weight := distWeight * effWeight * kinWeight
+			kinAcc[sectorIdx] += weight
 		}
 	}
 
 	// Normalize accumulated values with smooth saturation
 	for i := 0; i < NumSectors; i++ {
-		inputs.Prey[i] = smoothSaturate(inputs.Prey[i])
-		inputs.Pred[i] = smoothSaturate(inputs.Pred[i])
+		inputs.Food[i] = smoothSaturate(foodAcc[i])
+		inputs.Threat[i] = smoothSaturate(threatAcc[i])
+		inputs.Kin[i] = smoothSaturate(kinAcc[i])
 	}
-
-	// Resource level per sector (full 360°)
-	inputs.Resource = computeResourceSensors(selfPos, selfRot.Heading, selfCaps, resourceField)
 
 	return inputs
 }
@@ -469,6 +577,13 @@ func smoothSaturate(x float32) float32 {
 
 func minf(a, b float32) float32 {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxf(a, b float32) float32 {
+	if a > b {
 		return a
 	}
 	return b

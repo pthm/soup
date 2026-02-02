@@ -8,11 +8,11 @@ import (
 
 // Network dimensions (compile-time constants for array sizing).
 // These values must match the corresponding config values:
-// - NumInputs = sensors.num_sectors * 3 + 2
+// - NumInputs = sensors.num_sectors * 3 + 3
 // - NumHidden = neural.num_hidden
 // - NumOutputs = neural.num_outputs
 const (
-	NumInputs  = 26 // K*3 sectors + 2 self-state (K=8)
+	NumInputs  = 27 // K*3 sectors + 3 self-state (K=8): energy, speed, diet
 	NumHidden  = 16
 	NumOutputs = 3 // turn, thrust, bite
 )
