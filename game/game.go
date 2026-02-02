@@ -344,6 +344,9 @@ func (g *Game) simulationStep() {
 
 // Unload releases all resources.
 func (g *Game) Unload() {
+	// Stop parallel workers first
+	g.stopParallelWorkers()
+
 	if g.backgroundRenderer != nil {
 		g.backgroundRenderer.Unload()
 	}

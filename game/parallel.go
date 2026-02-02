@@ -11,6 +11,10 @@ import (
 	"github.com/pthm-cable/soup/systems"
 )
 
+// parallelThreshold is the minimum entity count to use parallel processing.
+// Below this, single-threaded is faster due to goroutine overhead.
+const parallelThreshold = 64
+
 // entitySnapshot captures read-only state for parallel processing.
 type entitySnapshot struct {
 	Entity      ecs.Entity
@@ -44,12 +48,25 @@ type workerScratch struct {
 	SectorBins systems.SectorBins
 }
 
+// workChunk represents a range of entities for a worker to process.
+type workChunk struct {
+	start, end int
+	dt         float32
+}
+
 // parallelState holds resources for parallel behavior computation.
 type parallelState struct {
 	snapshots  []entitySnapshot
 	intents    []intent
 	scratches  []workerScratch
 	numWorkers int
+
+	// Worker pool channels
+	workChan chan workChunk // sends work to workers
+	doneChan chan struct{}  // workers signal completion
+	stopChan chan struct{}  // signals workers to exit
+	wg       sync.WaitGroup // tracks active workers
+	running  bool           // true if workers are running
 }
 
 func newParallelState() *parallelState {
@@ -66,7 +83,56 @@ func newParallelState() *parallelState {
 	}
 }
 
-// updateBehaviorAndPhysicsParallel is the parallelized version.
+// startWorkers launches persistent worker goroutines.
+func (p *parallelState) startWorkers(g *Game) {
+	if p.running {
+		return
+	}
+
+	p.workChan = make(chan workChunk, p.numWorkers)
+	p.doneChan = make(chan struct{}, p.numWorkers)
+	p.stopChan = make(chan struct{})
+	p.running = true
+
+	for i := 0; i < p.numWorkers; i++ {
+		p.wg.Add(1)
+		go p.worker(g, i)
+	}
+}
+
+// stopWorkers signals all workers to exit and waits for them.
+func (p *parallelState) stopWorkers() {
+	if !p.running {
+		return
+	}
+
+	close(p.stopChan)
+	p.wg.Wait()
+	close(p.workChan)
+	close(p.doneChan)
+	p.running = false
+}
+
+// worker runs in a goroutine, processing chunks until stopped.
+func (p *parallelState) worker(g *Game, workerID int) {
+	defer p.wg.Done()
+	scratch := &p.scratches[workerID]
+
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case chunk, ok := <-p.workChan:
+			if !ok {
+				return
+			}
+			g.computeChunk(chunk.start, chunk.end, scratch, chunk.dt)
+			p.doneChan <- struct{}{}
+		}
+	}
+}
+
+// updateBehaviorAndPhysicsParallel uses dynamic parallelization.
 func (g *Game) updateBehaviorAndPhysicsParallel() {
 	cfg := g.config()
 	dt := cfg.Derived.DT32
@@ -115,11 +181,32 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 	}
 	g.parallel.intents = g.parallel.intents[:n]
 
-	// Phase B: Parallel compute (workers process chunks)
+	// Phase B: Compute - choose single or parallel based on entity count
+	if n < parallelThreshold {
+		// Single-threaded for small populations
+		scratch := &g.parallel.scratches[0]
+		g.computeChunk(0, n, scratch, dt)
+	} else {
+		// Parallel for larger populations
+		g.computeParallel(n, dt)
+	}
+
+	// Phase C: Apply intents (single-threaded, preserves determinism)
+	g.applyIntents()
+}
+
+// computeParallel dispatches work to the worker pool.
+func (g *Game) computeParallel(n int, dt float32) {
+	// Ensure workers are running
+	if !g.parallel.running {
+		g.parallel.startWorkers(g)
+	}
+
 	numWorkers := g.parallel.numWorkers
 	chunkSize := (n + numWorkers - 1) / numWorkers
 
-	var wg sync.WaitGroup
+	// Dispatch chunks to workers
+	chunksDispatched := 0
 	for w := 0; w < numWorkers; w++ {
 		start := w * chunkSize
 		end := start + chunkSize
@@ -130,16 +217,18 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 			continue
 		}
 
-		wg.Add(1)
-		go func(workerID, i0, i1 int) {
-			defer wg.Done()
-			scratch := &g.parallel.scratches[workerID]
-			g.computeChunk(i0, i1, scratch, dt)
-		}(w, start, end)
+		g.parallel.workChan <- workChunk{start: start, end: end, dt: dt}
+		chunksDispatched++
 	}
-	wg.Wait()
 
-	// Phase C: Apply intents (single-threaded, preserves determinism)
+	// Wait for all chunks to complete
+	for i := 0; i < chunksDispatched; i++ {
+		<-g.parallel.doneChan
+	}
+}
+
+// applyIntents writes computed results back to ECS components.
+func (g *Game) applyIntents() {
 	var selectedEntity any
 	var hasSelection bool
 	if g.inspector != nil {
@@ -195,6 +284,8 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 
 // computeChunk processes a range of entities for a single worker.
 func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
+	thrustDeadzone := float32(g.config().Capabilities.ThrustDeadzone)
+
 	for i := i0; i < i1; i++ {
 		snap := &g.parallel.snapshots[i]
 		intent := &g.parallel.intents[i]
@@ -219,7 +310,6 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 		turn, thrust, _ := snap.Brain.Forward(inputs)
 
 		// Apply thrust deadzone
-		thrustDeadzone := float32(g.config().Capabilities.ThrustDeadzone)
 		if thrust < thrustDeadzone {
 			thrust = 0
 		}
@@ -276,5 +366,12 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 		intent.NewVelY = newVelY
 		intent.NewPosX = newPosX
 		intent.NewPosY = newPosY
+	}
+}
+
+// stopParallelWorkers should be called when shutting down the game.
+func (g *Game) stopParallelWorkers() {
+	if g.parallel != nil {
+		g.parallel.stopWorkers()
 	}
 }

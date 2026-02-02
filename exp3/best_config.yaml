@@ -1,0 +1,176 @@
+screen:
+    width: 1280
+    height: 720
+    target_fps: 60
+world:
+    width: 2560
+    height: 1440
+physics:
+    dt: 0.016666666666666666
+    grid_cell_size: 64
+entity:
+    body_radius: 10
+    initial_energy: 0.8
+capabilities:
+    prey:
+        vision_range: 100
+        vision_weights:
+            - 0.05
+            - 0.6
+            - 1
+            - 0.6
+            - 0.15
+            - 0.6
+            - 1
+            - 0.6
+    predator:
+        vision_range: 140
+        vision_weights:
+            - 0
+            - 0
+            - 0
+            - 0.6
+            - 1
+            - 0.6
+            - 0
+            - 0
+    min_effectiveness: 0.05
+    max_speed: 80
+    max_accel: 180
+    max_turn_rate: 3.5
+    drag: 1.2
+    bite_range: 10
+    bite_cost: 0.02
+    thrust_deadzone: 0.1
+population:
+    initial: 40
+    max_prey: 200
+    max_pred: 106
+    respawn_threshold: 5
+    respawn_count: 5
+    predator_spawn_chance: 0.25
+    min_predators: 0
+    min_prey: 0
+reproduction:
+    prey_threshold: 0.7
+    pred_threshold: 0.7
+    maturity_age: 8
+    prey_cooldown: 15
+    pred_cooldown: 20
+    cooldown_jitter: 1
+    parent_energy_split: 0.55
+    child_energy: 0.35
+    spawn_offset: 15
+    heading_jitter: 0.25
+    pred_density_k: 0
+mutation:
+    rate: 0.05
+    sigma: 0.08
+    big_rate: 0.01
+    big_sigma: 0.4
+    bias_rate_multiplier: 0.5
+energy:
+    prey:
+        base_cost: 0.005
+        move_cost: 0.1891234565242395
+        forage_rate: 0.1
+        grazing_peak: 0.15
+        accel_cost: 0.03
+    predator:
+        base_cost: 0.019265124072189516
+        move_cost: 0.06469991827079682
+        bite_cost: 0.003
+        bite_reward: 0.8
+        transfer_efficiency: 0.7627086659388155
+        digest_time: 0.8
+        accel_cost: 0.01
+    interpolation:
+        grazing_diet_cap: 0.3
+        hunting_diet_floor: 0.7
+resource:
+    graze_radius: 1
+    forage_efficiency: 1
+potential:
+    scale: 4.1
+    octaves: 5
+    lacunarity: 3.3
+    gain: 0.66
+    contrast: 4.69
+    drift_x: 0.0005
+    drift_y: 0.0007
+    update_sec: 3
+neural:
+    num_hidden: 16
+    num_outputs: 3
+sensors:
+    num_sectors: 8
+    resource_sample_distance: 0.7
+    diet_threshold: 0.2
+    kin_range: 0.2
+gpu:
+    flow_texture_size: 128
+    flow_update_interval: 30
+    resource_texture_size: 128
+telemetry:
+    stats_window: 10
+    bookmark_history_size: 10
+    perf_collector_window: 600
+bookmarks:
+    hunt_breakthrough:
+        multiplier: 2
+        min_kills: 3
+    forage_breakthrough:
+        multiplier: 2
+        min_resource: 0.3
+    predator_recovery:
+        min_population: 3
+        recovery_multiplier: 3
+        min_final: 6
+    prey_crash:
+        drop_percent: 0.3
+        min_drop: 10
+    stable_ecosystem:
+        min_prey: 10
+        min_pred: 3
+        cv_threshold: 0.04
+        stable_windows: 5
+refugia:
+    strength: 0.5
+hall_of_fame:
+    enabled: true
+    size: 30
+    reseed_threshold: 2
+    reseed_count: 3
+    reseed_energy: 0.9
+    fitness:
+        children_weight: 3
+        survival_weight: 0.1
+        kills_weight: 2
+        forage_weight: 1
+    entry:
+        min_children: 1
+        min_survival_sec: 60
+        min_foraging: 0.5
+        min_kills: 1
+particles:
+    max_count: 8000
+    spawn_rate: 100
+    initial_mass: 0.01
+    deposit_rate: 2
+    pickup_rate: 0.5
+    cell_capacity: 1
+    flow_strength: 40
+    flow_grid_size: 32
+    flow_update_sec: 30
+    flow_scale: 2
+    flow_octaves: 2
+    flow_evolution: 0.03
+archetypes:
+    - name: grazer
+      diet: 0
+    - name: hunter
+      diet: 1
+clades:
+    split_chance: 0.005
+    delta_threshold: 0.015
+    diet_threshold: 0.05
