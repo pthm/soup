@@ -57,21 +57,41 @@ type runResult struct {
 	hallOfFame    *telemetry.HallOfFame
 }
 
+// seedResult holds the result from one seed evaluation.
+type seedResult struct {
+	fitness    float64
+	hallOfFame *telemetry.HallOfFame
+}
+
 // Evaluate computes fitness for a parameter vector (lower = better).
 func (fe *FitnessEvaluator) Evaluate(x []float64) float64 {
-	// Average fitness across multiple seeds
+	// Run all seeds in parallel
+	results := make([]seedResult, len(fe.seeds))
+	var wg sync.WaitGroup
+
+	for i, seed := range fe.seeds {
+		wg.Add(1)
+		go func(idx int, s int64) {
+			defer wg.Done()
+			result := fe.runSimulation(x, s)
+			results[idx] = seedResult{
+				fitness:    fe.computeFitness(result),
+				hallOfFame: result.hallOfFame,
+			}
+		}(i, seed)
+	}
+	wg.Wait()
+
+	// Aggregate results
 	var totalFitness float64
 	var bestSeedFitness float64 = math.Inf(1)
 	var bestSeedHallOfFame *telemetry.HallOfFame
 
-	for _, seed := range fe.seeds {
-		result := fe.runSimulation(x, seed)
-		fitness := fe.computeFitness(result)
-		totalFitness += fitness
-
-		if fitness < bestSeedFitness {
-			bestSeedFitness = fitness
-			bestSeedHallOfFame = result.hallOfFame
+	for _, r := range results {
+		totalFitness += r.fitness
+		if r.fitness < bestSeedFitness {
+			bestSeedFitness = r.fitness
+			bestSeedHallOfFame = r.hallOfFame
 		}
 	}
 
@@ -94,10 +114,6 @@ func (fe *FitnessEvaluator) runSimulation(x []float64, seed int64) *runResult {
 	cfg := fe.copyConfig()
 	fe.params.ApplyToConfig(cfg, x)
 
-	// Initialize config globally (required by game)
-	config.MustInit("")
-	*config.Cfg() = *cfg
-
 	result := &runResult{}
 
 	// Callback to collect stats
@@ -106,13 +122,14 @@ func (fe *FitnessEvaluator) runSimulation(x []float64, seed int64) *runResult {
 		stats = append(stats, s)
 	}
 
-	// Create and run game
+	// Create and run game with per-game config (no global state)
 	g := game.NewGameWithOptions(game.Options{
 		Seed:           seed,
 		Headless:       true,
 		StatsWindowSec: fe.statsWindow,
 		StepsPerUpdate: 1,
 		StatsCallback:  callback,
+		Config:         cfg,
 	})
 
 	// Run simulation

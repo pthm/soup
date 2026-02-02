@@ -7,13 +7,12 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 )
 
 // spawnInitialPopulation creates the starting entities.
 func (g *Game) spawnInitialPopulation() {
-	cfg := config.Cfg()
+	cfg := g.config()
 
 	// Get archetype indices for grazer and hunter (default archetypes)
 	grazerIdx := cfg.Derived.ArchetypeIndex["grazer"]
@@ -36,7 +35,7 @@ func (g *Game) spawnInitialPopulation() {
 
 // spawnEntity creates a new entity with a fresh brain using the given archetype.
 func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity {
-	cfg := config.Cfg()
+	cfg := g.config()
 	arch := &cfg.Archetypes[archetypeID]
 
 	id := g.nextID
@@ -94,7 +93,7 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 
 // cleanupDead removes dead entities and their brains.
 func (g *Game) cleanupDead() {
-	cfg := config.Cfg()
+	cfg := g.config()
 
 	// First pass: collect dead entities (must complete before modifying)
 	type deadInfo struct {
@@ -192,7 +191,7 @@ func (g *Game) cleanupDead() {
 
 // reseedFromHallIfNeeded checks if a kind needs reseeding and spawns from the hall.
 func (g *Game) reseedFromHallIfNeeded(kind components.Kind) {
-	cfg := config.Cfg()
+	cfg := g.config()
 	hofCfg := cfg.HallOfFame
 
 	// Get current population for this kind
@@ -229,7 +228,7 @@ func (g *Game) reseedFromHallIfNeeded(kind components.Kind) {
 // spawnFromHall creates an entity using a brain from the hall of fame.
 // Returns true if an entity was spawned, false if the hall was empty.
 func (g *Game) spawnFromHall(kind components.Kind) bool {
-	cfg := config.Cfg()
+	cfg := g.config()
 	hofCfg := cfg.HallOfFame
 
 	// Determine archetype from kind

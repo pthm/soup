@@ -113,6 +113,17 @@ type Game struct {
 	snapshotDir      string
 	rngSeed          int64
 	statsCallback    func(telemetry.WindowStats)
+
+	// Per-game config (nil = use global config.Cfg())
+	cfg *config.Config
+}
+
+// config returns the game's config, falling back to global if not set.
+func (g *Game) config() *config.Config {
+	if g.cfg != nil {
+		return g.cfg
+	}
+	return config.Cfg()
 }
 
 // Options configures game behavior.
@@ -125,6 +136,7 @@ type Options struct {
 	StepsPerUpdate int                            // simulation ticks per update call (1+), 0 = use default (1)
 	OutputDir      string                         // output directory for CSV logs and config snapshot
 	StatsCallback  func(telemetry.WindowStats)    // called after each window flush
+	Config         *config.Config                 // optional per-game config (nil = use global)
 }
 
 // NewGame creates a new game instance with default options.
@@ -141,7 +153,11 @@ func NewGame() *Game {
 func NewGameWithOptions(opts Options) *Game {
 	world := ecs.NewWorld()
 
-	cfg := config.Cfg()
+	// Use per-game config if provided, otherwise fall back to global
+	cfg := opts.Config
+	if cfg == nil {
+		cfg = config.Cfg()
+	}
 
 	stepsPerUpdate := opts.StepsPerUpdate
 	if stepsPerUpdate < 1 {
@@ -188,6 +204,9 @@ func NewGameWithOptions(opts Options) *Game {
 		snapshotDir:   opts.SnapshotDir,
 		rngSeed:       opts.Seed,
 		statsCallback: opts.StatsCallback,
+
+		// Per-game config
+		cfg: cfg,
 	}
 
 	// Initialize telemetry
@@ -281,7 +300,7 @@ func (g *Game) Update() {
 // simulationStep runs a single tick of the simulation.
 func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
-	cfg := config.Cfg()
+	cfg := g.config()
 
 	// 0. Update resource field (regrowth, diffusion, capacity evolution / particle dynamics)
 	g.perfCollector.StartPhase(telemetry.PhaseResourceField)

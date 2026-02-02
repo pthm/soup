@@ -2,7 +2,6 @@ package game
 
 import (
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/systems"
 )
@@ -24,7 +23,7 @@ func (g *Game) updateSpatialGrid() {
 
 // updateBehaviorAndPhysics runs brains and applies movement.
 func (g *Game) updateBehaviorAndPhysics() {
-	cfg := config.Cfg()
+	cfg := g.config()
 	dt := cfg.Derived.DT32
 
 	// Check if we have a selected entity for inspector (headless mode has no inspector)
@@ -129,7 +128,7 @@ func (g *Game) updateBehaviorAndPhysics() {
 
 // updateFeeding handles predator attacks (diet-scaled hunting).
 func (g *Game) updateFeeding() {
-	cfg := config.Cfg()
+	cfg := g.config()
 	digestTime := float32(cfg.Energy.Predator.DigestTime)
 	refugiaStrength := float32(cfg.Refugia.Strength)
 	baseBiteReward := float32(cfg.Energy.Predator.BiteReward)
@@ -227,7 +226,7 @@ func (g *Game) updateFeeding() {
 
 // updateEnergy applies metabolic costs and prey foraging with true depletion.
 func (g *Game) updateEnergy() {
-	cfg := config.Cfg()
+	cfg := g.config()
 	dt := cfg.Derived.DT32
 	grazeRadius := cfg.Resource.GrazeRadius
 	forageEfficiency := float32(cfg.Resource.ForageEfficiency)
@@ -281,7 +280,7 @@ func (g *Game) updateEnergy() {
 
 // updateCooldowns decrements reproduction and digestion cooldowns.
 func (g *Game) updateCooldowns() {
-	dt := config.Cfg().Derived.DT32
+	dt := g.config().Derived.DT32
 	query := g.entityFilter.Query()
 	for query.Next() {
 		_, _, _, _, energy, _, org := query.Get()
@@ -308,7 +307,7 @@ func (g *Game) updateCooldowns() {
 
 // updateReproduction handles asexual reproduction with mutation and clade tracking.
 func (g *Game) updateReproduction() {
-	cfg := config.Cfg()
+	cfg := g.config()
 	repro := &cfg.Reproduction
 	mutation := &cfg.Mutation
 	cladeCfg := &cfg.Clades

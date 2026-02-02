@@ -7,7 +7,6 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 )
 
 // Draw renders the game.
@@ -395,7 +394,7 @@ func (g *Game) updateLightRenderer() {
 	}
 
 	// Update potential texture periodically (synced with potential.update_sec config)
-	cfg := config.Cfg()
+	cfg := g.config()
 	updateIntervalTicks := int32(cfg.Potential.UpdateSec / cfg.Physics.DT)
 	if updateIntervalTicks < 1 {
 		updateIntervalTicks = 1

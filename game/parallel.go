@@ -7,7 +7,6 @@ import (
 	"github.com/mlange-42/ark/ecs"
 
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 	"github.com/pthm-cable/soup/systems"
 )
@@ -69,7 +68,7 @@ func newParallelState() *parallelState {
 
 // updateBehaviorAndPhysicsParallel is the parallelized version.
 func (g *Game) updateBehaviorAndPhysicsParallel() {
-	cfg := config.Cfg()
+	cfg := g.config()
 	dt := cfg.Derived.DT32
 
 	// Phase A: Build snapshots (single-threaded)
@@ -220,7 +219,7 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 		turn, thrust, _ := snap.Brain.Forward(inputs)
 
 		// Apply thrust deadzone
-		thrustDeadzone := float32(config.Cfg().Capabilities.ThrustDeadzone)
+		thrustDeadzone := float32(g.config().Capabilities.ThrustDeadzone)
 		if thrust < thrustDeadzone {
 			thrust = 0
 		}
