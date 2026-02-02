@@ -79,13 +79,14 @@ type Game struct {
 	inspector          *inspector.Inspector
 
 	// State
-	tick       int32
-	paused     bool
-	nextID     uint32
-	aliveCount int
-	deadCount  int
-	numPrey    int
-	numPred    int
+	tick           int32
+	paused         bool
+	nextID         uint32
+	nextCladeID    uint64 // Counter for generating unique clade IDs
+	aliveCount     int
+	deadCount      int
+	numPrey        int
+	numPred        int
 	stepsPerUpdate int // simulation ticks per update call
 
 	// Debug state

@@ -43,6 +43,9 @@ type WindowStats struct {
 
 	// Resource utilization
 	MeanResourceAtPreyPos float64 `csv:"resource_util"`
+
+	// Clade tracking
+	ActiveClades int `csv:"active_clades"`
 }
 
 // Percentile calculates the p-th percentile of a sorted slice.
@@ -125,6 +128,7 @@ func (s WindowStats) LogValue() slog.Value {
 		slog.Float64("pred_energy_p50", s.PredEnergyP50),
 		slog.Float64("pred_energy_p90", s.PredEnergyP90),
 		slog.Float64("resource_util", s.MeanResourceAtPreyPos),
+		slog.Int("active_clades", s.ActiveClades),
 	)
 }
 
@@ -155,6 +159,7 @@ func (s WindowStats) LogStats() {
 		"pred_energy_p50", s.PredEnergyP50,
 		"pred_energy_p90", s.PredEnergyP90,
 		"resource_util", s.MeanResourceAtPreyPos,
+		"active_clades", s.ActiveClades,
 	)
 }
 

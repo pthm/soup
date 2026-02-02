@@ -168,27 +168,39 @@ func (nn *FFNN) Mutate(rng *rand.Rand, strength float32) {
 // sigma: standard deviation of normal perturbation (e.g., 0.08)
 // bigRate: probability of a large mutation (e.g., 0.01)
 // bigSigma: sigma for large mutations (e.g., 0.4)
-func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma float32) {
+// Returns avgAbsDelta: the average absolute delta of all applied mutations.
+func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma float32) float32 {
 	biasRate := rate * 0.5 // biases mutate at half the rate
+
+	var totalDelta float32
+	var count int
 
 	// Hidden layer weights
 	for i := range nn.W1 {
 		for j := range nn.W1[i] {
 			if rng.Float32() < rate {
+				var delta float32
 				if rng.Float32() < bigRate {
-					nn.W1[i][j] += float32(rng.NormFloat64()) * bigSigma
+					delta = float32(rng.NormFloat64()) * bigSigma
 				} else {
-					nn.W1[i][j] += float32(rng.NormFloat64()) * sigma
+					delta = float32(rng.NormFloat64()) * sigma
 				}
+				nn.W1[i][j] += delta
+				totalDelta += abs32(delta)
+				count++
 			}
 		}
 		// Hidden biases
 		if rng.Float32() < biasRate {
+			var delta float32
 			if rng.Float32() < bigRate {
-				nn.B1[i] += float32(rng.NormFloat64()) * bigSigma
+				delta = float32(rng.NormFloat64()) * bigSigma
 			} else {
-				nn.B1[i] += float32(rng.NormFloat64()) * sigma
+				delta = float32(rng.NormFloat64()) * sigma
 			}
+			nn.B1[i] += delta
+			totalDelta += abs32(delta)
+			count++
 		}
 	}
 
@@ -196,22 +208,43 @@ func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma floa
 	for i := range nn.W2 {
 		for j := range nn.W2[i] {
 			if rng.Float32() < rate {
+				var delta float32
 				if rng.Float32() < bigRate {
-					nn.W2[i][j] += float32(rng.NormFloat64()) * bigSigma
+					delta = float32(rng.NormFloat64()) * bigSigma
 				} else {
-					nn.W2[i][j] += float32(rng.NormFloat64()) * sigma
+					delta = float32(rng.NormFloat64()) * sigma
 				}
+				nn.W2[i][j] += delta
+				totalDelta += abs32(delta)
+				count++
 			}
 		}
 		// Output biases
 		if rng.Float32() < biasRate {
+			var delta float32
 			if rng.Float32() < bigRate {
-				nn.B2[i] += float32(rng.NormFloat64()) * bigSigma
+				delta = float32(rng.NormFloat64()) * bigSigma
 			} else {
-				nn.B2[i] += float32(rng.NormFloat64()) * sigma
+				delta = float32(rng.NormFloat64()) * sigma
 			}
+			nn.B2[i] += delta
+			totalDelta += abs32(delta)
+			count++
 		}
 	}
+
+	if count == 0 {
+		return 0
+	}
+	return totalDelta / float32(count)
+}
+
+// abs32 returns the absolute value of x.
+func abs32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // Clone creates a deep copy of the network.

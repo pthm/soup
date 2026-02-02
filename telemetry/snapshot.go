@@ -63,14 +63,17 @@ type EntityState struct {
 
 // LifetimeStatsJSON is the JSON-serializable form of LifetimeStats.
 type LifetimeStatsJSON struct {
-	BirthTick       int32   `json:"birth_tick"`
-	SurvivalTimeSec float32 `json:"survival_time_sec"`
-	BitesAttempted  int     `json:"bites_attempted"`
-	BitesHit        int     `json:"bites_hit"`
-	Kills           int     `json:"kills"`
-	Children        int     `json:"children"`
-	PeakEnergy      float32 `json:"peak_energy"`
-	TotalForaged    float32 `json:"total_foraged"`
+	BirthTick          int32   `json:"birth_tick"`
+	SurvivalTimeSec    float32 `json:"survival_time_sec"`
+	CladeID            uint64  `json:"clade_id"`
+	FounderArchetypeID uint8   `json:"founder_archetype_id"`
+	BirthDiet          float32 `json:"birth_diet"`
+	BitesAttempted     int     `json:"bites_attempted"`
+	BitesHit           int     `json:"bites_hit"`
+	Kills              int     `json:"kills"`
+	Children           int     `json:"children"`
+	PeakEnergy         float32 `json:"peak_energy"`
+	TotalForaged       float32 `json:"total_foraged"`
 }
 
 // ToJSON converts LifetimeStats to its JSON form.
@@ -79,14 +82,17 @@ func (ls *LifetimeStats) ToJSON() *LifetimeStatsJSON {
 		return nil
 	}
 	return &LifetimeStatsJSON{
-		BirthTick:       ls.BirthTick,
-		SurvivalTimeSec: ls.SurvivalTimeSec,
-		BitesAttempted:  ls.BitesAttempted,
-		BitesHit:        ls.BitesHit,
-		Kills:           ls.Kills,
-		Children:        ls.Children,
-		PeakEnergy:      ls.PeakEnergy,
-		TotalForaged:    ls.TotalForaged,
+		BirthTick:          ls.BirthTick,
+		SurvivalTimeSec:    ls.SurvivalTimeSec,
+		CladeID:            ls.CladeID,
+		FounderArchetypeID: ls.FounderArchetypeID,
+		BirthDiet:          ls.BirthDiet,
+		BitesAttempted:     ls.BitesAttempted,
+		BitesHit:           ls.BitesHit,
+		Kills:              ls.Kills,
+		Children:           ls.Children,
+		PeakEnergy:         ls.PeakEnergy,
+		TotalForaged:       ls.TotalForaged,
 	}
 }
 
@@ -96,14 +102,17 @@ func (lsj *LifetimeStatsJSON) FromJSON() *LifetimeStats {
 		return nil
 	}
 	return &LifetimeStats{
-		BirthTick:       lsj.BirthTick,
-		SurvivalTimeSec: lsj.SurvivalTimeSec,
-		BitesAttempted:  lsj.BitesAttempted,
-		BitesHit:        lsj.BitesHit,
-		Kills:           lsj.Kills,
-		Children:        lsj.Children,
-		PeakEnergy:      lsj.PeakEnergy,
-		TotalForaged:    lsj.TotalForaged,
+		BirthTick:          lsj.BirthTick,
+		SurvivalTimeSec:    lsj.SurvivalTimeSec,
+		CladeID:            lsj.CladeID,
+		FounderArchetypeID: lsj.FounderArchetypeID,
+		BirthDiet:          lsj.BirthDiet,
+		BitesAttempted:     lsj.BitesAttempted,
+		BitesHit:           lsj.BitesHit,
+		Kills:              lsj.Kills,
+		Children:           lsj.Children,
+		PeakEnergy:         lsj.PeakEnergy,
+		TotalForaged:       lsj.TotalForaged,
 	}
 }
 

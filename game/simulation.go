@@ -291,18 +291,21 @@ func (g *Game) updateCooldowns() {
 	}
 }
 
-// updateReproduction handles asexual reproduction with mutation.
+// updateReproduction handles asexual reproduction with mutation and clade tracking.
 func (g *Game) updateReproduction() {
 	cfg := config.Cfg()
 	repro := &cfg.Reproduction
 	mutation := &cfg.Mutation
+	cladeCfg := &cfg.Clades
 
 	// Collect births to spawn after iteration
 	type birthInfo struct {
-		x, y, heading float32
-		kind          components.Kind
-		parentBrain   *neural.FFNN
-		parentID      uint32
+		x, y, heading      float32
+		parentBrain        *neural.FFNN
+		parentID           uint32
+		parentDiet         float32
+		parentCladeID      uint64
+		founderArchetypeID uint8
 	}
 	var births []birthInfo
 
@@ -369,38 +372,107 @@ func (g *Game) updateReproduction() {
 		childHeading := rot.Heading + (g.rng.Float32()-0.5)*headingJitter*2
 
 		births = append(births, birthInfo{
-			x:           childX,
-			y:           childY,
-			heading:     childHeading,
-			kind:        org.Kind,
-			parentBrain: parentBrain,
-			parentID:    org.ID,
+			x:                  childX,
+			y:                  childY,
+			heading:            childHeading,
+			parentBrain:        parentBrain,
+			parentID:           org.ID,
+			parentDiet:         org.Diet,
+			parentCladeID:      org.CladeID,
+			founderArchetypeID: org.FounderArchetypeID,
 		})
 	}
 
 	// Spawn children outside query
 	for _, b := range births {
-		child := g.spawnEntity(b.x, b.y, b.heading, b.kind)
-		childOrg := g.orgMap.Get(child)
-		childEnergy := g.energyMap.Get(child)
+		// Clone and mutate brain, capturing avgAbsDelta for clade split decision
+		childBrain := b.parentBrain.Clone()
+		avgAbsDelta := childBrain.MutateSparse(g.rng,
+			float32(mutation.Rate),
+			float32(mutation.Sigma),
+			float32(mutation.BigRate),
+			float32(mutation.BigSigma))
 
-		if childOrg != nil && childEnergy != nil {
-			// Inherit mutated brain
-			childBrain := b.parentBrain.Clone()
-			childBrain.MutateSparse(g.rng,
-				float32(mutation.Rate),
-				float32(mutation.Sigma),
-				float32(mutation.BigRate),
-				float32(mutation.BigSigma))
-			g.brains[childOrg.ID] = childBrain
-
-			// Set child energy
-			childEnergy.Value = float32(repro.ChildEnergy)
-			childEnergy.Age = 0
-
-			// Record birth in telemetry
-			g.collector.RecordBirth(b.kind)
-			g.lifetimeTracker.RecordChild(b.parentID)
+		// Diet mutation: Normal(0, 0.01), 1% chance Normal(0, 0.05)
+		var dietMutation float32
+		if g.rng.Float32() < 0.01 {
+			dietMutation = float32(g.rng.NormFloat64()) * 0.05
+		} else {
+			dietMutation = float32(g.rng.NormFloat64()) * 0.01
 		}
+		childDiet := clamp32(b.parentDiet+dietMutation, 0, 1)
+
+		// Clade split logic
+		shouldSplit := false
+		dietDrift := absf(childDiet - b.parentDiet)
+
+		if g.rng.Float32() < float32(cladeCfg.SplitChance) {
+			shouldSplit = true // Random split
+		} else if avgAbsDelta > float32(cladeCfg.DeltaThreshold) {
+			shouldSplit = true // Large neural mutation
+		} else if dietDrift > float32(cladeCfg.DietThreshold) {
+			shouldSplit = true // Diet drift
+		}
+
+		childCladeID := b.parentCladeID
+		if shouldSplit {
+			childCladeID = g.nextCladeID
+			g.nextCladeID++
+		}
+
+		// Derive Kind from diet for backwards compatibility
+		childKind := components.KindPrey
+		if childDiet >= 0.5 {
+			childKind = components.KindPredator
+		}
+
+		// Create child entity directly (not using spawnEntity since we need custom brain/clade)
+		childID := g.nextID
+		g.nextID++
+
+		pos := components.Position{X: b.x, Y: b.y}
+		vel := components.Velocity{X: 0, Y: 0}
+		rot := components.Rotation{Heading: b.heading, AngVel: 0}
+		body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
+		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Age: 0, Alive: true}
+		caps := components.DefaultCapabilities(childKind)
+		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+		childOrg := components.Organism{
+			ID:                 childID,
+			Kind:               childKind,
+			FounderArchetypeID: b.founderArchetypeID,
+			Diet:               childDiet,
+			CladeID:            childCladeID,
+			ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+		}
+
+		g.brains[childID] = childBrain
+		g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &childEnergy, &caps, &childOrg)
+		g.aliveCount++
+
+		// Register with lifetime tracker
+		g.lifetimeTracker.Register(childID, g.tick, childCladeID, b.founderArchetypeID, childDiet)
+
+		// Track population by kind
+		if childKind == components.KindPrey {
+			g.numPrey++
+		} else {
+			g.numPred++
+		}
+
+		// Record birth in telemetry
+		g.collector.RecordBirth(childKind)
+		g.lifetimeTracker.RecordChild(b.parentID)
 	}
+}
+
+// clamp32 clamps x to [min, max].
+func clamp32(x, min, max float32) float32 {
+	if x < min {
+		return min
+	}
+	if x > max {
+		return max
+	}
+	return x
 }

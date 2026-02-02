@@ -13,14 +13,17 @@ import (
 
 // HallEntry represents a successful organism's brain weights and fitness.
 type HallEntry struct {
-	Weights  neural.BrainWeights
-	Fitness  float32
-	Kind     components.Kind
-	EntityID uint32
-	Children int
-	Kills    int
-	Survival float32
-	Foraging float32
+	Weights            neural.BrainWeights
+	Fitness            float32
+	Kind               components.Kind
+	EntityID           uint32
+	Children           int
+	Kills              int
+	Survival           float32
+	Foraging           float32
+	CladeID            uint64
+	FounderArchetypeID uint8
+	Diet               float32
 }
 
 // HallOfFame stores proven lineages for reseeding when populations crash.
@@ -61,14 +64,17 @@ func (hof *HallOfFame) Consider(
 	fitness := hof.calculateFitness(kind, stats, hofCfg)
 
 	entry := HallEntry{
-		Weights:  weights,
-		Fitness:  fitness,
-		Kind:     kind,
-		EntityID: entityID,
-		Children: stats.Children,
-		Kills:    stats.Kills,
-		Survival: stats.SurvivalTimeSec,
-		Foraging: stats.TotalForaged,
+		Weights:            weights,
+		Fitness:            fitness,
+		Kind:               kind,
+		EntityID:           entityID,
+		Children:           stats.Children,
+		Kills:              stats.Kills,
+		Survival:           stats.SurvivalTimeSec,
+		Foraging:           stats.TotalForaged,
+		CladeID:            stats.CladeID,
+		FounderArchetypeID: stats.FounderArchetypeID,
+		Diet:               stats.BirthDiet,
 	}
 
 	// Add to appropriate hall
@@ -227,14 +233,17 @@ type hallOfFameJSON struct {
 
 // hallEntryJSON is the JSON-serializable representation of a hall entry.
 type hallEntryJSON struct {
-	EntityID uint32              `json:"entity_id"`
-	Kind     string              `json:"kind"`
-	Fitness  float32             `json:"fitness"`
-	Children int                 `json:"children"`
-	Kills    int                 `json:"kills"`
-	Survival float32             `json:"survival_sec"`
-	Foraging float32             `json:"foraging"`
-	Weights  neural.BrainWeights `json:"brain"`
+	EntityID         uint32              `json:"entity_id"`
+	Kind             string              `json:"kind"`
+	Fitness          float32             `json:"fitness"`
+	Children         int                 `json:"children"`
+	Kills            int                 `json:"kills"`
+	Survival         float32             `json:"survival_sec"`
+	Foraging         float32             `json:"foraging"`
+	CladeID          uint64              `json:"clade_id"`
+	FounderArchetype string              `json:"founder_archetype"`
+	Diet             float32             `json:"diet"`
+	Weights          neural.BrainWeights `json:"brain"`
 }
 
 // MarshalJSON serializes the hall of fame to JSON.
@@ -244,29 +253,45 @@ func (hof *HallOfFame) MarshalJSON() ([]byte, error) {
 		Predator: make([]hallEntryJSON, len(hof.predator)),
 	}
 
+	cfg := config.Cfg()
+
 	for i, entry := range hof.prey {
+		archetypeName := "unknown"
+		if int(entry.FounderArchetypeID) < len(cfg.Archetypes) {
+			archetypeName = cfg.Archetypes[entry.FounderArchetypeID].Name
+		}
 		export.Prey[i] = hallEntryJSON{
-			EntityID: entry.EntityID,
-			Kind:     entry.Kind.String(),
-			Fitness:  entry.Fitness,
-			Children: entry.Children,
-			Kills:    entry.Kills,
-			Survival: entry.Survival,
-			Foraging: entry.Foraging,
-			Weights:  entry.Weights,
+			EntityID:         entry.EntityID,
+			Kind:             entry.Kind.String(),
+			Fitness:          entry.Fitness,
+			Children:         entry.Children,
+			Kills:            entry.Kills,
+			Survival:         entry.Survival,
+			Foraging:         entry.Foraging,
+			CladeID:          entry.CladeID,
+			FounderArchetype: archetypeName,
+			Diet:             entry.Diet,
+			Weights:          entry.Weights,
 		}
 	}
 
 	for i, entry := range hof.predator {
+		archetypeName := "unknown"
+		if int(entry.FounderArchetypeID) < len(cfg.Archetypes) {
+			archetypeName = cfg.Archetypes[entry.FounderArchetypeID].Name
+		}
 		export.Predator[i] = hallEntryJSON{
-			EntityID: entry.EntityID,
-			Kind:     entry.Kind.String(),
-			Fitness:  entry.Fitness,
-			Children: entry.Children,
-			Kills:    entry.Kills,
-			Survival: entry.Survival,
-			Foraging: entry.Foraging,
-			Weights:  entry.Weights,
+			EntityID:         entry.EntityID,
+			Kind:             entry.Kind.String(),
+			Fitness:          entry.Fitness,
+			Children:         entry.Children,
+			Kills:            entry.Kills,
+			Survival:         entry.Survival,
+			Foraging:         entry.Foraging,
+			CladeID:          entry.CladeID,
+			FounderArchetype: archetypeName,
+			Diet:             entry.Diet,
+			Weights:          entry.Weights,
 		}
 	}
 

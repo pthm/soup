@@ -16,8 +16,11 @@ func (g *Game) flushTelemetry() {
 	// Sample energy distributions and resource utilization
 	preyEnergies, predEnergies, meanResource := g.sampleEnergyDistributions()
 
+	// Count active clades
+	activeClades := g.lifetimeTracker.ActiveCladeCount()
+
 	// Flush the stats window
-	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource)
+	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource, activeClades)
 	perfStats := g.perfCollector.Stats()
 
 	// Log stats if enabled (console output)

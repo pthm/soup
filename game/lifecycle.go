@@ -14,26 +14,46 @@ import (
 // spawnInitialPopulation creates the starting entities.
 func (g *Game) spawnInitialPopulation() {
 	cfg := config.Cfg()
+
+	// Get archetype indices for grazer and hunter (default archetypes)
+	grazerIdx := cfg.Derived.ArchetypeIndex["grazer"]
+	hunterIdx := cfg.Derived.ArchetypeIndex["hunter"]
+
 	for i := 0; i < cfg.Population.Initial; i++ {
 		x := g.rng.Float32() * g.worldWidth
 		y := g.rng.Float32() * g.worldHeight
 		heading := g.rng.Float32() * 2 * math.Pi
 
 		// Use configured spawn chance for initial population
-		kind := components.KindPrey
+		archetypeID := grazerIdx
 		if g.rng.Float32() < float32(cfg.Population.PredatorSpawnChance) {
-			kind = components.KindPredator
+			archetypeID = hunterIdx
 		}
 
-		g.spawnEntity(x, y, heading, kind)
+		g.spawnEntity(x, y, heading, archetypeID)
 	}
 }
 
-// spawnEntity creates a new entity with a fresh brain.
-func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Entity {
+// spawnEntity creates a new entity with a fresh brain using the given archetype.
+func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity {
 	cfg := config.Cfg()
+	arch := &cfg.Archetypes[archetypeID]
+
 	id := g.nextID
 	g.nextID++
+
+	// Assign a new clade ID for fresh spawns
+	cladeID := g.nextCladeID
+	g.nextCladeID++
+
+	// Diet comes from archetype
+	diet := float32(arch.Diet)
+
+	// Derive Kind from diet for backwards compatibility
+	kind := components.KindPrey
+	if diet >= 0.5 {
+		kind = components.KindPredator
+	}
 
 	pos := components.Position{X: x, Y: y}
 	vel := components.Velocity{X: 0, Y: 0}
@@ -43,7 +63,14 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 	caps := components.DefaultCapabilities(kind)
 	// Add jitter to desync reproduction across the population
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
-	org := components.Organism{ID: id, Kind: kind, ReproCooldown: float32(cfg.Reproduction.MaturityAge) + cooldownJitter}
+	org := components.Organism{
+		ID:                 id,
+		Kind:               kind,
+		FounderArchetypeID: archetypeID,
+		Diet:               diet,
+		CladeID:            cladeID,
+		ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+	}
 
 	// Create brain
 	brain := neural.NewFFNN(g.rng)
@@ -52,8 +79,8 @@ func (g *Game) spawnEntity(x, y, heading float32, kind components.Kind) ecs.Enti
 	entity := g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
 	g.aliveCount++
 
-	// Register with lifetime tracker
-	g.lifetimeTracker.Register(id, g.tick)
+	// Register with lifetime tracker (includes clade info)
+	g.lifetimeTracker.Register(id, g.tick, cladeID, archetypeID, diet)
 
 	// Track population by kind
 	if kind == components.KindPrey {
@@ -119,17 +146,21 @@ func (g *Game) cleanupDead() {
 		}
 	}
 
+	// Get archetype indices for respawn
+	grazerIdx := cfg.Derived.ArchetypeIndex["grazer"]
+	hunterIdx := cfg.Derived.ArchetypeIndex["hunter"]
+
 	// Respawn if population drops too low (general respawn)
 	if g.aliveCount < cfg.Population.RespawnThreshold && g.tick > 100 {
 		for i := 0; i < cfg.Population.RespawnCount; i++ {
 			x := g.rng.Float32() * g.worldWidth
 			y := g.rng.Float32() * g.worldHeight
 			heading := g.rng.Float32() * 2 * math.Pi
-			kind := components.KindPrey
+			archetypeID := grazerIdx
 			if g.rng.Float32() < float32(cfg.Population.PredatorSpawnChance) {
-				kind = components.KindPredator
+				archetypeID = hunterIdx
 			}
-			g.spawnEntity(x, y, heading, kind)
+			g.spawnEntity(x, y, heading, archetypeID)
 		}
 	}
 
@@ -144,7 +175,7 @@ func (g *Game) cleanupDead() {
 				x := g.rng.Float32() * g.worldWidth
 				y := g.rng.Float32() * g.worldHeight
 				heading := g.rng.Float32() * 2 * math.Pi
-				g.spawnEntity(x, y, heading, components.KindPredator)
+				g.spawnEntity(x, y, heading, hunterIdx)
 			}
 		}
 
@@ -153,7 +184,7 @@ func (g *Game) cleanupDead() {
 				x := g.rng.Float32() * g.worldWidth
 				y := g.rng.Float32() * g.worldHeight
 				heading := g.rng.Float32() * 2 * math.Pi
-				g.spawnEntity(x, y, heading, components.KindPrey)
+				g.spawnEntity(x, y, heading, grazerIdx)
 			}
 		}
 	}
@@ -201,6 +232,16 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	cfg := config.Cfg()
 	hofCfg := cfg.HallOfFame
 
+	// Determine archetype from kind
+	var archetypeID uint8
+	if kind == components.KindPredator {
+		archetypeID = cfg.Derived.ArchetypeIndex["hunter"]
+	} else {
+		archetypeID = cfg.Derived.ArchetypeIndex["grazer"]
+	}
+	arch := &cfg.Archetypes[archetypeID]
+	diet := float32(arch.Diet)
+
 	// Sample a brain from the hall
 	weights := g.hallOfFame.Sample(kind)
 	if weights == nil {
@@ -212,13 +253,17 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 		x := g.rng.Float32() * g.worldWidth
 		y := g.rng.Float32() * g.worldHeight
 		heading := g.rng.Float32() * 2 * math.Pi
-		g.spawnEntity(x, y, heading, kind)
+		g.spawnEntity(x, y, heading, archetypeID)
 		return true
 	}
 
 	// Create entity with hall brain
 	id := g.nextID
 	g.nextID++
+
+	// Assign a new clade ID
+	cladeID := g.nextCladeID
+	g.nextCladeID++
 
 	x := g.rng.Float32() * g.worldWidth
 	y := g.rng.Float32() * g.worldHeight
@@ -231,7 +276,14 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	energy := components.Energy{Value: float32(hofCfg.ReseedEnergy), Age: 0, Alive: true}
 	caps := components.DefaultCapabilities(kind)
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
-	org := components.Organism{ID: id, Kind: kind, ReproCooldown: float32(cfg.Reproduction.MaturityAge) + cooldownJitter}
+	org := components.Organism{
+		ID:                 id,
+		Kind:               kind,
+		FounderArchetypeID: archetypeID,
+		Diet:               diet,
+		CladeID:            cladeID,
+		ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+	}
 
 	// Create brain from hall weights and mutate
 	brain := &neural.FFNN{}
@@ -250,8 +302,8 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
 	g.aliveCount++
 
-	// Register with lifetime tracker
-	g.lifetimeTracker.Register(id, g.tick)
+	// Register with lifetime tracker (includes clade info)
+	g.lifetimeTracker.Register(id, g.tick, cladeID, archetypeID, diet)
 
 	// Track population by kind
 	if kind == components.KindPrey {

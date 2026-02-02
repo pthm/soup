@@ -94,11 +94,13 @@ func (c *Collector) ShouldFlush(currentTick int32) bool {
 // - preyCount, predCount: current population counts
 // - preyEnergies, predEnergies: energy values for percentile calculation
 // - meanResourceAtPrey: average resource value at prey positions
+// - activeClades: number of unique clades among living entities
 func (c *Collector) Flush(
 	currentTick int32,
 	preyCount, predCount int,
 	preyEnergies, predEnergies []float64,
 	meanResourceAtPrey float64,
+	activeClades int,
 ) WindowStats {
 	// Calculate rates
 	var hitRate, killRate float64
@@ -145,6 +147,8 @@ func (c *Collector) Flush(
 		PredEnergyP90:  predP90,
 
 		MeanResourceAtPreyPos: meanResourceAtPrey,
+
+		ActiveClades: activeClades,
 	}
 
 	// Reset for next window

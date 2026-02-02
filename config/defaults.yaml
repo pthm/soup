@@ -293,3 +293,25 @@ particles:
   flow_scale: 2.0            # Curl noise frequency (lower = larger features)
   flow_octaves: 2            # FBM detail level (fewer = smoother currents)
   flow_evolution: 0.03       # Temporal drift rate for flow field (lower = slower change)
+
+# -----------------------------------------------------------------------------
+# Archetypes (Founder Templates)
+# Define organism templates that determine initial diet and behavior tendencies.
+# Diet is a continuous heritable trait: 0 = pure herbivore, 1 = pure carnivore.
+# Archetypes are immutable; diet drifts through mutation.
+# -----------------------------------------------------------------------------
+archetypes:
+  - name: grazer
+    diet: 0.0                  # Pure herbivore (prey)
+  - name: hunter
+    diet: 1.0                  # Pure carnivore (predator)
+
+# -----------------------------------------------------------------------------
+# Clade Tracking
+# Clades are lineage identifiers that track evolutionary divergence.
+# Splits occur randomly, or when mutations cause significant behavioral change.
+# -----------------------------------------------------------------------------
+clades:
+  split_chance: 0.005          # Random split probability per birth (0.5%)
+  delta_threshold: 0.015       # avgAbsDelta threshold for forced split
+  diet_threshold: 0.05         # Diet drift threshold for forced split

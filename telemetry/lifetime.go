@@ -5,6 +5,11 @@ type LifetimeStats struct {
 	BirthTick       int32
 	SurvivalTimeSec float32
 
+	// Clade/archetype tracking
+	CladeID            uint64
+	FounderArchetypeID uint8
+	BirthDiet          float32
+
 	// Hunting (predators)
 	BitesAttempted int
 	BitesHit       int
@@ -30,10 +35,13 @@ func NewLifetimeTracker() *LifetimeTracker {
 	}
 }
 
-// Register creates lifetime stats for a new entity.
-func (lt *LifetimeTracker) Register(entityID uint32, birthTick int32) {
+// Register creates lifetime stats for a new entity with clade tracking info.
+func (lt *LifetimeTracker) Register(entityID uint32, birthTick int32, cladeID uint64, archetypeID uint8, diet float32) {
 	lt.stats[entityID] = &LifetimeStats{
-		BirthTick: birthTick,
+		BirthTick:          birthTick,
+		CladeID:            cladeID,
+		FounderArchetypeID: archetypeID,
+		BirthDiet:          diet,
 	}
 }
 
@@ -108,4 +116,13 @@ func (lt *LifetimeTracker) All() map[uint32]*LifetimeStats {
 // Count returns the number of tracked entities.
 func (lt *LifetimeTracker) Count() int {
 	return len(lt.stats)
+}
+
+// ActiveCladeCount returns the number of unique clades among living entities.
+func (lt *LifetimeTracker) ActiveCladeCount() int {
+	seen := make(map[uint64]struct{})
+	for _, stats := range lt.stats {
+		seen[stats.CladeID] = struct{}{}
+	}
+	return len(seen)
 }

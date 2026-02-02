@@ -33,9 +33,24 @@ type Config struct {
 	Refugia      RefugiaConfig      `yaml:"refugia"`
 	HallOfFame   HallOfFameConfig   `yaml:"hall_of_fame"`
 	Particles    ParticleConfig     `yaml:"particles"`
+	Archetypes   []ArchetypeConfig  `yaml:"archetypes"`
+	Clades       CladeConfig        `yaml:"clades"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
+}
+
+// ArchetypeConfig defines a founder template for organisms.
+type ArchetypeConfig struct {
+	Name string  `yaml:"name"`
+	Diet float64 `yaml:"diet"` // 0=herbivore, 1=carnivore
+}
+
+// CladeConfig holds clade split parameters.
+type CladeConfig struct {
+	SplitChance    float64 `yaml:"split_chance"`    // Random split probability per birth (e.g., 0.005)
+	DeltaThreshold float64 `yaml:"delta_threshold"` // avgAbsDelta threshold for forced split
+	DietThreshold  float64 `yaml:"diet_threshold"`  // Diet drift threshold for forced split
 }
 
 // ScreenConfig holds display settings.
@@ -289,12 +304,13 @@ type ParticleConfig struct {
 
 // DerivedConfig holds computed values derived from the loaded config.
 type DerivedConfig struct {
-	DT32      float32 // Physics.DT as float32
-	NumInputs int     // Sensors.NumSectors*3 + 2
-	ScreenW32 float32 // Screen.Width as float32
-	ScreenH32 float32 // Screen.Height as float32
-	WorldW32  float32 // Effective world width as float32
-	WorldH32  float32 // Effective world height as float32
+	DT32           float32          // Physics.DT as float32
+	NumInputs      int              // Sensors.NumSectors*3 + 2
+	ScreenW32      float32          // Screen.Width as float32
+	ScreenH32      float32          // Screen.Height as float32
+	WorldW32       float32          // Effective world width as float32
+	WorldH32       float32          // Effective world height as float32
+	ArchetypeIndex map[string]uint8 // name -> index for archetype lookup
 }
 
 // global holds the loaded configuration.
@@ -371,6 +387,20 @@ func (c *Config) computeDerived() {
 	}
 	c.Derived.WorldW32 = float32(worldW)
 	c.Derived.WorldH32 = float32(worldH)
+
+	// Synthesize default archetypes if none specified
+	if len(c.Archetypes) == 0 {
+		c.Archetypes = []ArchetypeConfig{
+			{Name: "grazer", Diet: 0.0},
+			{Name: "hunter", Diet: 1.0},
+		}
+	}
+
+	// Build archetype index for fast lookup
+	c.Derived.ArchetypeIndex = make(map[string]uint8, len(c.Archetypes))
+	for i, arch := range c.Archetypes {
+		c.Derived.ArchetypeIndex[arch.Name] = uint8(i)
+	}
 }
 
 // WriteYAML writes the configuration to a YAML file.
