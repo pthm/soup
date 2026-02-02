@@ -162,8 +162,15 @@ type PotentialConfig struct {
 
 // EnergyConfig holds energy economics parameters.
 type EnergyConfig struct {
-	Prey     PreyEnergyConfig     `yaml:"prey"`
-	Predator PredatorEnergyConfig `yaml:"predator"`
+	Prey          PreyEnergyConfig          `yaml:"prey"`
+	Predator      PredatorEnergyConfig      `yaml:"predator"`
+	Interpolation EnergyInterpolationConfig `yaml:"interpolation"`
+}
+
+// EnergyInterpolationConfig holds diet-based energy interpolation parameters.
+type EnergyInterpolationConfig struct {
+	GrazingDietCap   float64 `yaml:"grazing_diet_cap"`   // Diet above this = no grazing benefit (default 0.3)
+	HuntingDietFloor float64 `yaml:"hunting_diet_floor"` // Diet below this = no hunting benefit (default 0.7)
 }
 
 // PreyEnergyConfig holds prey energy parameters.

@@ -126,19 +126,26 @@ func (g *Game) updateBehaviorAndPhysics() {
 	}
 }
 
-// updateFeeding handles predator attacks.
+// updateFeeding handles predator attacks (diet-scaled hunting).
 func (g *Game) updateFeeding() {
 	cfg := config.Cfg()
 	digestTime := float32(cfg.Energy.Predator.DigestTime)
 	refugiaStrength := float32(cfg.Refugia.Strength)
+	baseBiteReward := float32(cfg.Energy.Predator.BiteReward)
 
 	query := g.entityFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
 		pos, _, _, _, energy, caps, org := query.Get()
 
-		if !energy.Alive || org.Kind != components.KindPredator {
+		if !energy.Alive {
 			continue
+		}
+
+		// Hunting efficiency based on diet (0 for diet < hunting_floor)
+		huntEff := systems.HuntingEfficiency(org.Diet)
+		if huntEff <= 0 {
+			continue // Can't hunt with this diet
 		}
 
 		// Skip if still digesting from a previous kill
@@ -153,23 +160,29 @@ func (g *Game) updateFeeding() {
 			continue
 		}
 
-		// Query nearby prey within bite range
+		// Query nearby targets within bite range
 		neighbors := g.spatialGrid.QueryRadius(pos.X, pos.Y, caps.BiteRange, entity, g.posMap)
 
 		for _, neighbor := range neighbors {
 			// Get neighbor components
 			nOrg := g.orgMap.Get(neighbor)
-			if nOrg == nil || nOrg.Kind != components.KindPrey {
+			if nOrg == nil {
 				continue
 			}
 
-			// Get prey position for refugia check
+			// Can only eat targets with lower diet (prey-like behavior)
+			// Diet threshold: attacker must have significantly higher diet
+			if nOrg.Diet >= org.Diet-0.2 {
+				continue // Target has similar or higher diet, can't eat
+			}
+
+			// Get target position for refugia check
 			nPos := g.posMap.Get(neighbor)
 			if nPos == nil {
 				continue
 			}
 
-			// Get prey energy directly via mapper
+			// Get target energy directly via mapper
 			nEnergy := g.energyMap.Get(neighbor)
 			if nEnergy != nil && nEnergy.Alive {
 				// Record bite attempt
@@ -185,10 +198,10 @@ func (g *Game) updateFeeding() {
 					break // one attempt per tick
 				}
 
-				preyWasAlive := nEnergy.Alive
+				targetWasAlive := nEnergy.Alive
 
-				// Simple bite: transfer energy using configured bite reward
-				biteReward := float32(cfg.Energy.Predator.BiteReward)
+				// Bite reward scaled by hunting efficiency
+				biteReward := baseBiteReward * huntEff
 				transferred := systems.TransferEnergy(energy, nEnergy, biteReward)
 
 				if transferred > 0 {
@@ -197,7 +210,7 @@ func (g *Game) updateFeeding() {
 					g.lifetimeTracker.RecordBiteHit(org.ID)
 
 					// Check for kill
-					if preyWasAlive && !nEnergy.Alive {
+					if targetWasAlive && !nEnergy.Alive {
 						g.collector.RecordKill()
 						g.lifetimeTracker.RecordKill(org.ID)
 						// Start digestion cooldown after a kill
@@ -227,8 +240,9 @@ func (g *Game) updateEnergy() {
 			continue
 		}
 
-		// Prey gain energy from resource field via grazing (true depletion)
-		if org.Kind == components.KindPrey {
+		// Grazing: diet determines grazing ability (diet=0 full grazer, diet>=cap no grazing)
+		dietGrazeEff := systems.GrazingEfficiency(org.Diet)
+		if dietGrazeEff > 0 {
 			// Compute grazing efficiency based on speed
 			speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
 			speedRatio := speed / caps.MaxSpeed
@@ -236,20 +250,20 @@ func (g *Game) updateEnergy() {
 				speedRatio = 1
 			}
 			grazingPeak := float32(cfg.Energy.Prey.GrazingPeak)
-			eff := 1.0 - 2.0*absf(speedRatio-grazingPeak)
-			if eff < 0 {
-				eff = 0
+			speedEff := 1.0 - 2.0*absf(speedRatio-grazingPeak)
+			if speedEff < 0 {
+				speedEff = 0
 			}
 
 			// Get resource level at position for grazing rate scaling
 			resourceHere := g.resourceField.Sample(pos.X, pos.Y)
-			grazeRate := resourceHere * forageRate * eff
+			grazeRate := resourceHere * forageRate * speedEff * dietGrazeEff
 
 			// Graze: remove resource and get actual removed amount
 			removed := g.resourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
 
-			// Energy gain = removed * efficiency
-			gain := removed * forageEfficiency
+			// Energy gain = removed * efficiency * diet grazing efficiency
+			gain := removed * forageEfficiency * dietGrazeEff
 			energy.Value += gain
 			if energy.Value > 1.0 {
 				energy.Value = 1.0
@@ -259,8 +273,8 @@ func (g *Game) updateEnergy() {
 			g.lifetimeTracker.RecordForage(org.ID, gain)
 		}
 
-		// Apply metabolic costs (per-kind)
-		systems.UpdateEnergy(energy, *vel, *caps, org.Kind, false, dt)
+		// Apply metabolic costs (diet-interpolated)
+		systems.UpdateEnergy(energy, *vel, *caps, org.Diet, false, dt)
 	}
 }
 

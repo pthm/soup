@@ -6,12 +6,12 @@ import (
 )
 
 // UpdateEnergy applies metabolic costs and checks for death.
-// Uses per-kind costs for prey vs predator.
+// Costs are interpolated based on diet (0=herbivore, 1=carnivore).
 func UpdateEnergy(
 	energy *components.Energy,
 	vel components.Velocity,
 	caps components.Capabilities,
-	kind components.Kind,
+	diet float32,
 	biteActive bool,
 	dt float32,
 ) {
@@ -24,15 +24,10 @@ func UpdateEnergy(
 	// Age
 	energy.Age += dt
 
-	// Select costs by kind
-	var baseCost, moveCost float32
-	if kind == components.KindPredator {
-		baseCost = float32(cfg.Energy.Predator.BaseCost)
-		moveCost = float32(cfg.Energy.Predator.MoveCost)
-	} else {
-		baseCost = float32(cfg.Energy.Prey.BaseCost)
-		moveCost = float32(cfg.Energy.Prey.MoveCost)
-	}
+	// Interpolate costs based on diet (0=prey, 1=predator)
+	baseCost := lerp32(cachedPreyBaseCost, cachedPredBaseCost, diet)
+	moveCost := lerp32(cachedPreyMoveCost, cachedPredMoveCost, diet)
+	accelCost := lerp32(cachedPreyAccelCost, cachedPredAccelCost, diet)
 
 	// Base metabolism
 	energy.Value -= baseCost * dt
@@ -46,12 +41,6 @@ func UpdateEnergy(
 	}
 
 	// Acceleration cost: proportional to thrust^2
-	var accelCost float32
-	if kind == components.KindPredator {
-		accelCost = cachedPredAccelCost
-	} else {
-		accelCost = cachedPreyAccelCost
-	}
 	energy.Value -= accelCost * energy.LastThrust * energy.LastThrust * dt
 
 	// Bite cost (predators attacking)
@@ -69,6 +58,37 @@ func UpdateEnergy(
 		energy.Value = 0
 		energy.Alive = false
 	}
+}
+
+// lerp32 performs linear interpolation between a and b by t.
+func lerp32(a, b, t float32) float32 {
+	return a + (b-a)*t
+}
+
+// GrazingEfficiency returns the grazing efficiency for a given diet.
+// Returns 1.0 at diet=0, falls to 0 at diet=grazing_diet_cap.
+func GrazingEfficiency(diet float32) float32 {
+	if cachedGrazingDietCap <= 0 {
+		return 0.0
+	}
+	eff := 1.0 - diet/cachedGrazingDietCap
+	if eff < 0 {
+		return 0
+	}
+	return eff
+}
+
+// HuntingEfficiency returns the hunting efficiency for a given diet.
+// Returns 0 below hunting_diet_floor, ramps to 1.0 at diet=1.0.
+func HuntingEfficiency(diet float32) float32 {
+	if diet < cachedHuntingDietFloor {
+		return 0.0
+	}
+	range_ := 1.0 - cachedHuntingDietFloor
+	if range_ <= 0 {
+		return 1.0
+	}
+	return (diet - cachedHuntingDietFloor) / range_
 }
 
 // UpdatePreyForage adds energy gain from the resource field.

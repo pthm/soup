@@ -23,7 +23,7 @@ Implemented in commit `9dc4fa9e`.
 
 ---
 
-## Phase 2: Diet-Scaled Energy/Grazing Interpolation
+## Phase 2: Diet-Scaled Energy/Grazing Interpolation ✅ COMPLETED
 
 **Goal**: Make energy economics vary smoothly with diet instead of binary prey/predator branching.
 
@@ -110,6 +110,36 @@ transferred := systems.TransferEnergy(energy, nEnergy, biteReward)
 - Organisms with diet=1.0 behave identically to Phase 1 predators
 - Organisms with diet=0.5 can partially graze AND partially hunt (true omnivores)
 - Run long simulations to verify diet distributions evolve naturally
+
+### Implementation Notes (Actual)
+
+**Config added** (`config/defaults.yaml`):
+```yaml
+energy:
+  interpolation:
+    grazing_diet_cap: 0.3    # Diet above this = no grazing
+    hunting_diet_floor: 0.7  # Diet below this = no hunting
+```
+
+**Key functions** (`systems/energy.go`):
+- `GrazingEfficiency(diet)`: Returns 1.0 at diet=0, linear falloff to 0 at grazing_diet_cap
+- `HuntingEfficiency(diet)`: Returns 0 below hunting_diet_floor, ramps to 1.0 at diet=1.0
+- `UpdateEnergy()`: Now uses diet parameter only, interpolates base/move/accel costs
+
+**Hunting changes** (`game/simulation.go:updateFeeding`):
+- Replaced `org.Kind == KindPredator` check with `HuntingEfficiency(org.Diet) > 0`
+- Bite reward scaled by hunting efficiency
+- Can only eat targets with diet at least 0.2 lower (diet-based food chain)
+
+**Note**: Default config creates a "dead zone" from diet 0.3-0.7 where organisms
+can neither graze nor hunt effectively. This creates selection pressure toward
+specialization. To enable true omnivores, adjust config:
+```yaml
+energy:
+  interpolation:
+    grazing_diet_cap: 0.6    # Grazing works up to diet=0.6
+    hunting_diet_floor: 0.4  # Hunting works from diet=0.4
+```
 
 ---
 

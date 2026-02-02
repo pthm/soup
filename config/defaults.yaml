@@ -139,6 +139,13 @@ energy:
     transfer_efficiency: 0.85 # Fraction of taken energy predator actually receives
     digest_time: 0.8         # Seconds after a kill before predator can bite again
     accel_cost: 0.010        # Energy cost multiplier for thrust (acceleration penalty)
+  # Diet-based interpolation between prey/predator energy economics
+  # Costs and abilities scale smoothly with diet instead of binary switching
+  interpolation:
+    grazing_diet_cap: 0.3    # Diet above this = no grazing benefit (0.0-1.0)
+                             # At diet=0: full grazing, at diet=0.3+: no grazing
+    hunting_diet_floor: 0.7  # Diet below this = no hunting benefit (0.0-1.0)
+                             # At diet=0.7-: no hunting, at diet=1.0: full hunting
 
 # -----------------------------------------------------------------------------
 # Resource Field

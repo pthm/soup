@@ -20,7 +20,15 @@ var (
 	cachedGrazingPeak        float32
 	cachedPreyAccelCost      float32
 	cachedPredAccelCost      float32
-	cacheInitialized         bool
+	// Diet interpolation config
+	cachedGrazingDietCap   float32
+	cachedHuntingDietFloor float32
+	// Pre-computed interpolation values
+	cachedPreyBaseCost float32
+	cachedPredBaseCost float32
+	cachedPreyMoveCost float32
+	cachedPredMoveCost float32
+	cacheInitialized   bool
 )
 
 // InitSensorCache caches config values for hot-path access.
@@ -36,6 +44,13 @@ func InitSensorCache() {
 	cachedGrazingPeak = float32(cfg.Energy.Prey.GrazingPeak)
 	cachedPreyAccelCost = float32(cfg.Energy.Prey.AccelCost)
 	cachedPredAccelCost = float32(cfg.Energy.Predator.AccelCost)
+	// Diet interpolation
+	cachedGrazingDietCap = float32(cfg.Energy.Interpolation.GrazingDietCap)
+	cachedHuntingDietFloor = float32(cfg.Energy.Interpolation.HuntingDietFloor)
+	cachedPreyBaseCost = float32(cfg.Energy.Prey.BaseCost)
+	cachedPredBaseCost = float32(cfg.Energy.Predator.BaseCost)
+	cachedPreyMoveCost = float32(cfg.Energy.Prey.MoveCost)
+	cachedPredMoveCost = float32(cfg.Energy.Predator.MoveCost)
 	cacheInitialized = true
 }
 
