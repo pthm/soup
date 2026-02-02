@@ -167,6 +167,7 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 			Age:            energy.Age,
 			ReproCooldown:  org.ReproCooldown,
 			DigestCooldown: org.DigestCooldown,
+			HuntCooldown:   org.HuntCooldown,
 			Brain:          brain.MarshalWeights(),
 			Lifetime:       lifetime,
 		}

@@ -62,6 +62,11 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	caps := components.DefaultCapabilities(kind)
 	// Add jitter to desync reproduction across the population
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+	// Newborn predators can't hunt immediately
+	huntCooldown := float32(0)
+	if kind == components.KindPredator {
+		huntCooldown = float32(cfg.Reproduction.NewbornHuntCooldown)
+	}
 	org := components.Organism{
 		ID:                 id,
 		Kind:               kind,
@@ -69,6 +74,7 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 		Diet:               diet,
 		CladeID:            cladeID,
 		ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+		HuntCooldown:       huntCooldown,
 	}
 
 	// Create brain
@@ -275,6 +281,11 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	energy := components.Energy{Value: float32(hofCfg.ReseedEnergy), Age: 0, Alive: true}
 	caps := components.DefaultCapabilities(kind)
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+	// Newborn predators can't hunt immediately
+	huntCooldown := float32(0)
+	if kind == components.KindPredator {
+		huntCooldown = float32(cfg.Reproduction.NewbornHuntCooldown)
+	}
 	org := components.Organism{
 		ID:                 id,
 		Kind:               kind,
@@ -282,6 +293,7 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 		Diet:               diet,
 		CladeID:            cladeID,
 		ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+		HuntCooldown:       huntCooldown,
 	}
 
 	// Create brain from hall weights and mutate

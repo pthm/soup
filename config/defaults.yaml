@@ -103,6 +103,8 @@ reproduction:
   pred_density_k: 0          # Density-dependent predator reproduction: p = prey/(prey+K)
                              # When K > 0, predators breed less when prey are scarce
                              # K=0 disables (default), K=150 is a good starting value
+  newborn_hunt_cooldown: 2.0 # Seconds before newborn predators can bite
+                             # Prevents cascade kills when offspring spawn in prey swarms
 
 # -----------------------------------------------------------------------------
 # Neural Network Mutation
@@ -161,14 +163,14 @@ resource:
 # The potential field evolves slowly over time, creating shifting oases.
 # -----------------------------------------------------------------------------
 potential:
-  scale: 4.1                 # Base noise frequency (lower = larger hotspots)
-  octaves: 5                 # FBM octaves (fewer = smoother, less noisy)
+  scale: 2.0                 # Base noise frequency (lower = larger hotspots)
+  octaves: 6                 # FBM octaves (fewer = smoother, less noisy)
   lacunarity: 3.3            # Frequency multiplier per octave
-  gain: 0.66                 # Amplitude multiplier per octave (higher = brighter peaks)
+  gain: 0.63                 # Amplitude multiplier per octave (higher = brighter peaks)
   contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
-  drift_x: 0.0005            # Horizontal drift rate (glacial evolution)
-  drift_y: 0.0007            # Vertical drift rate (glacial evolution)
+  drift_x: 0.0004            # Horizontal drift rate (glacial evolution)
+  drift_y: 0.0006            # Vertical drift rate (glacial evolution)
   update_sec: 3.0            # Rebuild interval in seconds (affects visual smoothness)
 
 # -----------------------------------------------------------------------------

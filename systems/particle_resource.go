@@ -230,12 +230,13 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.updateFlowBlend()
 
 	// Particle dynamics - use compact active list for O(n) instead of O(MaxCount)
-	// Simplified model: particles spawn, drift, deposit up to capacity, then die
-	// No pickup - mass flows from spawn points (hotspots) to depleted areas
+	// Particles spawn at hotspots, drift with flow, exchange mass with grid:
+	// - Deposit: gradually release mass to grid (creates trails along flow)
+	// - Pickup: entrain mass from dense areas (redistributes from dense→sparse)
 	pf.spawnParticles(dt)
 	pf.advectParticlesCompact(dt)
 	pf.depositCompact(dt)
-	// pickupCompact disabled - particles only deposit, don't pick up mass
+	pf.pickupCompact(dt)
 	pf.cleanupCompact()
 }
 
@@ -691,15 +692,21 @@ func (pf *ParticleResourceField) advectParticlesCompact(dt float32) {
 }
 
 // depositCompact transfers mass from particles to grid, only iterating active particles.
-// With cell capacity enabled, particles deposit instantly up to capacity and keep the rest.
-func (pf *ParticleResourceField) depositCompact(_ float32) {
+// Uses DepositRate to control gradual release - particles spread mass along their drift path.
+func (pf *ParticleResourceField) depositCompact(dt float32) {
+	rate := pf.DepositRate * dt
+	if rate > 1 {
+		rate = 1 // Can't deposit more than 100%
+	}
+
 	for _, i := range pf.ActiveList {
 		if !pf.Active[i] || pf.Mass[i] <= 0 {
 			continue
 		}
 
-		// Try to deposit all mass; splatToGrid returns how much was actually deposited
-		deposited := pf.splatToGrid(pf.X[i], pf.Y[i], pf.Mass[i])
+		// Gradual deposit: release fraction of mass per tick
+		dm := pf.Mass[i] * rate
+		deposited := pf.splatToGrid(pf.X[i], pf.Y[i], dm)
 		pf.Mass[i] -= deposited
 	}
 }

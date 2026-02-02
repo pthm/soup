@@ -120,17 +120,18 @@ type PopulationConfig struct {
 
 // ReproductionConfig holds reproduction parameters.
 type ReproductionConfig struct {
-	PreyThreshold     float64 `yaml:"prey_threshold"`
-	PredThreshold     float64 `yaml:"pred_threshold"`
-	MaturityAge       float64 `yaml:"maturity_age"`
-	PreyCooldown      float64 `yaml:"prey_cooldown"`
-	PredCooldown      float64 `yaml:"pred_cooldown"`
-	CooldownJitter    float64 `yaml:"cooldown_jitter"`
-	ParentEnergySplit float64 `yaml:"parent_energy_split"`
-	ChildEnergy       float64 `yaml:"child_energy"`
-	SpawnOffset       float64 `yaml:"spawn_offset"`
-	HeadingJitter     float64 `yaml:"heading_jitter"`
-	PredDensityK      float64 `yaml:"pred_density_k"` // Density-dependent reproduction: p = prey / (prey + K)
+	PreyThreshold        float64 `yaml:"prey_threshold"`
+	PredThreshold        float64 `yaml:"pred_threshold"`
+	MaturityAge          float64 `yaml:"maturity_age"`
+	PreyCooldown         float64 `yaml:"prey_cooldown"`
+	PredCooldown         float64 `yaml:"pred_cooldown"`
+	CooldownJitter       float64 `yaml:"cooldown_jitter"`
+	ParentEnergySplit    float64 `yaml:"parent_energy_split"`
+	ChildEnergy          float64 `yaml:"child_energy"`
+	SpawnOffset          float64 `yaml:"spawn_offset"`
+	HeadingJitter        float64 `yaml:"heading_jitter"`
+	PredDensityK         float64 `yaml:"pred_density_k"`          // Density-dependent reproduction: p = prey / (prey + K)
+	NewbornHuntCooldown  float64 `yaml:"newborn_hunt_cooldown"`   // Seconds before newborn predators can bite
 }
 
 // MutationConfig holds mutation parameters.

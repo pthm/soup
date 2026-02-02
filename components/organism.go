@@ -37,6 +37,7 @@ type Organism struct {
 	CladeID            uint64  `inspect:"label"`           // Lineage identifier
 	ReproCooldown      float32 `inspect:"label,fmt:%.1fs"` // seconds until can reproduce again
 	DigestCooldown     float32 `inspect:"label,fmt:%.1fs"` // seconds until can bite again (predators only)
+	HuntCooldown       float32 `inspect:"label,fmt:%.1fs"` // seconds until newborn can hunt (predators only)
 }
 
 // DerivedKind returns Kind based on current Diet for backwards compatibility.

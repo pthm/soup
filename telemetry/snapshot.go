@@ -53,6 +53,7 @@ type EntityState struct {
 	Age            float32 `json:"age"`
 	ReproCooldown  float32 `json:"repro_cooldown"`
 	DigestCooldown float32 `json:"digest_cooldown"`
+	HuntCooldown   float32 `json:"hunt_cooldown"`
 
 	// Brain weights
 	Brain neural.BrainWeights `json:"brain"`

@@ -154,6 +154,11 @@ func (g *Game) updateFeeding() {
 			continue
 		}
 
+		// Skip if newborn predator still in hunt cooldown
+		if org.HuntCooldown > 0 {
+			continue
+		}
+
 		// Check if brain exists
 		_, ok := g.brains[org.ID]
 		if !ok {
@@ -278,7 +283,7 @@ func (g *Game) updateEnergy() {
 	}
 }
 
-// updateCooldowns decrements reproduction and digestion cooldowns.
+// updateCooldowns decrements reproduction, digestion, and hunt cooldowns.
 func (g *Game) updateCooldowns() {
 	dt := g.config().Derived.DT32
 	query := g.entityFilter.Query()
@@ -300,6 +305,13 @@ func (g *Game) updateCooldowns() {
 			org.DigestCooldown -= dt
 			if org.DigestCooldown < 0 {
 				org.DigestCooldown = 0
+			}
+		}
+
+		if org.HuntCooldown > 0 {
+			org.HuntCooldown -= dt
+			if org.HuntCooldown < 0 {
+				org.HuntCooldown = 0
 			}
 		}
 	}
@@ -451,6 +463,11 @@ func (g *Game) updateReproduction() {
 		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Age: 0, Alive: true}
 		caps := components.DefaultCapabilities(childKind)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+		// Newborn predators can't hunt immediately
+		huntCooldown := float32(0)
+		if childKind == components.KindPredator {
+			huntCooldown = float32(repro.NewbornHuntCooldown)
+		}
 		childOrg := components.Organism{
 			ID:                 childID,
 			Kind:               childKind,
@@ -458,6 +475,7 @@ func (g *Game) updateReproduction() {
 			Diet:               childDiet,
 			CladeID:            childCladeID,
 			ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+			HuntCooldown:       huntCooldown,
 		}
 
 		g.brains[childID] = childBrain
