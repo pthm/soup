@@ -23,6 +23,11 @@ func (g *Game) flushTelemetry() {
 	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource, activeClades)
 	perfStats := g.perfCollector.Stats()
 
+	// Call stats callback if provided
+	if g.statsCallback != nil {
+		g.statsCallback(stats)
+	}
+
 	// Log stats if enabled (console output)
 	if g.logStats {
 		stats.LogStats()

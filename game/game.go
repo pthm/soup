@@ -112,6 +112,7 @@ type Game struct {
 	logStats         bool
 	snapshotDir      string
 	rngSeed          int64
+	statsCallback    func(telemetry.WindowStats)
 }
 
 // Options configures game behavior.
@@ -121,8 +122,9 @@ type Options struct {
 	StatsWindowSec float64
 	SnapshotDir    string
 	Headless       bool
-	StepsPerUpdate int    // simulation ticks per update call (1+), 0 = use default (1)
-	OutputDir      string // output directory for CSV logs and config snapshot
+	StepsPerUpdate int                            // simulation ticks per update call (1+), 0 = use default (1)
+	OutputDir      string                         // output directory for CSV logs and config snapshot
+	StatsCallback  func(telemetry.WindowStats)    // called after each window flush
 }
 
 // NewGame creates a new game instance with default options.
@@ -182,9 +184,10 @@ func NewGameWithOptions(opts Options) *Game {
 		orgMap:    ecs.NewMap1[components.Organism](world),
 
 		// Telemetry
-		logStats:    opts.LogStats,
-		snapshotDir: opts.SnapshotDir,
-		rngSeed:     opts.Seed,
+		logStats:      opts.LogStats,
+		snapshotDir:   opts.SnapshotDir,
+		rngSeed:       opts.Seed,
+		statsCallback: opts.StatsCallback,
 	}
 
 	// Initialize telemetry
@@ -371,4 +374,9 @@ func (g *Game) Camera() *camera.Camera {
 // WorldSize returns the world dimensions.
 func (g *Game) WorldSize() (width, height float32) {
 	return g.worldWidth, g.worldHeight
+}
+
+// HallOfFame returns the hall of fame for optimization output.
+func (g *Game) HallOfFame() *telemetry.HallOfFame {
+	return g.hallOfFame
 }
