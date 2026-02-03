@@ -12,8 +12,8 @@ func (g *Game) flushTelemetry() {
 		return
 	}
 
-	// Sample energy distributions and resource utilization
-	preyEnergies, predEnergies, meanResource := g.sampleEnergyDistributions()
+	// Sample energy distributions, diet values, and resource utilization
+	preyEnergies, predEnergies, diets, meanResource := g.sampleEnergyDistributions()
 
 	// Count active clades
 	activeClades := g.lifetimeTracker.ActiveCladeCount()
@@ -22,7 +22,7 @@ func (g *Game) flushTelemetry() {
 	pools := g.sampleEnergyPools(preyEnergies, predEnergies)
 
 	// Flush the stats window
-	stats := g.collector.Flush(g.tick, g.numHerb, g.numCarn, preyEnergies, predEnergies, meanResource, activeClades, pools)
+	stats := g.collector.Flush(g.tick, g.numHerb, g.numCarn, preyEnergies, predEnergies, diets, meanResource, activeClades, pools)
 	perfStats := g.perfCollector.Stats()
 
 	// Call stats callback if provided
@@ -67,8 +67,8 @@ func (g *Game) flushTelemetry() {
 	}
 }
 
-// sampleEnergyDistributions collects energy values for percentile calculation.
-func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64, meanResource float64) {
+// sampleEnergyDistributions collects energy values, diet values, and resource utilization.
+func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies, diets []float64, meanResource float64) {
 	var resourceSum float64
 	var preyCount int
 
@@ -79,6 +79,8 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64
 		if !energy.Alive {
 			continue
 		}
+
+		diets = append(diets, float64(org.Diet))
 
 		if org.Diet < 0.5 {
 			preyEnergies = append(preyEnergies, float64(energy.Value))
@@ -96,7 +98,7 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64
 		meanResource = resourceSum / float64(preyCount)
 	}
 
-	return preyEnergies, predEnergies, meanResource
+	return preyEnergies, predEnergies, diets, meanResource
 }
 
 // sampleEnergyPools computes current energy pool totals for conservation tracking.

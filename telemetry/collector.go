@@ -101,13 +101,14 @@ type EnergyPools struct {
 // - currentTick: the current simulation tick
 // - preyCount, predCount: current population counts
 // - preyEnergies, predEnergies: energy values for percentile calculation
+// - diets: diet values for all alive entities
 // - meanResourceAtPrey: average resource value at prey positions
 // - activeClades: number of unique clades among living entities
 // - pools: energy pool totals for conservation tracking
 func (c *Collector) Flush(
 	currentTick int32,
 	preyCount, predCount int,
-	preyEnergies, predEnergies []float64,
+	preyEnergies, predEnergies, diets []float64,
 	meanResourceAtPrey float64,
 	activeClades int,
 	pools EnergyPools,
@@ -124,6 +125,9 @@ func (c *Collector) Flush(
 	// Compute energy stats
 	preyMean, preyP10, preyP50, preyP90 := ComputeEnergyStats(preyEnergies)
 	predMean, predP10, predP50, predP90 := ComputeEnergyStats(predEnergies)
+
+	// Compute diet distribution stats
+	dietMean, dietStd, dietP10, dietP50, dietP90 := ComputeDietStats(diets)
 
 	stats := WindowStats{
 		WindowStartTick: c.windowStartTick,
@@ -164,6 +168,12 @@ func (c *Collector) Flush(
 		InTransit:      pools.InTransit,
 		HeatLossAccum:  pools.HeatLossAccum,
 		ParticleInput:  pools.ParticleInput,
+
+		DietMean: dietMean,
+		DietStd:  dietStd,
+		DietP10:  dietP10,
+		DietP50:  dietP50,
+		DietP90:  dietP90,
 
 		ActiveClades: activeClades,
 	}

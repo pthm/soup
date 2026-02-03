@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"log/slog"
+	"math"
 	"sort"
 )
 
@@ -51,6 +52,13 @@ type WindowStats struct {
 	InTransit      float64 `csv:"in_transit"`       // Energy carried by in-transit particles
 	HeatLossAccum  float64 `csv:"heat_loss_accum"`  // Cumulative energy lost to heat
 	ParticleInput  float64 `csv:"particle_input"`   // Cumulative energy injected by particles
+
+	// Diet distribution
+	DietMean float64 `csv:"diet_mean"`
+	DietStd  float64 `csv:"diet_std"`
+	DietP10  float64 `csv:"diet_p10"`
+	DietP50  float64 `csv:"diet_p50"`
+	DietP90  float64 `csv:"diet_p90"`
 
 	// Clade tracking
 	ActiveClades int `csv:"active_clades"`
@@ -108,6 +116,40 @@ func ComputeEnergyStats(values []float64) (mean, p10, p50, p90 float64) {
 	return mean, p10, p50, p90
 }
 
+// ComputeDietStats calculates mean, std, and percentiles from diet values.
+func ComputeDietStats(values []float64) (mean, std, p10, p50, p90 float64) {
+	n := len(values)
+	if n == 0 {
+		return 0, 0, 0, 0, 0
+	}
+
+	// Mean
+	var sum float64
+	for _, v := range values {
+		sum += v
+	}
+	mean = sum / float64(n)
+
+	// Standard deviation
+	var sqDiffSum float64
+	for _, v := range values {
+		d := v - mean
+		sqDiffSum += d * d
+	}
+	std = math.Sqrt(sqDiffSum / float64(n))
+
+	// Sort for percentiles
+	sorted := make([]float64, n)
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	p10 = Percentile(sorted, 0.10)
+	p50 = Percentile(sorted, 0.50)
+	p90 = Percentile(sorted, 0.90)
+
+	return mean, std, p10, p50, p90
+}
+
 // LogValue implements slog.LogValuer for structured logging.
 func (s WindowStats) LogValue() slog.Value {
 	return slog.GroupValue(
@@ -142,6 +184,11 @@ func (s WindowStats) LogValue() slog.Value {
 		slog.Float64("in_transit", s.InTransit),
 		slog.Float64("heat_loss_accum", s.HeatLossAccum),
 		slog.Float64("particle_input", s.ParticleInput),
+		slog.Float64("diet_mean", s.DietMean),
+		slog.Float64("diet_std", s.DietStd),
+		slog.Float64("diet_p10", s.DietP10),
+		slog.Float64("diet_p50", s.DietP50),
+		slog.Float64("diet_p90", s.DietP90),
 		slog.Int("active_clades", s.ActiveClades),
 	)
 }
@@ -179,6 +226,11 @@ func (s WindowStats) LogStats() {
 		"in_transit", s.InTransit,
 		"heat_loss_accum", s.HeatLossAccum,
 		"particle_input", s.ParticleInput,
+		"diet_mean", s.DietMean,
+		"diet_std", s.DietStd,
+		"diet_p10", s.DietP10,
+		"diet_p50", s.DietP50,
+		"diet_p90", s.DietP90,
 		"active_clades", s.ActiveClades,
 	)
 }
