@@ -1,7 +1,5 @@
 package telemetry
 
-import "github.com/pthm-cable/soup/components"
-
 // Collector accumulates events within time windows and produces WindowStats.
 type Collector struct {
 	windowDurationSec float64
@@ -65,18 +63,18 @@ func (c *Collector) RecordBiteMissedRefugia() {
 	c.bitesMissedRefugia++
 }
 
-// RecordBirth records a birth event.
-func (c *Collector) RecordBirth(kind components.Kind) {
-	if kind == components.KindPrey {
+// RecordBirth records a birth event, bucketed by diet (< 0.5 = herb, >= 0.5 = carn).
+func (c *Collector) RecordBirth(diet float32) {
+	if diet < 0.5 {
 		c.preyBirths++
 	} else {
 		c.predBirths++
 	}
 }
 
-// RecordDeath records a death event.
-func (c *Collector) RecordDeath(kind components.Kind) {
-	if kind == components.KindPrey {
+// RecordDeath records a death event, bucketed by diet (< 0.5 = herb, >= 0.5 = carn).
+func (c *Collector) RecordDeath(diet float32) {
+	if diet < 0.5 {
 		c.preyDeaths++
 	} else {
 		c.predDeaths++

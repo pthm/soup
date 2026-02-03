@@ -3,7 +3,6 @@ package game
 import (
 	"log/slog"
 
-	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/telemetry"
 )
 
@@ -23,7 +22,7 @@ func (g *Game) flushTelemetry() {
 	pools := g.sampleEnergyPools(preyEnergies, predEnergies)
 
 	// Flush the stats window
-	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource, activeClades, pools)
+	stats := g.collector.Flush(g.tick, g.numHerb, g.numCarn, preyEnergies, predEnergies, meanResource, activeClades, pools)
 	perfStats := g.perfCollector.Stats()
 
 	// Call stats callback if provided
@@ -81,7 +80,7 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64
 			continue
 		}
 
-		if org.Kind == components.KindPrey {
+		if org.Diet < 0.5 {
 			preyEnergies = append(preyEnergies, float64(energy.Value))
 			resourceSum += float64(g.resourceField.Sample(pos.X, pos.Y))
 			preyCount++

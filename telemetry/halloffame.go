@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/neural"
 )
@@ -15,7 +14,6 @@ import (
 type HallEntry struct {
 	Weights            neural.BrainWeights
 	Fitness            float32
-	Kind               components.Kind
 	EntityID           uint32
 	Children           int
 	Kills              int
@@ -27,27 +25,30 @@ type HallEntry struct {
 }
 
 // HallOfFame stores proven lineages for reseeding when populations crash.
+// Halls are indexed by archetype ID (one hall per archetype).
 type HallOfFame struct {
-	prey     []HallEntry
-	predator []HallEntry
-	maxSize  int
-	rng      *rand.Rand
+	halls   [][]HallEntry
+	maxSize int
+	rng     *rand.Rand
 }
 
-// NewHallOfFame creates a new hall of fame with the given capacity per kind.
-func NewHallOfFame(maxSize int, rng *rand.Rand) *HallOfFame {
+// NewHallOfFame creates a new hall of fame with the given capacity per archetype.
+func NewHallOfFame(maxSize int, numArchetypes int, rng *rand.Rand) *HallOfFame {
+	halls := make([][]HallEntry, numArchetypes)
+	for i := range halls {
+		halls[i] = make([]HallEntry, 0, maxSize)
+	}
 	return &HallOfFame{
-		prey:     make([]HallEntry, 0, maxSize),
-		predator: make([]HallEntry, 0, maxSize),
-		maxSize:  maxSize,
-		rng:      rng,
+		halls:   halls,
+		maxSize: maxSize,
+		rng:     rng,
 	}
 }
 
 // Consider evaluates a dead organism for hall of fame entry.
 // Returns true if the organism was added to the hall.
 func (hof *HallOfFame) Consider(
-	kind components.Kind,
+	diet float32,
 	weights neural.BrainWeights,
 	stats *LifetimeStats,
 	entityID uint32,
@@ -56,17 +57,16 @@ func (hof *HallOfFame) Consider(
 	hofCfg := cfg.HallOfFame
 
 	// Check entry criteria
-	if !hof.meetsEntryCriteria(kind, stats, hofCfg) {
+	if !hof.meetsEntryCriteria(diet, stats, hofCfg) {
 		return false
 	}
 
 	// Calculate fitness
-	fitness := hof.calculateFitness(kind, stats, hofCfg)
+	fitness := hof.calculateFitness(diet, stats, hofCfg)
 
 	entry := HallEntry{
 		Weights:            weights,
 		Fitness:            fitness,
-		Kind:               kind,
 		EntityID:           entityID,
 		Children:           stats.Children,
 		Kills:              stats.Kills,
@@ -77,8 +77,9 @@ func (hof *HallOfFame) Consider(
 		Diet:               stats.BirthDiet,
 	}
 
-	// Add to appropriate hall
-	hall := hof.getHall(kind)
+	// Add to appropriate hall (by founder archetype)
+	archetypeID := stats.FounderArchetypeID
+	hall := hof.getHall(archetypeID)
 	*hall = hof.insertEntry(*hall, entry)
 
 	return true
@@ -86,7 +87,7 @@ func (hof *HallOfFame) Consider(
 
 // meetsEntryCriteria checks if an organism qualifies for the hall.
 func (hof *HallOfFame) meetsEntryCriteria(
-	kind components.Kind,
+	diet float32,
 	stats *LifetimeStats,
 	cfg config.HallOfFameConfig,
 ) bool {
@@ -97,7 +98,7 @@ func (hof *HallOfFame) meetsEntryCriteria(
 
 	// Secondary criterion: survived long enough AND achieved something
 	if stats.SurvivalTimeSec >= float32(cfg.Entry.MinSurvivalSec) {
-		if kind == components.KindPredator {
+		if diet >= 0.5 {
 			return stats.Kills >= cfg.Entry.MinKills
 		}
 		return stats.TotalForaged >= float32(cfg.Entry.MinForaging)
@@ -108,14 +109,14 @@ func (hof *HallOfFame) meetsEntryCriteria(
 
 // calculateFitness computes the weighted fitness score.
 func (hof *HallOfFame) calculateFitness(
-	kind components.Kind,
+	diet float32,
 	stats *LifetimeStats,
 	cfg config.HallOfFameConfig,
 ) float32 {
 	fitness := float32(stats.Children) * float32(cfg.Fitness.ChildrenWeight)
 	fitness += stats.SurvivalTimeSec * float32(cfg.Fitness.SurvivalWeight)
 
-	if kind == components.KindPredator {
+	if diet >= 0.5 {
 		fitness += float32(stats.Kills) * float32(cfg.Fitness.KillsWeight)
 	} else {
 		fitness += stats.TotalForaged * float32(cfg.Fitness.ForageWeight)
@@ -152,8 +153,8 @@ func (hof *HallOfFame) insertEntry(hall []HallEntry, entry HallEntry) []HallEntr
 
 // Sample selects a brain from the hall using tournament selection.
 // Returns nil if the hall is empty.
-func (hof *HallOfFame) Sample(kind components.Kind) *neural.BrainWeights {
-	hall := *hof.getHall(kind)
+func (hof *HallOfFame) Sample(archetypeID uint8) *neural.BrainWeights {
+	hall := *hof.getHall(archetypeID)
 	if len(hall) == 0 {
 		return nil
 	}
@@ -179,23 +180,25 @@ func (hof *HallOfFame) Sample(kind components.Kind) *neural.BrainWeights {
 	return &weightsCopy
 }
 
-// Size returns the number of entries for a given kind.
-func (hof *HallOfFame) Size(kind components.Kind) int {
-	return len(*hof.getHall(kind))
+// Size returns the number of entries for a given archetype.
+func (hof *HallOfFame) Size(archetypeID uint8) int {
+	return len(*hof.getHall(archetypeID))
 }
 
-// getHall returns a pointer to the hall for the given kind.
-func (hof *HallOfFame) getHall(kind components.Kind) *[]HallEntry {
-	if kind == components.KindPredator {
-		return &hof.predator
+// getHall returns a pointer to the hall for the given archetype.
+func (hof *HallOfFame) getHall(archetypeID uint8) *[]HallEntry {
+	if int(archetypeID) >= len(hof.halls) {
+		// Safety: return an empty hall for unknown archetypes
+		empty := make([]HallEntry, 0)
+		return &empty
 	}
-	return &hof.prey
+	return &hof.halls[archetypeID]
 }
 
-// TopFitness returns the highest fitness in the hall for a given kind.
+// TopFitness returns the highest fitness in the hall for a given archetype.
 // Returns 0 if the hall is empty.
-func (hof *HallOfFame) TopFitness(kind components.Kind) float32 {
-	hall := *hof.getHall(kind)
+func (hof *HallOfFame) TopFitness(archetypeID uint8) float32 {
+	hall := *hof.getHall(archetypeID)
 	if len(hall) == 0 {
 		return 0
 	}
@@ -203,38 +206,32 @@ func (hof *HallOfFame) TopFitness(kind components.Kind) float32 {
 }
 
 // Stats returns summary statistics for logging.
-func (hof *HallOfFame) Stats() (preySize, predSize int, preyTopFit, predTopFit float32) {
-	preySize = len(hof.prey)
-	predSize = len(hof.predator)
-	if preySize > 0 {
-		preyTopFit = hof.prey[0].Fitness
-	}
-	if predSize > 0 {
-		predTopFit = hof.predator[0].Fitness
+func (hof *HallOfFame) Stats() (sizes []int, topFitnesses []float32) {
+	sizes = make([]int, len(hof.halls))
+	topFitnesses = make([]float32, len(hof.halls))
+	for i, hall := range hof.halls {
+		sizes[i] = len(hall)
+		if len(hall) > 0 {
+			topFitnesses[i] = hall[0].Fitness
+		}
 	}
 	return
 }
 
 // LogHallEntry logs when an entry is added to the hall.
-func LogHallEntry(kind components.Kind, entityID uint32, fitness float32, hallSize int) {
+func LogHallEntry(archetypeID uint8, diet float32, entityID uint32, fitness float32, hallSize int) {
 	slog.Debug("hall_of_fame_entry",
-		"kind", kind.String(),
+		"archetype_id", archetypeID,
+		"diet", diet,
 		"entity_id", entityID,
 		"fitness", fitness,
 		"hall_size", hallSize,
 	)
 }
 
-// hallOfFameJSON is the JSON-serializable representation of the hall of fame.
-type hallOfFameJSON struct {
-	Prey     []hallEntryJSON `json:"prey"`
-	Predator []hallEntryJSON `json:"predator"`
-}
-
 // hallEntryJSON is the JSON-serializable representation of a hall entry.
 type hallEntryJSON struct {
 	EntityID         uint32              `json:"entity_id"`
-	Kind             string              `json:"kind"`
 	Fitness          float32             `json:"fitness"`
 	Children         int                 `json:"children"`
 	Kills            int                 `json:"kills"`
@@ -247,52 +244,37 @@ type hallEntryJSON struct {
 }
 
 // MarshalJSON serializes the hall of fame to JSON.
+// Keys are archetype names (e.g., "grazer", "hunter").
 func (hof *HallOfFame) MarshalJSON() ([]byte, error) {
-	export := hallOfFameJSON{
-		Prey:     make([]hallEntryJSON, len(hof.prey)),
-		Predator: make([]hallEntryJSON, len(hof.predator)),
-	}
-
 	cfg := config.Cfg()
+	export := make(map[string][]hallEntryJSON)
 
-	for i, entry := range hof.prey {
+	for archIdx, hall := range hof.halls {
 		archetypeName := "unknown"
-		if int(entry.FounderArchetypeID) < len(cfg.Archetypes) {
-			archetypeName = cfg.Archetypes[entry.FounderArchetypeID].Name
+		if archIdx < len(cfg.Archetypes) {
+			archetypeName = cfg.Archetypes[archIdx].Name
 		}
-		export.Prey[i] = hallEntryJSON{
-			EntityID:         entry.EntityID,
-			Kind:             entry.Kind.String(),
-			Fitness:          entry.Fitness,
-			Children:         entry.Children,
-			Kills:            entry.Kills,
-			Survival:         entry.Survival,
-			Foraging:         entry.Foraging,
-			CladeID:          entry.CladeID,
-			FounderArchetype: archetypeName,
-			Diet:             entry.Diet,
-			Weights:          entry.Weights,
-		}
-	}
 
-	for i, entry := range hof.predator {
-		archetypeName := "unknown"
-		if int(entry.FounderArchetypeID) < len(cfg.Archetypes) {
-			archetypeName = cfg.Archetypes[entry.FounderArchetypeID].Name
+		entries := make([]hallEntryJSON, len(hall))
+		for i, entry := range hall {
+			entryArchName := "unknown"
+			if int(entry.FounderArchetypeID) < len(cfg.Archetypes) {
+				entryArchName = cfg.Archetypes[entry.FounderArchetypeID].Name
+			}
+			entries[i] = hallEntryJSON{
+				EntityID:         entry.EntityID,
+				Fitness:          entry.Fitness,
+				Children:         entry.Children,
+				Kills:            entry.Kills,
+				Survival:         entry.Survival,
+				Foraging:         entry.Foraging,
+				CladeID:          entry.CladeID,
+				FounderArchetype: entryArchName,
+				Diet:             entry.Diet,
+				Weights:          entry.Weights,
+			}
 		}
-		export.Predator[i] = hallEntryJSON{
-			EntityID:         entry.EntityID,
-			Kind:             entry.Kind.String(),
-			Fitness:          entry.Fitness,
-			Children:         entry.Children,
-			Kills:            entry.Kills,
-			Survival:         entry.Survival,
-			Foraging:         entry.Foraging,
-			CladeID:          entry.CladeID,
-			FounderArchetype: archetypeName,
-			Diet:             entry.Diet,
-			Weights:          entry.Weights,
-		}
+		export[archetypeName] = entries
 	}
 
 	return json.MarshalIndent(export, "", "  ")

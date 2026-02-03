@@ -376,16 +376,16 @@ func (g *Game) updateReproduction() {
 		}
 
 		// Check population caps
-		if org.Kind == components.KindPrey && g.numPrey >= cfg.Population.MaxPrey {
+		if org.Diet < 0.5 && g.numHerb >= cfg.Population.MaxPrey {
 			continue
 		}
-		if org.Kind == components.KindPredator && g.numPred >= cfg.Population.MaxPred {
+		if org.Diet >= 0.5 && g.numCarn >= cfg.Population.MaxPred {
 			continue
 		}
 
 		// Check reproduction thresholds
 		var threshold, cooldown float32
-		if org.Kind == components.KindPredator {
+		if org.Diet >= 0.5 {
 			threshold = float32(repro.PredThreshold)
 			cooldown = float32(repro.PredCooldown)
 		} else {
@@ -398,10 +398,10 @@ func (g *Game) updateReproduction() {
 			continue
 		}
 
-		// Density-dependent reproduction for predators
-		// When prey are scarce, predators breed less (p = prey / (prey + K))
-		if org.Kind == components.KindPredator && repro.PredDensityK > 0 {
-			preyN := float32(g.numPrey)
+		// Density-dependent reproduction for carnivores
+		// When herbivores are scarce, carnivores breed less (p = herb / (herb + K))
+		if org.Diet >= 0.5 && repro.PredDensityK > 0 {
+			preyN := float32(g.numHerb)
 			k := float32(repro.PredDensityK)
 			breedProb := preyN / (preyN + k)
 			if g.rng.Float32() > breedProb {
@@ -478,12 +478,6 @@ func (g *Game) updateReproduction() {
 			g.nextCladeID++
 		}
 
-		// Derive Kind from diet for backwards compatibility
-		childKind := components.KindPrey
-		if childDiet >= 0.5 {
-			childKind = components.KindPredator
-		}
-
 		// Create child entity directly (not using spawnEntity since we need custom brain/clade)
 		childID := g.nextID
 		g.nextID++
@@ -495,14 +489,14 @@ func (g *Game) updateReproduction() {
 		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
 		caps := components.DefaultCapabilities(childDiet)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
-		// Newborn predators can't hunt immediately
+		// Carnivores can't hunt immediately at birth
 		huntCooldown := float32(0)
-		if childKind == components.KindPredator {
+		if childDiet >= 0.5 {
 			huntCooldown = float32(repro.NewbornHuntCooldown)
 		}
 		childOrg := components.Organism{
 			ID:                 childID,
-			Kind:               childKind,
+			Kind:               components.Kind(0), // deprecated, will be removed
 			FounderArchetypeID: b.founderArchetypeID,
 			Diet:               childDiet,
 			CladeID:            childCladeID,
@@ -517,15 +511,15 @@ func (g *Game) updateReproduction() {
 		// Register with lifetime tracker
 		g.lifetimeTracker.Register(childID, g.tick, childCladeID, b.founderArchetypeID, childDiet)
 
-		// Track population by kind
-		if childKind == components.KindPrey {
-			g.numPrey++
+		// Track population by diet bucket
+		if childDiet < 0.5 {
+			g.numHerb++
 		} else {
-			g.numPred++
+			g.numCarn++
 		}
 
 		// Record birth in telemetry
-		g.collector.RecordBirth(childKind)
+		g.collector.RecordBirth(childDiet)
 		g.lifetimeTracker.RecordChild(b.parentID)
 	}
 }

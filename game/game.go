@@ -85,8 +85,8 @@ type Game struct {
 	nextCladeID    uint64 // Counter for generating unique clade IDs
 	aliveCount     int
 	deadCount      int
-	numPrey        int
-	numPred        int
+	numHerb        int
+	numCarn        int
 	stepsPerUpdate int // simulation ticks per update call
 
 	// Energy accounting
@@ -219,7 +219,7 @@ func NewGameWithOptions(opts Options) *Game {
 	g.lifetimeTracker = telemetry.NewLifetimeTracker()
 	g.perfCollector = telemetry.NewPerfCollector(cfg.Telemetry.PerfCollectorWindow)
 	if cfg.HallOfFame.Enabled {
-		g.hallOfFame = telemetry.NewHallOfFame(cfg.HallOfFame.Size, g.rng)
+		g.hallOfFame = telemetry.NewHallOfFame(cfg.HallOfFame.Size, len(cfg.Archetypes), g.rng)
 	}
 
 	// Initialize output manager for CSV logging
@@ -377,14 +377,14 @@ func (g *Game) Tick() int32 {
 	return g.tick
 }
 
-// PreyCount returns the current prey population.
+// PreyCount returns the current herbivore population (diet < 0.5).
 func (g *Game) PreyCount() int {
-	return g.numPrey
+	return g.numHerb
 }
 
-// PredCount returns the current predator population.
+// PredCount returns the current carnivore population (diet >= 0.5).
 func (g *Game) PredCount() int {
-	return g.numPred
+	return g.numCarn
 }
 
 // UpdateHeadless runs simulation steps without rendering, respecting stepsPerUpdate setting.

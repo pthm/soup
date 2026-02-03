@@ -5,8 +5,6 @@ import (
 	"math"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
-
-	"github.com/pthm-cable/soup/components"
 )
 
 // Draw renders the game.
@@ -47,7 +45,7 @@ func (g *Game) Draw() {
 
 	// Draw HUD
 	rl.DrawText(fmt.Sprintf("Tick: %d", g.tick), 10, 10, 20, rl.White)
-	rl.DrawText(fmt.Sprintf("Prey: %d  Pred: %d  Dead: %d", g.numPrey, g.numPred, g.deadCount), 10, 35, 20, rl.White)
+	rl.DrawText(fmt.Sprintf("Herb: %d  Carn: %d  Dead: %d", g.numHerb, g.numCarn, g.deadCount), 10, 35, 20, rl.White)
 	rl.DrawText(fmt.Sprintf("Speed: %dx  [</>]", g.stepsPerUpdate), 10, 60, 20, rl.White)
 	cam := g.camera
 	rl.DrawText(fmt.Sprintf("Zoom: %.2fx  Pos: (%.0f, %.0f)  [Arrows/+/-/Home]", cam.Zoom, cam.X, cam.Y), 10, 85, 16, rl.LightGray)
@@ -83,11 +81,8 @@ func (g *Game) drawEntities() {
 			continue
 		}
 
-		// Color by kind
-		color := rl.Color{R: 140, G: 100, B: 200, A: 255} // Purple for prey
-		if org.Kind == components.KindPredator {
-			color = rl.Color{R: 200, G: 80, B: 50, A: 255} // Burnt orange for predators
-		}
+		// Color by diet: lerp purple (diet=0) → orange (diet=1)
+		color := dietColor(org.Diet)
 
 		// Dim based on energy ratio (E/Max)
 		energyRatio := energy.Value / energy.Max
@@ -500,6 +495,14 @@ func (g *Game) drawResourceFog() {
 		cam.Zoom,
 		g.worldWidth, g.worldHeight,
 	)
+}
+
+// dietColor returns a color interpolated from purple (diet=0) to burnt orange (diet=1).
+func dietColor(diet float32) rl.Color {
+	r := uint8(140 + diet*60)   // 140→200
+	g := uint8(100 - diet*20)   // 100→80
+	b := uint8(200 - diet*150)  // 200→50
+	return rl.Color{R: r, G: g, B: b, A: 255}
 }
 
 // drawOrientedTriangle draws a smooth rounded triangle pointing in the heading direction.
