@@ -156,7 +156,8 @@ energy:
 # -----------------------------------------------------------------------------
 resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
-  forage_efficiency: 1.0     # Fraction of removed resource that becomes energy (0-1)
+  forage_efficiency: 0.80    # Fraction of removed resource that becomes energy (eta_graze)
+                             # Remainder is lost to heat (digestion inefficiency)
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation

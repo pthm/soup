@@ -48,11 +48,6 @@ func UpdateEnergy(
 		energy.Value -= float32(cfg.Energy.Predator.BiteCost)
 	}
 
-	// Clamp energy to max
-	if energy.Value > energy.Max {
-		energy.Value = energy.Max
-	}
-
 	// Death check
 	if energy.Value <= 0 {
 		energy.Value = 0
@@ -128,27 +123,29 @@ func UpdatePreyForage(
 }
 
 // TransferEnergy handles predator feeding on prey.
-// Returns the amount of energy transferred.
+// Returns (removed, overflow): removed is energy taken from prey,
+// overflow is excess predator energy above Max (caller should deposit to detritus).
 func TransferEnergy(
 	predatorEnergy *components.Energy,
 	preyEnergy *components.Energy,
 	amount float32,
-) float32 {
+) (removed float32, overflow float32) {
 	if !predatorEnergy.Alive || !preyEnergy.Alive {
-		return 0
+		return 0, 0
 	}
 
 	// Take from prey
-	actual := amount
-	if preyEnergy.Value < actual {
-		actual = preyEnergy.Value
+	removed = amount
+	if preyEnergy.Value < removed {
+		removed = preyEnergy.Value
 	}
 
-	preyEnergy.Value -= actual
-	predatorEnergy.Value += actual * cachedTransferEfficiency
+	preyEnergy.Value -= removed
+	predatorEnergy.Value += removed * cachedTransferEfficiency
 
-	// Clamp predator energy to max
+	// Compute overflow (caller routes to detritus)
 	if predatorEnergy.Value > predatorEnergy.Max {
+		overflow = predatorEnergy.Value - predatorEnergy.Max
 		predatorEnergy.Value = predatorEnergy.Max
 	}
 
@@ -158,5 +155,5 @@ func TransferEnergy(
 		preyEnergy.Alive = false
 	}
 
-	return actual
+	return removed, overflow
 }

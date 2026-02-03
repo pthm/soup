@@ -207,7 +207,12 @@ func (g *Game) updateFeeding() {
 
 				// Bite reward scaled by hunting efficiency
 				biteReward := baseBiteReward * huntEff
-				transferred := systems.TransferEnergy(energy, nEnergy, biteReward)
+				transferred, predOverflow := systems.TransferEnergy(energy, nEnergy, biteReward)
+
+				// Route predator overflow to detritus at predator position
+				if predOverflow > 0 {
+					g.resourceField.DepositDetritus(pos.X, pos.Y, predOverflow)
+				}
 
 				if transferred > 0 {
 					// Record successful bite
@@ -267,11 +272,19 @@ func (g *Game) updateEnergy() {
 			// Graze: remove resource and get actual removed amount
 			removed := g.resourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
 
-			// Energy gain = removed * efficiency * diet grazing efficiency
+			// Energy gain = removed * eta_graze * diet grazing efficiency
+			// Remainder is digestion heat loss
 			gain := removed * forageEfficiency * dietGrazeEff
+			grazingHeat := removed - gain
+			g.heatLossAccum += grazingHeat
+
 			energy.Value += gain
+
+			// Route overflow to detritus (waste, not heat)
 			if energy.Value > energy.Max {
+				overflow := energy.Value - energy.Max
 				energy.Value = energy.Max
+				g.resourceField.DepositDetritus(pos.X, pos.Y, overflow)
 			}
 
 			// Track foraging for telemetry
