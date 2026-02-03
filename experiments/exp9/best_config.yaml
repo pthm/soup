@@ -11,6 +11,7 @@ physics:
 entity:
     body_radius: 10
     initial_energy: 0.8
+    max_energy: 1
 capabilities:
     prey:
         vision_range: 100
@@ -44,25 +45,26 @@ capabilities:
     thrust_deadzone: 0.1
 population:
     initial: 40
-    max_prey: 514
-    max_pred: 200
-    respawn_threshold: 5
+    max_prey: 200
+    max_pred: 40
+    respawn_threshold: 0
     respawn_count: 5
     predator_spawn_chance: 0.25
     min_predators: 0
     min_prey: 0
 reproduction:
-    prey_threshold: 0.7
-    pred_threshold: 0.7
-    maturity_age: 8
-    prey_cooldown: 15
-    pred_cooldown: 20
-    cooldown_jitter: 1
-    parent_energy_split: 0.55
-    child_energy: 0.35
-    spawn_offset: 15
-    heading_jitter: 0.25
-    pred_density_k: 0
+    prey_threshold: 0.5
+    pred_threshold: 0.95
+    maturity_age: 2
+    prey_cooldown: 4
+    pred_cooldown: 13.22168819756027
+    cooldown_jitter: 3
+    parent_energy_split: 0.7
+    child_energy: 0.5
+    spawn_offset: 30
+    heading_jitter: 1
+    pred_density_k: 205.40393413124065
+    newborn_hunt_cooldown: 0.5
 mutation:
     rate: 0.05
     sigma: 0.08
@@ -71,33 +73,34 @@ mutation:
     bias_rate_multiplier: 0.5
 energy:
     prey:
-        base_cost: 0.029322268460180784
-        move_cost: 0.18473722797014658
-        forage_rate: 0.02
+        base_cost: 0.005
+        move_cost: 0.2475813471417353
+        forage_rate: 0.1
         grazing_peak: 0.15
         accel_cost: 0.03
     predator:
-        base_cost: 0.02
-        move_cost: 0.01
+        base_cost: 0.002
+        move_cost: 0.027521963326987867
         bite_cost: 0.003
-        bite_reward: 0.45616253811736873
+        bite_reward: 0.5716914662236185
         transfer_efficiency: 1
-        digest_time: 0.8
+        detritus_fraction: 0
+        digest_time: 0.385897235771783
         accel_cost: 0.01
     interpolation:
         grazing_diet_cap: 0.3
         hunting_diet_floor: 0.7
 resource:
     graze_radius: 1
-    forage_efficiency: 1
+    forage_efficiency: 0.8
 potential:
     scale: 2
-    octaves: 7
-    lacunarity: 4
-    gain: 0.3
-    contrast: 3.0874494585929764
-    drift_x: 0.0005
-    drift_y: 0.0007
+    octaves: 6
+    lacunarity: 3.3
+    gain: 0.63
+    contrast: 4.69
+    drift_x: 0.0004
+    drift_y: 0.0006
     update_sec: 3
 neural:
     num_hidden: 16
@@ -135,11 +138,11 @@ bookmarks:
         cv_threshold: 0.04
         stable_windows: 5
 refugia:
-    strength: 1
+    strength: 1.421810815085824
 hall_of_fame:
     enabled: true
     size: 30
-    reseed_threshold: 2
+    reseed_threshold: 0
     reseed_count: 3
     reseed_energy: 0.9
     fitness:
@@ -155,16 +158,16 @@ hall_of_fame:
 particles:
     max_count: 8000
     spawn_rate: 20
-    initial_mass: 0.05
-    deposit_rate: 1.0012856716585397
-    pickup_rate: 1.7376922036582947
+    initial_mass: 0.03340846589159496
+    deposit_rate: 0.5
+    pickup_rate: 0.1
     cell_capacity: 2
-    flow_strength: 100
+    flow_strength: 40
     flow_grid_size: 32
     flow_update_sec: 30
-    flow_scale: 0.5
-    flow_octaves: 3
-    flow_evolution: 0.1
+    flow_scale: 2
+    flow_octaves: 2
+    flow_evolution: 0.03
 archetypes:
     - name: grazer
       diet: 0
@@ -174,3 +177,7 @@ clades:
     split_chance: 0.005
     delta_threshold: 0.015
     diet_threshold: 0.05
+detritus:
+    decay_rate: 0.05
+    decay_efficiency: 0.5
+    carcass_fraction: 0.7

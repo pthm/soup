@@ -153,11 +153,12 @@ func main() {
 		avgPerEval := elapsed / time.Duration(evalCount)
 		remaining := time.Duration(*maxEvals-evalCount) * avgPerEval
 
-		// Print progress with timing (fitness is -survivalTicks, so negate for display)
-		survivalSec := -fitness / 60.0 // ticks to sim-seconds at 60tps
-		bestSurvivalSec := -bestFitness / 60.0
-		fmt.Printf("Eval %d/%d: survived=%.0fs (best=%.0fs) | elapsed: %s, ETA: %s\n",
-			evalCount, *maxEvals, survivalSec, bestSurvivalSec,
+		// Print progress with timing
+		// Fitness = -(survivalTicks × (1 + 0.2×quality)), so extract survival estimate
+		quality := evaluator.LastQuality()
+		survivalSec := -fitness / (1.0 + 0.2*quality) / 60.0 // approximate ticks to sim-seconds
+		fmt.Printf("Eval %d/%d: survived=%.0fs quality=%.2f (best=%.0f) | elapsed: %s, ETA: %s\n",
+			evalCount, *maxEvals, survivalSec, quality, bestFitness,
 			formatDuration(elapsed), formatDuration(remaining))
 
 		return fitness
@@ -180,8 +181,7 @@ func main() {
 
 	totalTime := time.Since(startTime)
 	fmt.Printf("\nOptimization complete after %d evaluations in %s\n", evalCount, formatDuration(totalTime))
-	bestSurvivalSec := -bestFitness / 60.0
-	fmt.Printf("Best survival: %.0f sim-seconds (%.0f ticks)\n", bestSurvivalSec, -bestFitness)
+	fmt.Printf("Best fitness: %.0f\n", bestFitness)
 
 	// Print best parameters
 	fmt.Println("\nBest parameters:")

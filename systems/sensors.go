@@ -41,7 +41,12 @@ var (
 // InitSensorCache caches config values for hot-path access.
 // Must be called after config.Init().
 func InitSensorCache() {
-	cfg := config.Cfg()
+	InitSensorCacheFrom(config.Cfg())
+}
+
+// InitSensorCacheFrom caches config values from the given config.
+// Use this when running with a per-game config (e.g., optimizer).
+func InitSensorCacheFrom(cfg *config.Config) {
 	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
 	cachedPreyVisionWeights = loadVisionWeights(cfg.Capabilities.Prey.VisionWeights)
 	cachedPredVisionWeights = loadVisionWeights(cfg.Capabilities.Predator.VisionWeights)

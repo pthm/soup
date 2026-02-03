@@ -74,7 +74,7 @@ population:
   initial: 40                # Number of entities spawned at simulation start
   max_prey: 400              # Population cap for prey; prevents runaway growth
   max_pred: 120              # Population cap for predators
-  respawn_threshold: 5       # If total population drops below this, trigger respawn
+  respawn_threshold: 0       # If total population drops below this, trigger respawn (0 = disabled)
   respawn_count: 5           # How many entities to spawn on respawn trigger
   predator_spawn_chance: 0.25  # Probability a respawned entity is a predator (0-1)
   min_predators: 0             # Minimum predator count; when below, spawn predators
@@ -269,7 +269,7 @@ bookmarks:
 hall_of_fame:
   enabled: true              # Enable hall of fame reseeding
   size: 30                   # Maximum entries per kind (prey/predator)
-  reseed_threshold: 2        # Reseed when population drops below this
+  reseed_threshold: 0        # Reseed when population drops below this (0 = disabled)
   reseed_count: 3            # Number of entities to reseed per check
   reseed_energy: 0.9         # Initial energy for reseeded entities
 
