@@ -36,7 +36,8 @@ physics:
 # -----------------------------------------------------------------------------
 entity:
   body_radius: 10.0          # Collision/visual radius of entities in world units
-  initial_energy: 0.8        # Starting energy for newly spawned entities (0-1 scale)
+  initial_energy: 0.8        # Starting energy for newly spawned entities (absolute units)
+  max_energy: 1.0            # Maximum energy capacity per organism (absolute units)
 
 # -----------------------------------------------------------------------------
 # Entity Capabilities

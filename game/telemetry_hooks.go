@@ -187,6 +187,7 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 			VelY:           vel.Y,
 			Heading:        rot.Heading,
 			Energy:         energy.Value,
+			MaxEnergy:      energy.Max,
 			Age:            energy.Age,
 			ReproCooldown:  org.ReproCooldown,
 			DigestCooldown: org.DigestCooldown,

@@ -231,7 +231,7 @@ func ComputeSensorsBounded(
 	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
 	speed := fastSqrt(speedSq)
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
-	inputs.Energy = clamp01(selfEnergy.Value)
+	inputs.Energy = clamp01(selfEnergy.Value / selfEnergy.Max)
 	inputs.Diet = selfDiet
 
 	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
@@ -391,7 +391,7 @@ func ComputeSensors(
 	// Self-state
 	speed := float32(math.Sqrt(float64(selfVel.X*selfVel.X + selfVel.Y*selfVel.Y)))
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
-	inputs.Energy = clamp01(selfEnergy.Value)
+	inputs.Energy = clamp01(selfEnergy.Value / selfEnergy.Max)
 	inputs.Diet = selfDiet
 
 	// Diet thresholds

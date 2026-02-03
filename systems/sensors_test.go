@@ -51,7 +51,7 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 	pos := components.Position{X: 100, Y: 100}
 	vel := components.Velocity{X: 1, Y: 0}
 	rot := components.Rotation{Heading: 0}
-	energy := components.Energy{Value: 0.8, Alive: true}
+	energy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
 	caps := components.DefaultCapabilities(components.KindPrey)
 
 	inputs := ComputeSensors(
@@ -140,7 +140,7 @@ func TestThreatDetection(t *testing.T) {
 	// Set up prey (herbivore) looking forward (heading=0)
 	selfVel := components.Velocity{X: 0, Y: 0}
 	selfRot := components.Rotation{Heading: 0}
-	selfEnergy := components.Energy{Value: 0.8, Alive: true}
+	selfEnergy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
 	selfCaps := components.DefaultCapabilities(components.KindPrey)
 	selfKind := components.KindPrey
 	selfDiet := float32(0.0) // Pure herbivore

@@ -89,8 +89,9 @@ func (g *Game) drawEntities() {
 			color = rl.Color{R: 200, G: 80, B: 50, A: 255} // Burnt orange for predators
 		}
 
-		// Dim based on energy
-		alpha := uint8(100 + int(energy.Value*155))
+		// Dim based on energy ratio (E/Max)
+		energyRatio := energy.Value / energy.Max
+		alpha := uint8(100 + int(energyRatio*155))
 		color.A = alpha
 
 		// Transform to screen coordinates

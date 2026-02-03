@@ -253,9 +253,10 @@ func (ins *Inspector) Draw(
 	// Diet bar
 	y += DrawBar(x, y, "Diet", org.Diet, nil)
 
-	// Energy bar
+	// Energy bar (normalized to max)
 	if energy != nil {
-		y += DrawBar(x, y, "Energy", energy.Value, nil)
+		energyRatio := energy.Value / energy.Max
+		y += DrawBar(x, y, "Energy", energyRatio, nil)
 	}
 
 	// Age

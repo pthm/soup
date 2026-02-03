@@ -48,9 +48,9 @@ func UpdateEnergy(
 		energy.Value -= float32(cfg.Energy.Predator.BiteCost)
 	}
 
-	// Clamp energy
-	if energy.Value > 1.0 {
-		energy.Value = 1.0
+	// Clamp energy to max
+	if energy.Value > energy.Max {
+		energy.Value = energy.Max
 	}
 
 	// Death check
@@ -122,8 +122,8 @@ func UpdatePreyForage(
 	energy.Value += gain
 
 	// Clamp to max
-	if energy.Value > 1.0 {
-		energy.Value = 1.0
+	if energy.Value > energy.Max {
+		energy.Value = energy.Max
 	}
 }
 
@@ -146,6 +146,11 @@ func TransferEnergy(
 
 	preyEnergy.Value -= actual
 	predatorEnergy.Value += actual * cachedTransferEfficiency
+
+	// Clamp predator energy to max
+	if predatorEnergy.Value > predatorEnergy.Max {
+		predatorEnergy.Value = predatorEnergy.Max
+	}
 
 	// Check prey death
 	if preyEnergy.Value <= 0 {

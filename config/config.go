@@ -78,6 +78,7 @@ type PhysicsConfig struct {
 type EntityConfig struct {
 	BodyRadius    float64 `yaml:"body_radius"`
 	InitialEnergy float64 `yaml:"initial_energy"`
+	MaxEnergy     float64 `yaml:"max_energy"`
 }
 
 // PreyCapabilitiesConfig holds prey-specific capability parameters.

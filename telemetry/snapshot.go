@@ -12,7 +12,7 @@ import (
 )
 
 // SnapshotVersion is incremented when the format changes.
-const SnapshotVersion = 1
+const SnapshotVersion = 2
 
 // Snapshot holds the complete simulation state for replay.
 type Snapshot struct {
@@ -50,6 +50,7 @@ type EntityState struct {
 
 	// Organism state
 	Energy         float32 `json:"energy"`
+	MaxEnergy      float32 `json:"max_energy"`
 	Age            float32 `json:"age"`
 	ReproCooldown  float32 `json:"repro_cooldown"`
 	DigestCooldown float32 `json:"digest_cooldown"`

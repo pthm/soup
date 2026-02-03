@@ -270,8 +270,8 @@ func (g *Game) updateEnergy() {
 			// Energy gain = removed * efficiency * diet grazing efficiency
 			gain := removed * forageEfficiency * dietGrazeEff
 			energy.Value += gain
-			if energy.Value > 1.0 {
-				energy.Value = 1.0
+			if energy.Value > energy.Max {
+				energy.Value = energy.Max
 			}
 
 			// Track foraging for telemetry
@@ -460,7 +460,7 @@ func (g *Game) updateReproduction() {
 		vel := components.Velocity{X: 0, Y: 0}
 		rot := components.Rotation{Heading: b.heading, AngVel: 0}
 		body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
-		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Age: 0, Alive: true}
+		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
 		caps := components.DefaultCapabilities(childKind)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 		// Newborn predators can't hunt immediately
