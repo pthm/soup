@@ -7,12 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
 )
 
 // SnapshotVersion is incremented when the format changes.
-const SnapshotVersion = 2
+const SnapshotVersion = 3
 
 // Snapshot holds the complete simulation state for replay.
 type Snapshot struct {
@@ -38,8 +37,9 @@ type Snapshot struct {
 
 // EntityState holds one entity's complete state.
 type EntityState struct {
-	ID   uint32          `json:"id"`
-	Kind components.Kind `json:"kind"`
+	ID                 uint32  `json:"id"`
+	Diet               float32 `json:"diet"`
+	FounderArchetypeID uint8   `json:"founder_archetype_id"`
 
 	// Position and movement
 	X       float32 `json:"x"`

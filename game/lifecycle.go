@@ -63,7 +63,6 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	}
 	org := components.Organism{
 		ID:                 id,
-		Kind:               components.Kind(0), // deprecated, will be removed
 		FounderArchetypeID: archetypeID,
 		Diet:               diet,
 		CladeID:            cladeID,
@@ -294,7 +293,6 @@ func (g *Game) spawnFromHall(archetypeID uint8) bool {
 	}
 	org := components.Organism{
 		ID:                 id,
-		Kind:               components.Kind(0), // deprecated, will be removed
 		FounderArchetypeID: archetypeID,
 		Diet:               diet,
 		CladeID:            cladeID,

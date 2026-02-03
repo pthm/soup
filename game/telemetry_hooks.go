@@ -181,21 +181,22 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 		}
 
 		state := telemetry.EntityState{
-			ID:             org.ID,
-			Kind:           org.Kind,
-			X:              pos.X,
-			Y:              pos.Y,
-			VelX:           vel.X,
-			VelY:           vel.Y,
-			Heading:        rot.Heading,
-			Energy:         energy.Value,
-			MaxEnergy:      energy.Max,
-			Age:            energy.Age,
-			ReproCooldown:  org.ReproCooldown,
-			DigestCooldown: org.DigestCooldown,
-			HuntCooldown:   org.HuntCooldown,
-			Brain:          brain.MarshalWeights(),
-			Lifetime:       lifetime,
+			ID:                 org.ID,
+			Diet:               org.Diet,
+			FounderArchetypeID: org.FounderArchetypeID,
+			X:                  pos.X,
+			Y:                  pos.Y,
+			VelX:               vel.X,
+			VelY:               vel.Y,
+			Heading:            rot.Heading,
+			Energy:             energy.Value,
+			MaxEnergy:          energy.Max,
+			Age:                energy.Age,
+			ReproCooldown:      org.ReproCooldown,
+			DigestCooldown:     org.DigestCooldown,
+			HuntCooldown:       org.HuntCooldown,
+			Brain:              brain.MarshalWeights(),
+			Lifetime:           lifetime,
 		}
 
 		snapshot.Entities = append(snapshot.Entities, state)

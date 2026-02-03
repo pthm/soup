@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pthm-cable/soup/components"
 	"github.com/pthm-cable/soup/neural"
 )
 
@@ -28,9 +27,10 @@ func TestSnapshotSaveLoad(t *testing.T) {
 		Tick:          1000,
 		Entities: []EntityState{
 			{
-				ID:            1,
-				Kind:          components.KindPrey,
-				X:             150,
+				ID:                 1,
+				Diet:               0.1,
+				FounderArchetypeID: 0,
+				X:                  150,
 				Y:             250,
 				VelX:          0.5,
 				VelY:          -0.3,

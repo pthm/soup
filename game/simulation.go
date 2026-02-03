@@ -496,7 +496,6 @@ func (g *Game) updateReproduction() {
 		}
 		childOrg := components.Organism{
 			ID:                 childID,
-			Kind:               components.Kind(0), // deprecated, will be removed
 			FounderArchetypeID: b.founderArchetypeID,
 			Diet:               childDiet,
 			CladeID:            childCladeID,
