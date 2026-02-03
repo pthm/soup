@@ -127,6 +127,153 @@ func TestParticleResourceFieldMassConservation(t *testing.T) {
 	}
 }
 
+func TestDetritusDeposit(t *testing.T) {
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+
+	// Det grid should start empty
+	for i, d := range pf.Det {
+		if d != 0 {
+			t.Fatalf("expected Det[%d]=0, got %f", i, d)
+		}
+	}
+
+	// Deposit detritus at world center
+	deposited := pf.DepositDetritus(640, 360, 1.0)
+	if deposited != 1.0 {
+		t.Errorf("expected deposited=1.0, got %f", deposited)
+	}
+
+	// Det grid should now have mass
+	totalDet := pf.TotalDetMass()
+	if totalDet < 0.99 || totalDet > 1.01 {
+		t.Errorf("expected total detritus ~1.0, got %f", totalDet)
+	}
+
+	// Sample should return non-zero at deposit location
+	s := pf.SampleDetritus(640, 360)
+	if s <= 0 {
+		t.Error("expected positive detritus sample at deposit location")
+	}
+}
+
+func TestDetritusDecay(t *testing.T) {
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	// Disable particle spawning so we can isolate detritus behavior
+	pf.SpawnRate = 0
+
+	// Clear Res grid to isolate decay effect
+	for i := range pf.Res {
+		pf.Res[i] = 0
+	}
+
+	// Deposit known amount of detritus
+	pf.DepositDetritus(640, 360, 10.0)
+	initialDet := pf.TotalDetMass()
+
+	// Run one second of decay (60 ticks at dt=1/60)
+	dt := float32(1.0 / 60.0)
+	var totalHeat float32
+	for i := 0; i < 60; i++ {
+		totalHeat += pf.StepDetritus(dt)
+	}
+
+	finalDet := pf.TotalDetMass()
+	finalRes := pf.TotalResMass()
+
+	// Detritus should decrease
+	if finalDet >= initialDet {
+		t.Errorf("expected detritus to decrease: initial=%f, final=%f", initialDet, finalDet)
+	}
+
+	// Resource should increase from decay
+	if finalRes <= 0 {
+		t.Error("expected resource to increase from detritus decay")
+	}
+
+	// Heat should be positive (decay efficiency < 1.0)
+	if totalHeat <= 0 {
+		t.Error("expected positive heat loss from detritus decay")
+	}
+
+	// Conservation: decayed amount = resource gained + heat lost
+	decayed := initialDet - finalDet
+	accounted := finalRes + totalHeat
+	tolerance := decayed * 0.001
+	if diff := decayed - accounted; diff > tolerance || diff < -tolerance {
+		t.Errorf("detritus decay not conserved: decayed=%f, res=%f + heat=%f = %f, diff=%f",
+			decayed, finalRes, totalHeat, accounted, diff)
+	}
+}
+
+func TestDetritusZeroDoesNothing(t *testing.T) {
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+
+	// Depositing zero or negative should do nothing
+	dep := pf.DepositDetritus(640, 360, 0)
+	if dep != 0 {
+		t.Errorf("expected 0 deposited for 0 amount, got %f", dep)
+	}
+	dep = pf.DepositDetritus(640, 360, -1.0)
+	if dep != 0 {
+		t.Errorf("expected 0 deposited for negative amount, got %f", dep)
+	}
+
+	// Det grid should still be empty
+	if total := pf.TotalDetMass(); total != 0 {
+		t.Errorf("expected 0 total detritus, got %f", total)
+	}
+}
+
+func TestDetritusIncludedInTotalMass(t *testing.T) {
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf.SpawnRate = 0
+
+	massBefore := pf.TotalMass()
+
+	// Deposit detritus — should increase total mass
+	pf.DepositDetritus(640, 360, 5.0)
+	massAfter := pf.TotalMass()
+
+	diff := massAfter - massBefore
+	if diff < 4.99 || diff > 5.01 {
+		t.Errorf("expected total mass to increase by ~5.0, got diff=%f", diff)
+	}
+}
+
+func TestDetritusDecayConvergesButDoesNotOscillate(t *testing.T) {
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf.SpawnRate = 0
+
+	// Clear Res
+	for i := range pf.Res {
+		pf.Res[i] = 0
+	}
+
+	// Deposit detritus spread across grid
+	for y := 0; y < pf.ResH; y++ {
+		for x := 0; x < pf.ResW; x++ {
+			pf.Det[y*pf.ResW+x] = 1.0
+		}
+	}
+
+	// Run many ticks — detritus should monotonically decrease
+	dt := float32(1.0 / 60.0)
+	prevDet := pf.TotalDetMass()
+	for tick := 0; tick < 600; tick++ {
+		pf.StepDetritus(dt)
+		curDet := pf.TotalDetMass()
+		if curDet > prevDet+0.0001 {
+			t.Fatalf("detritus increased at tick %d: prev=%f, cur=%f", tick, prevDet, curDet)
+		}
+		prevDet = curDet
+	}
+
+	// After 10 seconds of decay at 5%/sec, should be significantly depleted
+	if prevDet > pf.TotalDetMass()*1.01+1.0 {
+		t.Errorf("detritus did not decay significantly after 10s: remaining=%f", prevDet)
+	}
+}
+
 func BenchmarkParticleResourceFieldStep(b *testing.B) {
 	// Use production-like grid size (matches 2560x1440 world with 128 base)
 	pf := NewParticleResourceField(227, 128, 2560, 1440, 42)

@@ -309,6 +309,20 @@ particles:
   flow_evolution: 0.03       # Temporal drift rate for flow field (lower = slower change)
 
 # -----------------------------------------------------------------------------
+# Detritus (Nutrient Recycling)
+# Dead biomass decays slowly back into the resource grid, creating nutrient
+# cycling and ecosystem inertia. Detritus is deposited on death and from
+# energy overflow; it decays into resource with some loss to heat.
+# -----------------------------------------------------------------------------
+detritus:
+  decay_rate: 0.05             # Fraction of detritus that decays per second
+                               # Higher = faster recycling (0.02-0.08 typical)
+  decay_efficiency: 0.50       # Fraction of decayed detritus converted to resource
+                               # Remainder is lost to heat (0.40-0.70 typical)
+  carcass_fraction: 0.70       # Fraction of organism energy deposited as detritus on death
+                               # Remainder is lost to heat (0.60-0.80 typical)
+
+# -----------------------------------------------------------------------------
 # Archetypes (Founder Templates)
 # Define organism templates that determine initial diet and behavior tendencies.
 # Diet is a continuous heritable trait: 0 = pure herbivore, 1 = pure carnivore.

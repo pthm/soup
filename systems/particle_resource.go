@@ -53,6 +53,9 @@ type ParticleResourceField struct {
 	Res        []float32
 	ResW, ResH int
 
+	// Detritus grid D (dead biomass decaying back to resource)
+	Det []float32
+
 	// World dimensions
 	worldW, worldH float32
 
@@ -83,6 +86,10 @@ type ParticleResourceField struct {
 	InitialMass  float32 // mass of newly spawned particle
 	CellCapacity float32 // max resource per cell (0 = unlimited)
 
+	// Detritus parameters
+	DetDecayRate float32 // fraction of detritus decaying per second
+	DetDecayEff  float32 // fraction of decayed detritus that becomes resource
+
 	// Update intervals
 	FlowUpdateSec float32
 	PotUpdateSec  float32
@@ -94,6 +101,7 @@ type ParticleResourceField struct {
 func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int64) *ParticleResourceField {
 	pcfg := config.Cfg().Particles
 	potCfg := config.Cfg().Potential
+	detCfg := config.Cfg().Detritus
 
 	maxCount := pcfg.MaxCount
 	if maxCount < 1 {
@@ -142,6 +150,9 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		ResW: gridW,
 		ResH: gridH,
 
+		// Detritus grid (same resolution as resource)
+		Det: make([]float32, gridW*gridH),
+
 		worldW: worldW,
 		worldH: worldH,
 
@@ -167,6 +178,10 @@ func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int
 		PickupRate:   float32(pcfg.PickupRate),
 		InitialMass:  float32(pcfg.InitialMass),
 		CellCapacity: float32(pcfg.CellCapacity),
+
+		// Detritus parameters from config
+		DetDecayRate: float32(detCfg.DecayRate),
+		DetDecayEff:  float32(detCfg.DecayEfficiency),
 
 		// Update intervals
 		FlowUpdateSec: float32(pcfg.FlowUpdateSec),
@@ -237,6 +252,10 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.advectParticlesCompact(dt)
 	pf.depositAndPickupCompact(dt)
 	pf.cleanupCompact()
+
+	// Detritus decay: Det -> Res (with efficiency loss to heat)
+	// Heat return value unused until HeatLossAccum is added (step 2).
+	_ = pf.StepDetritus(dt)
 }
 
 func (pf *ParticleResourceField) ResData() []float32 {
@@ -245,6 +264,98 @@ func (pf *ParticleResourceField) ResData() []float32 {
 
 func (pf *ParticleResourceField) GridSize() (int, int) {
 	return pf.ResW, pf.ResH
+}
+
+// --- Detritus ---
+
+// DepositDetritus adds detritus at world coordinates using bilinear splatting.
+// Returns the amount actually deposited.
+func (pf *ParticleResourceField) DepositDetritus(x, y, amount float32) float32 {
+	if amount <= 0 {
+		return 0
+	}
+	return pf.splatToDetGrid(x, y, amount)
+}
+
+// StepDetritus decays detritus into resource. Returns total heat loss for the tick.
+// Formula: decayed = decay_rate * Det[i] * dt
+//
+//	Res[i] += decay_efficiency * decayed
+//	Det[i] -= decayed
+//	heat   += (1 - decay_efficiency) * decayed
+func (pf *ParticleResourceField) StepDetritus(dt float32) float32 {
+	rate := pf.DetDecayRate * dt
+	eff := pf.DetDecayEff
+	var heat float32
+
+	for i := range pf.Det {
+		d := pf.Det[i]
+		if d <= 0 {
+			continue
+		}
+		decayed := rate * d
+		pf.Det[i] = d - decayed
+		pf.Res[i] += eff * decayed
+		heat += (1 - eff) * decayed
+	}
+	return heat
+}
+
+// DetData returns the current detritus grid for visualization/telemetry.
+func (pf *ParticleResourceField) DetData() []float32 {
+	return pf.Det
+}
+
+// SampleDetritus returns the detritus density at world coordinates (bilinear).
+func (pf *ParticleResourceField) SampleDetritus(x, y float32) float32 {
+	return pf.sampleGrid(pf.Det, pf.ResW, pf.ResH, x, y)
+}
+
+// splatToDetGrid distributes detritus to nearby cells with bilinear weighting.
+func (pf *ParticleResourceField) splatToDetGrid(x, y, mass float32) float32 {
+	// Convert to grid coordinates
+	gx := x / pf.worldW * float32(pf.ResW)
+	gy := y / pf.worldH * float32(pf.ResH)
+
+	cx := int(gx)
+	cy := int(gy)
+
+	fx := gx - float32(cx)
+	fy := gy - float32(cy)
+
+	w00 := (1 - fx) * (1 - fy)
+	w10 := fx * (1 - fy)
+	w01 := (1 - fx) * fy
+	w11 := fx * fy
+
+	x0 := cx
+	if x0 >= pf.ResW {
+		x0 = 0
+	}
+	y0 := cy
+	if y0 >= pf.ResH {
+		y0 = 0
+	}
+	x1 := cx + 1
+	if x1 >= pf.ResW {
+		x1 = 0
+	}
+	y1 := cy + 1
+	if y1 >= pf.ResH {
+		y1 = 0
+	}
+
+	i00 := y0*pf.ResW + x0
+	i10 := y0*pf.ResW + x1
+	i01 := y1*pf.ResW + x0
+	i11 := y1*pf.ResW + x1
+
+	pf.Det[i00] += mass * w00
+	pf.Det[i10] += mass * w10
+	pf.Det[i01] += mass * w01
+	pf.Det[i11] += mass * w11
+
+	return mass
 }
 
 // --- Flow Field (Curl Noise with Interpolation) ---
@@ -1255,7 +1366,7 @@ func (pf *ParticleResourceField) ParticleCount() int {
 	return pf.Count
 }
 
-// TotalMass returns the total mass in the system (particles + grid).
+// TotalMass returns the total mass in the system (particles + resource grid + detritus grid).
 func (pf *ParticleResourceField) TotalMass() float32 {
 	var total float32
 
@@ -1266,10 +1377,33 @@ func (pf *ParticleResourceField) TotalMass() float32 {
 		}
 	}
 
-	// Sum grid mass
+	// Sum resource grid mass
 	for _, r := range pf.Res {
 		total += r
 	}
 
+	// Sum detritus grid mass
+	for _, d := range pf.Det {
+		total += d
+	}
+
+	return total
+}
+
+// TotalResMass returns only the resource grid mass (excludes detritus and particles).
+func (pf *ParticleResourceField) TotalResMass() float32 {
+	var total float32
+	for _, r := range pf.Res {
+		total += r
+	}
+	return total
+}
+
+// TotalDetMass returns only the detritus grid mass.
+func (pf *ParticleResourceField) TotalDetMass() float32 {
+	var total float32
+	for _, d := range pf.Det {
+		total += d
+	}
 	return total
 }

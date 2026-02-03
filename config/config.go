@@ -35,6 +35,7 @@ type Config struct {
 	Particles    ParticleConfig     `yaml:"particles"`
 	Archetypes   []ArchetypeConfig  `yaml:"archetypes"`
 	Clades       CladeConfig        `yaml:"clades"`
+	Detritus     DetritusConfig     `yaml:"detritus"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
@@ -294,6 +295,13 @@ type HallOfFameEntryConfig struct {
 	MinSurvivalSec float64 `yaml:"min_survival_sec"`
 	MinForaging    float64 `yaml:"min_foraging"`
 	MinKills       int     `yaml:"min_kills"`
+}
+
+// DetritusConfig holds detritus grid parameters for nutrient recycling.
+type DetritusConfig struct {
+	DecayRate       float64 `yaml:"decay_rate"`       // Fraction of detritus that decays per second
+	DecayEfficiency float64 `yaml:"decay_efficiency"` // Fraction of decayed detritus converted to resource (rest is heat)
+	CarcassFraction float64 `yaml:"carcass_fraction"` // Fraction of organism energy deposited as detritus on death
 }
 
 // ParticleConfig holds particle-based resource field parameters.
