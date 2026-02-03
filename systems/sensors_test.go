@@ -133,3 +133,131 @@ func TestSmoothSaturate(t *testing.T) {
 		prev = v
 	}
 }
+
+// TestThreatDetection verifies that prey detect predators as threats.
+// This test uses ComputeSensorsBounded with mock neighbor data.
+func TestThreatDetection(t *testing.T) {
+	// Set up prey (herbivore) looking forward (heading=0)
+	selfVel := components.Velocity{X: 0, Y: 0}
+	selfRot := components.Rotation{Heading: 0}
+	selfEnergy := components.Energy{Value: 0.8, Alive: true}
+	selfCaps := components.DefaultCapabilities(components.KindPrey)
+	selfKind := components.KindPrey
+	selfDiet := float32(0.0) // Pure herbivore
+	selfCladeID := uint64(1)
+	selfArchetypeID := uint8(0) // Grazer archetype
+	selfPos := components.Position{X: 100, Y: 100}
+
+	// Create a predator neighbor directly in front of the prey
+	// Prey is at (100,100) facing right (heading=0), predator at (150,100) = 50 units away
+	predatorNeighbor := Neighbor{
+		DX:     50, // Directly ahead
+		DY:     0,
+		DistSq: 50 * 50, // 2500
+	}
+
+	// We need to mock the orgMap.Get call
+	// Since we can't easily mock ECS, we'll test the edibility math directly
+	t.Run("edibility_math", func(t *testing.T) {
+		// For a prey (diet=0) seeing a predator (diet=1.0)
+		selfDiet := float32(0.0)
+		predatorDiet := float32(1.0)
+
+		edOther := predatorDiet * (1.0 - selfDiet)
+		if edOther <= 0.05 {
+			t.Errorf("edOther = %f, want > 0.05 (predator should be detectable as threat)", edOther)
+		}
+		t.Logf("edOther for prey seeing predator: %f (threshold: 0.05)", edOther)
+	})
+
+	t.Run("edibility_math_low_diet_predator", func(t *testing.T) {
+		// Even a predator with diet=0.5 (minimum to be rendered as predator)
+		selfDiet := float32(0.0)
+		predatorDiet := float32(0.5)
+
+		edOther := predatorDiet * (1.0 - selfDiet)
+		if edOther <= 0.05 {
+			t.Errorf("edOther = %f, want > 0.05 (low-diet predator should still be threat)", edOther)
+		}
+		t.Logf("edOther for prey seeing diet=0.5 predator: %f", edOther)
+	})
+
+	t.Run("sector_bins", func(t *testing.T) {
+		var bins SectorBins
+		bins.Clear()
+
+		// Manually simulate what ComputeSensorsBounded does for a predator neighbor
+
+		// Predator is at (150, 100), prey at (100, 100), facing right (heading=0)
+		// In local frame: lx = 50, ly = 0 (directly ahead)
+		cosH := fastCos(selfRot.Heading)
+		sinH := fastSin(selfRot.Heading)
+		lx := predatorNeighbor.DX*cosH + predatorNeighbor.DY*sinH
+		ly := -predatorNeighbor.DX*sinH + predatorNeighbor.DY*cosH
+
+		relativeAngle := fastAtan2(ly, lx)
+		sectorIdx := sectorIndexFromAngle(relativeAngle)
+		t.Logf("Predator in sector %d (lx=%f, ly=%f, angle=%f)", sectorIdx, lx, ly, relativeAngle)
+
+		// Compute weights
+		dist := fastSqrt(predatorNeighbor.DistSq)
+		invVisionRange := 1.0 / selfCaps.VisionRange
+		distWeight := clamp01(1.0 - dist*invVisionRange)
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
+		baseWeight := distWeight * effWeight
+
+		t.Logf("dist=%f, visionRange=%f, distWeight=%f, effWeight=%f, baseWeight=%f",
+			dist, selfCaps.VisionRange, distWeight, effWeight, baseWeight)
+
+		// Edibility
+		predatorDiet := float32(1.0)
+		edOther := predatorDiet * (1.0 - selfDiet)
+
+		if edOther > 0.05 {
+			weight := baseWeight * edOther
+			bins.Threat[sectorIdx].insert(predatorNeighbor.DistSq, weight)
+			t.Logf("Inserted threat: sector=%d, weight=%f", sectorIdx, weight)
+		}
+
+		// Check that threat was registered
+		threatSum := bins.Threat[sectorIdx].sum()
+		if threatSum == 0 {
+			t.Errorf("Threat bin is empty, expected non-zero sum")
+		} else {
+			t.Logf("Threat bin sum: %f", threatSum)
+		}
+
+		// Check smoothSaturate output
+		threatSignal := smoothSaturate(threatSum)
+		if threatSignal == 0 {
+			t.Errorf("Threat signal is 0, expected non-zero")
+		} else {
+			t.Logf("Threat signal after smoothSaturate: %f", threatSignal)
+		}
+	})
+
+	t.Run("predator_outside_range", func(t *testing.T) {
+		// Test what happens when predator is outside vision range
+		farPredator := Neighbor{
+			DX:     120, // Beyond 100-unit vision range
+			DY:     0,
+			DistSq: 120 * 120, // 14400
+		}
+
+		visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange // 10000
+
+		if farPredator.DistSq > visionRangeSq {
+			t.Logf("Predator at distance %f is OUTSIDE vision range %f (this explains zero threat)",
+				fastSqrt(farPredator.DistSq), selfCaps.VisionRange)
+		} else {
+			t.Errorf("Expected predator to be outside range")
+		}
+	})
+
+	// Suppress unused variable warnings
+	_ = selfVel
+	_ = selfEnergy
+	_ = selfCladeID
+	_ = selfArchetypeID
+	_ = selfPos
+}

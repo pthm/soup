@@ -1,0 +1,45 @@
+# Eval 87 — fitness 3.186 from exp5 CMA-ES optimization
+# Fast maturity, weak predators, max digest time, dynamic flow
+energy:
+  prey:
+    base_cost: 0.026
+    move_cost: 0.140
+    forage_rate: 0.020
+  predator:
+    base_cost: 0.012
+    move_cost: 0.071
+    bite_reward: 0.400
+    transfer_efficiency: 0.60
+    digest_time: 3.000
+
+reproduction:
+  prey_threshold: 0.500
+  pred_threshold: 0.500
+  maturity_age: 2.0
+  prey_cooldown: 18.314
+  pred_cooldown: 6.0
+  cooldown_jitter: 3.0
+  parent_energy_split: 0.400
+  child_energy: 0.500
+  spawn_offset: 21.486
+  heading_jitter: 0.0
+  pred_density_k: 0.0
+  newborn_hunt_cooldown: 4.287
+
+population:
+  max_prey: 200
+  max_pred: 40
+
+refugia:
+  strength: 0.500
+
+particles:
+  spawn_rate: 300.0
+  initial_mass: 0.027
+  deposit_rate: 5.0
+  pickup_rate: 2.569
+  cell_capacity: 2.0
+  flow_strength: 55.0
+  flow_scale: 0.5
+  flow_octaves: 1
+  flow_evolution: 0.150

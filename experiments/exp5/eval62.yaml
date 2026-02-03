@@ -1,0 +1,44 @@
+# Eval 62 — perfect fitness (0.000) from exp5 CMA-ES optimization
+energy:
+  prey:
+    base_cost: 0.005
+    move_cost: 0.250
+    forage_rate: 0.096
+  predator:
+    base_cost: 0.020
+    move_cost: 0.063
+    bite_reward: 0.800
+    transfer_efficiency: 0.60
+    digest_time: 0.715
+
+reproduction:
+  prey_threshold: 0.500
+  pred_threshold: 0.710
+  maturity_age: 15.0
+  prey_cooldown: 17.766
+  pred_cooldown: 20.0
+  cooldown_jitter: 3.0
+  parent_energy_split: 0.509
+  child_energy: 0.500
+  spawn_offset: 30.0
+  heading_jitter: 0.381
+  pred_density_k: 0.0
+  newborn_hunt_cooldown: 0.5
+
+population:
+  max_prey: 200
+  max_pred: 200
+
+refugia:
+  strength: 1.036
+
+particles:
+  spawn_rate: 176.272
+  initial_mass: 0.002
+  deposit_rate: 5.0
+  pickup_rate: 0.1
+  cell_capacity: 0.438
+  flow_strength: 10.0
+  flow_scale: 0.5
+  flow_octaves: 2
+  flow_evolution: 0.005

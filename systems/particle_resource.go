@@ -235,8 +235,7 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	// - Pickup: entrain mass from dense areas (redistributes from dense→sparse)
 	pf.spawnParticles(dt)
 	pf.advectParticlesCompact(dt)
-	pf.depositCompact(dt)
-	pf.pickupCompact(dt)
+	pf.depositAndPickupCompact(dt)
 	pf.cleanupCompact()
 }
 
@@ -486,7 +485,7 @@ func (pf *ParticleResourceField) pickup(dt float32) {
 	}
 }
 
-// splatToGrid distributes mass to nearby cells with tent weighting.
+// splatToGrid distributes mass to nearby cells with bilinear weighting.
 // Returns how much mass was actually deposited (respects cell capacity).
 func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) float32 {
 	if mass <= 0 {
@@ -504,49 +503,94 @@ func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) float32 {
 	fx := gx - float32(cx)
 	fy := gy - float32(cy)
 
-	// 2x2 bilinear splat (simpler and faster than 3x3 tent)
+	// 2x2 bilinear weights
 	w00 := (1 - fx) * (1 - fy)
 	w10 := fx * (1 - fy)
 	w01 := (1 - fx) * fy
 	w11 := fx * fy
 
-	x0 := pfModInt(cx, pf.ResW)
-	y0 := pfModInt(cy, pf.ResH)
-	x1 := pfModInt(cx+1, pf.ResW)
-	y1 := pfModInt(cy+1, pf.ResH)
+	// Wrap coordinates (cx/cy can be at boundary)
+	x0 := cx
+	if x0 >= pf.ResW {
+		x0 = 0
+	}
+	y0 := cy
+	if y0 >= pf.ResH {
+		y0 = 0
+	}
+	x1 := cx + 1
+	if x1 >= pf.ResW {
+		x1 = 0
+	}
+	y1 := cy + 1
+	if y1 >= pf.ResH {
+		y1 = 0
+	}
 
-	// If no capacity limit, deposit everything
+	// Precompute indices
+	i00 := y0*pf.ResW + x0
+	i10 := y0*pf.ResW + x1
+	i01 := y1*pf.ResW + x0
+	i11 := y1*pf.ResW + x1
+
+	// If no capacity limit, deposit everything (fast path)
 	if pf.CellCapacity <= 0 {
-		pf.Res[y0*pf.ResW+x0] += mass * w00
-		pf.Res[y0*pf.ResW+x1] += mass * w10
-		pf.Res[y1*pf.ResW+x0] += mass * w01
-		pf.Res[y1*pf.ResW+x1] += mass * w11
+		pf.Res[i00] += mass * w00
+		pf.Res[i10] += mass * w10
+		pf.Res[i01] += mass * w01
+		pf.Res[i11] += mass * w11
 		return mass
 	}
 
-	// Deposit up to cell capacity for each cell
+	// Deposit with capacity check (inlined to avoid loop overhead)
+	cap := pf.CellCapacity
 	var deposited float32
-	indices := [4]int{y0*pf.ResW + x0, y0*pf.ResW + x1, y1*pf.ResW + x0, y1*pf.ResW + x1}
-	weights := [4]float32{w00, w10, w01, w11}
 
-	for i, idx := range indices {
-		want := mass * weights[i]
-		room := pf.CellCapacity - pf.Res[idx]
-		if room < 0 {
-			room = 0
+	if want := mass * w00; want > 0 {
+		room := cap - pf.Res[i00]
+		if room > 0 {
+			if want > room {
+				want = room
+			}
+			pf.Res[i00] += want
+			deposited += want
 		}
-		actual := want
-		if actual > room {
-			actual = room
+	}
+	if want := mass * w10; want > 0 {
+		room := cap - pf.Res[i10]
+		if room > 0 {
+			if want > room {
+				want = room
+			}
+			pf.Res[i10] += want
+			deposited += want
 		}
-		pf.Res[idx] += actual
-		deposited += actual
+	}
+	if want := mass * w01; want > 0 {
+		room := cap - pf.Res[i01]
+		if room > 0 {
+			if want > room {
+				want = room
+			}
+			pf.Res[i01] += want
+			deposited += want
+		}
+	}
+	if want := mass * w11; want > 0 {
+		room := cap - pf.Res[i11]
+		if room > 0 {
+			if want > room {
+				want = room
+			}
+			pf.Res[i11] += want
+			deposited += want
+		}
 	}
 
 	return deposited
 }
 
-// removeFromGrid removes mass from grid at position
+// removeFromGrid removes mass from grid at position with bilinear distribution.
 func (pf *ParticleResourceField) removeFromGrid(x, y, mass float32) {
 	if mass <= 0 {
 		return
@@ -562,22 +606,41 @@ func (pf *ParticleResourceField) removeFromGrid(x, y, mass float32) {
 	fx := gx - float32(cx)
 	fy := gy - float32(cy)
 
-	// Bilinear removal
+	// Bilinear weights
 	w00 := (1 - fx) * (1 - fy)
 	w10 := fx * (1 - fy)
 	w01 := (1 - fx) * fy
 	w11 := fx * fy
 
-	x0 := pfModInt(cx, pf.ResW)
-	y0 := pfModInt(cy, pf.ResH)
-	x1 := pfModInt(cx+1, pf.ResW)
-	y1 := pfModInt(cy+1, pf.ResH)
+	// Wrap coordinates (cx/cy can be at boundary)
+	x0 := cx
+	if x0 >= pf.ResW {
+		x0 = 0
+	}
+	y0 := cy
+	if y0 >= pf.ResH {
+		y0 = 0
+	}
+	x1 := cx + 1
+	if x1 >= pf.ResW {
+		x1 = 0
+	}
+	y1 := cy + 1
+	if y1 >= pf.ResH {
+		y1 = 0
+	}
+
+	// Precompute indices
+	i00 := y0*pf.ResW + x0
+	i10 := y0*pf.ResW + x1
+	i01 := y1*pf.ResW + x0
+	i11 := y1*pf.ResW + x1
 
 	// Remove proportionally, clamping to zero
-	pf.Res[y0*pf.ResW+x0] = maxf32(0, pf.Res[y0*pf.ResW+x0]-mass*w00)
-	pf.Res[y0*pf.ResW+x1] = maxf32(0, pf.Res[y0*pf.ResW+x1]-mass*w10)
-	pf.Res[y1*pf.ResW+x0] = maxf32(0, pf.Res[y1*pf.ResW+x0]-mass*w01)
-	pf.Res[y1*pf.ResW+x1] = maxf32(0, pf.Res[y1*pf.ResW+x1]-mass*w11)
+	pf.Res[i00] = maxf32(0, pf.Res[i00]-mass*w00)
+	pf.Res[i10] = maxf32(0, pf.Res[i10]-mass*w10)
+	pf.Res[i01] = maxf32(0, pf.Res[i01]-mass*w01)
+	pf.Res[i11] = maxf32(0, pf.Res[i11]-mass*w11)
 }
 
 // --- Spawning from Potential ---
@@ -666,72 +729,196 @@ func (pf *ParticleResourceField) cleanup() {
 // --- Compact Iteration Functions (O(active) instead of O(MaxCount)) ---
 
 // advectParticlesCompact only iterates over active particles.
-// Uses RK2 (midpoint) integration for smooth trajectories.
+// Uses Euler integration for performance (sufficient for visual particle flow).
 func (pf *ParticleResourceField) advectParticlesCompact(dt float32) {
 	for _, i := range pf.ActiveList {
 		if !pf.Active[i] {
-			continue // Skip despawned (will be cleaned in cleanupCompact)
+			continue
 		}
 
-		x0, y0 := pf.X[i], pf.Y[i]
+		// Sample flow at current position
+		u, v := pf.sampleFlow(pf.X[i], pf.Y[i])
 
-		// k1 = flow at current position
-		u1, v1 := pf.sampleFlow(x0, y0)
-
-		// Midpoint
-		xm := pfWrap(x0+u1*dt*0.5, pf.worldW)
-		ym := pfWrap(y0+v1*dt*0.5, pf.worldH)
-
-		// k2 = flow at midpoint
-		u2, v2 := pf.sampleFlow(xm, ym)
-
-		// Final position
-		pf.X[i] = pfWrap(x0+u2*dt, pf.worldW)
-		pf.Y[i] = pfWrap(y0+v2*dt, pf.worldH)
+		// Update position with Euler step
+		pf.X[i] = pfWrap(pf.X[i]+u*dt, pf.worldW)
+		pf.Y[i] = pfWrap(pf.Y[i]+v*dt, pf.worldH)
 	}
 }
 
-// depositCompact transfers mass from particles to grid, only iterating active particles.
-// Uses DepositRate to control gradual release - particles spread mass along their drift path.
-func (pf *ParticleResourceField) depositCompact(dt float32) {
-	rate := pf.DepositRate * dt
-	if rate > 1 {
-		rate = 1 // Can't deposit more than 100%
+// depositAndPickupCompact performs deposit then pickup in two passes.
+// Deposit happens first for all particles, then pickup sees the fully-deposited grid.
+// This preserves original semantics while keeping optimizations (precomputed reciprocals,
+// inlined operations, no function call overhead).
+func (pf *ParticleResourceField) depositAndPickupCompact(dt float32) {
+	depositRate := pf.DepositRate * dt
+	if depositRate > 1 {
+		depositRate = 1
 	}
+	pickupRate := pf.PickupRate * dt
+	cap := pf.CellCapacity
 
+	// Precompute reciprocals for grid coordinate conversion
+	invWorldW := float32(pf.ResW) / pf.worldW
+	invWorldH := float32(pf.ResH) / pf.worldH
+
+	// Pass 1: Deposit all particles
 	for _, i := range pf.ActiveList {
 		if !pf.Active[i] || pf.Mass[i] <= 0 {
 			continue
 		}
 
-		// Gradual deposit: release fraction of mass per tick
-		dm := pf.Mass[i] * rate
-		deposited := pf.splatToGrid(pf.X[i], pf.Y[i], dm)
+		x, y := pf.X[i], pf.Y[i]
+
+		// Compute grid coordinates
+		gx := x * invWorldW
+		gy := y * invWorldH
+		cx := int(gx)
+		cy := int(gy)
+		fx := gx - float32(cx)
+		fy := gy - float32(cy)
+
+		// Wrap coordinates
+		x0 := cx
+		if x0 >= pf.ResW {
+			x0 = 0
+		}
+		y0 := cy
+		if y0 >= pf.ResH {
+			y0 = 0
+		}
+		x1 := cx + 1
+		if x1 >= pf.ResW {
+			x1 = 0
+		}
+		y1 := cy + 1
+		if y1 >= pf.ResH {
+			y1 = 0
+		}
+
+		// Precompute indices and weights
+		i00 := y0*pf.ResW + x0
+		i10 := y0*pf.ResW + x1
+		i01 := y1*pf.ResW + x0
+		i11 := y1*pf.ResW + x1
+
+		w00 := (1 - fx) * (1 - fy)
+		w10 := fx * (1 - fy)
+		w01 := (1 - fx) * fy
+		w11 := fx * fy
+
+		dm := pf.Mass[i] * depositRate
+		var deposited float32
+
+		if cap <= 0 {
+			// No capacity limit - fast path
+			pf.Res[i00] += dm * w00
+			pf.Res[i10] += dm * w10
+			pf.Res[i01] += dm * w01
+			pf.Res[i11] += dm * w11
+			deposited = dm
+		} else {
+			// Capacity-limited deposit
+			if want := dm * w00; want > 0 {
+				if room := cap - pf.Res[i00]; room > 0 {
+					if want > room {
+						want = room
+					}
+					pf.Res[i00] += want
+					deposited += want
+				}
+			}
+			if want := dm * w10; want > 0 {
+				if room := cap - pf.Res[i10]; room > 0 {
+					if want > room {
+						want = room
+					}
+					pf.Res[i10] += want
+					deposited += want
+				}
+			}
+			if want := dm * w01; want > 0 {
+				if room := cap - pf.Res[i01]; room > 0 {
+					if want > room {
+						want = room
+					}
+					pf.Res[i01] += want
+					deposited += want
+				}
+			}
+			if want := dm * w11; want > 0 {
+				if room := cap - pf.Res[i11]; room > 0 {
+					if want > room {
+						want = room
+					}
+					pf.Res[i11] += want
+					deposited += want
+				}
+			}
+		}
 		pf.Mass[i] -= deposited
 	}
-}
 
-// pickupCompact transfers mass from grid to particles, only iterating active particles.
-func (pf *ParticleResourceField) pickupCompact(dt float32) {
+	// Pass 2: Pickup from grid (now sees all deposits)
 	for _, i := range pf.ActiveList {
 		if !pf.Active[i] {
 			continue
 		}
 
-		r := pf.Sample(pf.X[i], pf.Y[i])
-		if r < 0.001 {
-			continue
+		x, y := pf.X[i], pf.Y[i]
+
+		// Compute grid coordinates
+		gx := x * invWorldW
+		gy := y * invWorldH
+		cx := int(gx)
+		cy := int(gy)
+		fx := gx - float32(cx)
+		fy := gy - float32(cy)
+
+		// Wrap coordinates
+		x0 := cx
+		if x0 >= pf.ResW {
+			x0 = 0
+		}
+		y0 := cy
+		if y0 >= pf.ResH {
+			y0 = 0
+		}
+		x1 := cx + 1
+		if x1 >= pf.ResW {
+			x1 = 0
+		}
+		y1 := cy + 1
+		if y1 >= pf.ResH {
+			y1 = 0
 		}
 
-		dm := pf.PickupRate * r * dt
-		if dm > r*0.5 {
-			dm = r * 0.5
-		}
+		// Precompute indices and weights
+		i00 := y0*pf.ResW + x0
+		i10 := y0*pf.ResW + x1
+		i01 := y1*pf.ResW + x0
+		i11 := y1*pf.ResW + x1
 
-		pf.removeFromGrid(pf.X[i], pf.Y[i], dm)
-		pf.Mass[i] += dm
+		w00 := (1 - fx) * (1 - fy)
+		w10 := fx * (1 - fy)
+		w01 := (1 - fx) * fy
+		w11 := fx * fy
+
+		// Sample grid and remove mass
+		r := pf.Res[i00]*w00 + pf.Res[i10]*w10 + pf.Res[i01]*w01 + pf.Res[i11]*w11
+		if r >= 0.001 {
+			dm := pickupRate * r
+			if dm > r*0.5 {
+				dm = r * 0.5
+			}
+			pf.Res[i00] = maxf32(0, pf.Res[i00]-dm*w00)
+			pf.Res[i10] = maxf32(0, pf.Res[i10]-dm*w10)
+			pf.Res[i01] = maxf32(0, pf.Res[i01]-dm*w01)
+			pf.Res[i11] = maxf32(0, pf.Res[i11]-dm*w11)
+			pf.Mass[i] += dm
+		}
 	}
 }
+
 
 // cleanupCompact removes dead particles and compacts the ActiveList.
 func (pf *ParticleResourceField) cleanupCompact() {
@@ -999,13 +1186,28 @@ func (pf *ParticleResourceField) hash3D(ix, iy, iz int) float32 {
 // --- Helper functions (prefixed to avoid conflicts) ---
 
 func pfFract(x float32) float32 {
-	return x - float32(math.Floor(float64(x)))
+	// Fast fract for positive values (typical in normalized coordinates)
+	if x >= 0 {
+		return x - float32(int(x))
+	}
+	// Handle negative: -0.3 should return 0.7
+	return x - float32(int(x)-1)
 }
 
 func pfWrap(x, max float32) float32 {
-	x = float32(math.Mod(float64(x), float64(max)))
+	// Fast wrap for values within 1 max of bounds (typical for particle advection)
 	if x < 0 {
 		x += max
+		// Handle rare case of very negative values
+		if x < 0 {
+			x += max
+		}
+	} else if x >= max {
+		x -= max
+		// Handle rare case of very large values
+		if x >= max {
+			x -= max
+		}
 	}
 	return x
 }

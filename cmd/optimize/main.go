@@ -36,7 +36,7 @@ func formatDuration(d time.Duration) string {
 func main() {
 	// CLI flags
 	configPath := flag.String("config", "", "Base config YAML file (empty = use defaults)")
-	maxTicks := flag.Int("max-ticks", 500000, "Simulation duration in ticks")
+	maxTicks := flag.Int("max-ticks", 3000000, "Maximum simulation duration in ticks (cap)")
 	seeds := flag.Int("seeds", 3, "Number of seeds per evaluation")
 	maxEvals := flag.Int("max-evals", 200, "Maximum number of evaluations")
 	population := flag.Int("population", 0, "CMA-ES population size (0 = auto)")
@@ -153,9 +153,11 @@ func main() {
 		avgPerEval := elapsed / time.Duration(evalCount)
 		remaining := time.Duration(*maxEvals-evalCount) * avgPerEval
 
-		// Print progress with timing
-		fmt.Printf("Eval %d/%d: fitness=%.4f (best=%.4f) | elapsed: %s, ETA: %s\n",
-			evalCount, *maxEvals, fitness, bestFitness,
+		// Print progress with timing (fitness is -survivalTicks, so negate for display)
+		survivalSec := -fitness / 60.0 // ticks to sim-seconds at 60tps
+		bestSurvivalSec := -bestFitness / 60.0
+		fmt.Printf("Eval %d/%d: survived=%.0fs (best=%.0fs) | elapsed: %s, ETA: %s\n",
+			evalCount, *maxEvals, survivalSec, bestSurvivalSec,
 			formatDuration(elapsed), formatDuration(remaining))
 
 		return fitness
@@ -178,7 +180,8 @@ func main() {
 
 	totalTime := time.Since(startTime)
 	fmt.Printf("\nOptimization complete after %d evaluations in %s\n", evalCount, formatDuration(totalTime))
-	fmt.Printf("Best fitness: %.6f\n", bestFitness)
+	bestSurvivalSec := -bestFitness / 60.0
+	fmt.Printf("Best survival: %.0f sim-seconds (%.0f ticks)\n", bestSurvivalSec, -bestFitness)
 
 	// Print best parameters
 	fmt.Println("\nBest parameters:")

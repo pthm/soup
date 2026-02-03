@@ -126,3 +126,34 @@ func TestParticleResourceFieldMassConservation(t *testing.T) {
 		t.Errorf("mass not conserved: initial=%.6f, final=%.6f, diff=%.6f", initialMass, finalMass, diff)
 	}
 }
+
+func BenchmarkParticleResourceFieldStep(b *testing.B) {
+	// Use production-like grid size (matches 2560x1440 world with 128 base)
+	pf := NewParticleResourceField(227, 128, 2560, 1440, 42)
+
+	// Warm up to spawn particles
+	dt := float32(1.0 / 60.0)
+	for i := 0; i < 600; i++ { // 10 seconds of sim time
+		pf.Step(dt, true)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pf.Step(dt, true)
+	}
+}
+
+func BenchmarkParticleResourceFieldStepNoEvolve(b *testing.B) {
+	// Same but without evolution (potential/flow updates)
+	pf := NewParticleResourceField(227, 128, 2560, 1440, 42)
+
+	dt := float32(1.0 / 60.0)
+	for i := 0; i < 600; i++ {
+		pf.Step(dt, true)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pf.Step(dt, false) // evolve=false
+	}
+}

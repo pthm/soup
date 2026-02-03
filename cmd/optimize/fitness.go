@@ -18,9 +18,9 @@ type FitnessEvaluator struct {
 	statsWindow float64
 
 	// Best run tracking
-	mu              sync.Mutex
-	bestFitness     float64
-	bestHallOfFame  *telemetry.HallOfFame
+	mu             sync.Mutex
+	bestFitness    float64
+	bestHallOfFame *telemetry.HallOfFame
 }
 
 // NewFitnessEvaluator creates a new evaluator.
@@ -42,18 +42,16 @@ func (fe *FitnessEvaluator) BestHallOfFame() *telemetry.HallOfFame {
 	return fe.bestHallOfFame
 }
 
+// Minimum viable population: if either species stays below this for
+// extinctionGraceTicks consecutive ticks, it counts as functionally extinct.
+const (
+	minViablePop        = 3
+	extinctionGraceSec  = 30.0  // seconds of grace below minViablePop
+)
+
 // runResult holds the results from a single simulation run.
 type runResult struct {
-	extinct       bool
-	coexistFrac   float64
-	totalPop      []int
-	preyPops      []int
-	predPops      []int
-	killRates     []float64
-	birthRates    []float64
-	deathRates    []float64
-	activeClades  []int
-	windowCount   int
+	survivalTicks int32 // ticks before functional extinction (or maxTicks if survived)
 	hallOfFame    *telemetry.HallOfFame
 }
 
@@ -64,6 +62,7 @@ type seedResult struct {
 }
 
 // Evaluate computes fitness for a parameter vector (lower = better).
+// Fitness is negative survival ticks: longer survival = lower (better) fitness.
 func (fe *FitnessEvaluator) Evaluate(x []float64) float64 {
 	// Run all seeds in parallel
 	results := make([]seedResult, len(fe.seeds))
@@ -109,73 +108,86 @@ func (fe *FitnessEvaluator) Evaluate(x []float64) float64 {
 }
 
 // runSimulation executes a single headless simulation run.
+// Runs until functional extinction or maxTicks, whichever comes first.
 func (fe *FitnessEvaluator) runSimulation(x []float64, seed int64) *runResult {
 	// Create a fresh config copy and apply parameters
 	cfg := fe.copyConfig()
 	fe.params.ApplyToConfig(cfg, x)
 
+	// Disable hall of fame reseeding — ecosystems must self-sustain
+	cfg.HallOfFame.Enabled = false
+
 	result := &runResult{}
 
-	// Callback to collect stats
-	var stats []telemetry.WindowStats
-	callback := func(s telemetry.WindowStats) {
-		stats = append(stats, s)
-	}
-
-	// Create and run game with per-game config (no global state)
+	// Create and run game
 	g := game.NewGameWithOptions(game.Options{
 		Seed:           seed,
 		Headless:       true,
 		StatsWindowSec: fe.statsWindow,
 		StepsPerUpdate: 1,
-		StatsCallback:  callback,
 		Config:         cfg,
 	})
 
-	// Run simulation
+	// Track how long each species has been below minimum viable population
+	dt := cfg.Physics.DT
+	var preyBelowSec float64
+	var predBelowSec float64
+	graceTicks := int32(extinctionGraceSec / dt)
+
+	// Let population establish before checking (skip first 5 sim-seconds)
+	warmupTicks := int32(5.0 / dt)
+
+	// Run simulation until extinction or max ticks
 	for g.Tick() < fe.maxTicks {
 		g.UpdateHeadless()
 
-		// Check for extinction
-		// We need to check via the stats callback
+		tick := g.Tick()
+		if tick < warmupTicks {
+			continue
+		}
+
+		prey := g.PreyCount()
+		pred := g.PredCount()
+
+		// Hard extinction: either species completely gone
+		if prey == 0 || pred == 0 {
+			result.survivalTicks = tick
+			result.hallOfFame = g.HallOfFame()
+			g.Unload()
+			return result
+		}
+
+		// Functional extinction: species below minimum viable population too long
+		if prey < minViablePop {
+			preyBelowSec += dt
+		} else {
+			preyBelowSec = 0
+		}
+
+		if pred < minViablePop {
+			predBelowSec += dt
+		} else {
+			predBelowSec = 0
+		}
+
+		if preyBelowSec > 0 && int32(preyBelowSec/dt) >= graceTicks {
+			result.survivalTicks = tick
+			result.hallOfFame = g.HallOfFame()
+			g.Unload()
+			return result
+		}
+		if predBelowSec > 0 && int32(predBelowSec/dt) >= graceTicks {
+			result.survivalTicks = tick
+			result.hallOfFame = g.HallOfFame()
+			g.Unload()
+			return result
+		}
 	}
 
-	// Capture hall of fame before unloading
+	// Survived the full run
+	result.survivalTicks = fe.maxTicks
 	result.hallOfFame = g.HallOfFame()
-
 	g.Unload()
-
-	// Process collected stats
-	result.windowCount = len(stats)
-	if result.windowCount == 0 {
-		result.extinct = true
-		return result
-	}
-
-	for _, s := range stats {
-		// Check for extinction
-		if s.PreyCount == 0 || s.PredCount == 0 {
-			result.extinct = true
-		}
-
-		result.totalPop = append(result.totalPop, s.PreyCount+s.PredCount)
-		result.preyPops = append(result.preyPops, s.PreyCount)
-		result.predPops = append(result.predPops, s.PredCount)
-		result.killRates = append(result.killRates, s.KillRate)
-		result.birthRates = append(result.birthRates, float64(s.PreyBirths+s.PredBirths))
-		result.deathRates = append(result.deathRates, float64(s.PreyDeaths+s.PredDeaths))
-		result.activeClades = append(result.activeClades, s.ActiveClades)
-	}
-
-	// Calculate coexistence fraction
-	coexistCount := 0
-	for i := range stats {
-		if stats[i].PreyCount > 0 && stats[i].PredCount > 0 {
-			coexistCount++
-		}
-	}
-	result.coexistFrac = float64(coexistCount) / float64(result.windowCount)
-
 	return result
 }
 
@@ -213,104 +225,7 @@ func (fe *FitnessEvaluator) copyConfig() *config.Config {
 }
 
 // computeFitness calculates the scalar fitness (lower = better).
+// Fitness = negative survival ticks. Longer survival = lower fitness = better.
 func (fe *FitnessEvaluator) computeFitness(r *runResult) float64 {
-	// 1. Extinction penalty
-	if r.extinct {
-		return 1e6
-	}
-
-	fitness := 0.0
-
-	// 2. Coexistence penalty: penalize if <90% of windows have both species
-	if r.coexistFrac < 0.9 {
-		fitness += 100.0 * (0.9 - r.coexistFrac)
-	}
-
-	// 3. Population band penalty: target 200-500 total
-	meanPop := mean(r.totalPop)
-	if meanPop < 200 {
-		fitness += 0.1 * (200 - meanPop)
-	} else if meanPop > 500 {
-		fitness += 0.1 * (meanPop - 500)
-	}
-
-	// 4. CV stability: target CV 0.1-0.35 (not stagnant, not chaotic)
-	cv := coefficientOfVariation(r.totalPop)
-	if cv < 0.1 {
-		// Too stagnant
-		fitness += 50.0 * (0.1 - cv)
-	} else if cv > 0.35 {
-		// Too chaotic
-		fitness += 50.0 * (cv - 0.35)
-	}
-
-	// 5. Activity penalty: penalize zero birth/death rates
-	meanBirths := meanFloat(r.birthRates)
-	meanDeaths := meanFloat(r.deathRates)
-	if meanBirths < 1 {
-		fitness += 20.0
-	}
-	if meanDeaths < 1 {
-		fitness += 20.0
-	}
-
-	// 6. Hunting success: penalize kill rate < 0.1
-	meanKillRate := meanFloat(r.killRates)
-	if meanKillRate < 0.1 {
-		fitness += 30.0 * (0.1 - meanKillRate)
-	}
-
-	// 7. Diversity: penalize if ActiveClades < 3
-	meanClades := mean(r.activeClades)
-	if meanClades < 3 {
-		fitness += 10.0 * (3 - meanClades)
-	}
-
-	return fitness
-}
-
-// mean calculates the mean of an int slice.
-func mean(vals []int) float64 {
-	if len(vals) == 0 {
-		return 0
-	}
-	sum := 0
-	for _, v := range vals {
-		sum += v
-	}
-	return float64(sum) / float64(len(vals))
-}
-
-// meanFloat calculates the mean of a float64 slice.
-func meanFloat(vals []float64) float64 {
-	if len(vals) == 0 {
-		return 0
-	}
-	sum := 0.0
-	for _, v := range vals {
-		sum += v
-	}
-	return sum / float64(len(vals))
-}
-
-// coefficientOfVariation calculates CV = stddev / mean.
-func coefficientOfVariation(vals []int) float64 {
-	if len(vals) == 0 {
-		return 0
-	}
-	m := mean(vals)
-	if m == 0 {
-		return 0
-	}
-
-	// Calculate variance
-	var sumSq float64
-	for _, v := range vals {
-		diff := float64(v) - m
-		sumSq += diff * diff
-	}
-	variance := sumSq / float64(len(vals))
-	stddev := math.Sqrt(variance)
-
-	return stddev / m
+	return -float64(r.survivalTicks)
 }

@@ -371,6 +371,16 @@ func (g *Game) Tick() int32 {
 	return g.tick
 }
 
+// PreyCount returns the current prey population.
+func (g *Game) PreyCount() int {
+	return g.numPrey
+}
+
+// PredCount returns the current predator population.
+func (g *Game) PredCount() int {
+	return g.numPred
+}
+
 // UpdateHeadless runs simulation steps without rendering, respecting stepsPerUpdate setting.
 func (g *Game) UpdateHeadless() {
 	for i := 0; i < g.stepsPerUpdate; i++ {
