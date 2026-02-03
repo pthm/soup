@@ -88,6 +88,15 @@ func (c *Collector) ShouldFlush(currentTick int32) bool {
 	return currentTick-c.windowStartTick >= c.windowDurationTicks
 }
 
+// EnergyPools holds energy pool totals for conservation tracking.
+type EnergyPools struct {
+	TotalRes       float64 // Total resource grid energy
+	TotalDet       float64 // Total detritus grid energy
+	TotalOrganisms float64 // Total energy in living organisms
+	HeatLossAccum  float64 // Cumulative energy lost to heat
+	ParticleInput  float64 // Cumulative energy injected by particles
+}
+
 // Flush produces a WindowStats and resets counters for the next window.
 // The caller must provide:
 // - currentTick: the current simulation tick
@@ -95,12 +104,14 @@ func (c *Collector) ShouldFlush(currentTick int32) bool {
 // - preyEnergies, predEnergies: energy values for percentile calculation
 // - meanResourceAtPrey: average resource value at prey positions
 // - activeClades: number of unique clades among living entities
+// - pools: energy pool totals for conservation tracking
 func (c *Collector) Flush(
 	currentTick int32,
 	preyCount, predCount int,
 	preyEnergies, predEnergies []float64,
 	meanResourceAtPrey float64,
 	activeClades int,
+	pools EnergyPools,
 ) WindowStats {
 	// Calculate rates
 	var hitRate, killRate float64
@@ -147,6 +158,12 @@ func (c *Collector) Flush(
 		PredEnergyP90:  predP90,
 
 		MeanResourceAtPreyPos: meanResourceAtPrey,
+
+		TotalRes:       pools.TotalRes,
+		TotalDet:       pools.TotalDet,
+		TotalOrganisms: pools.TotalOrganisms,
+		HeatLossAccum:  pools.HeatLossAccum,
+		ParticleInput:  pools.ParticleInput,
 
 		ActiveClades: activeClades,
 	}

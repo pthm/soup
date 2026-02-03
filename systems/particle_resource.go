@@ -63,6 +63,10 @@ type ParticleResourceField struct {
 	Time          float32
 	lastPotUpdate float32
 
+	// Per-tick accounting (reset each Step)
+	ParticleInputThisTick float32 // mass injected by particle spawning this tick
+	DetritusHeatThisTick  float32 // heat lost from detritus decay this tick
+
 	// Potential field noise parameters
 	Seed       uint32
 	Scale      float32 // base noise scale
@@ -229,6 +233,8 @@ func (pf *ParticleResourceField) Graze(x, y float32, rate, dt float32, radiusCel
 
 func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.Time += dt
+	pf.ParticleInputThisTick = 0
+	pf.DetritusHeatThisTick = 0
 
 	if evolve {
 		// Smoothly interpolate flow field and trigger async generation
@@ -254,8 +260,7 @@ func (pf *ParticleResourceField) Step(dt float32, evolve bool) {
 	pf.cleanupCompact()
 
 	// Detritus decay: Det -> Res (with efficiency loss to heat)
-	// Heat return value unused until HeatLossAccum is added (step 2).
-	_ = pf.StepDetritus(dt)
+	pf.DetritusHeatThisTick = pf.StepDetritus(dt)
 }
 
 func (pf *ParticleResourceField) ResData() []float32 {
@@ -786,6 +791,7 @@ func (pf *ParticleResourceField) spawnParticles(dt float32) {
 		pot := pf.samplePotential(x, y)
 		if pf.rng.Float32() < pot {
 			pf.spawn(x, y, pf.InitialMass)
+			pf.ParticleInputThisTick += pf.InitialMass
 			spawned++
 		}
 	}

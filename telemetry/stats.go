@@ -44,6 +44,13 @@ type WindowStats struct {
 	// Resource utilization
 	MeanResourceAtPreyPos float64 `csv:"resource_util"`
 
+	// Energy pools (for conservation validation)
+	TotalRes       float64 `csv:"total_res"`        // Total resource grid energy
+	TotalDet       float64 `csv:"total_det"`        // Total detritus grid energy
+	TotalOrganisms float64 `csv:"total_organisms"`  // Total energy in living organisms
+	HeatLossAccum  float64 `csv:"heat_loss_accum"`  // Cumulative energy lost to heat
+	ParticleInput  float64 `csv:"particle_input"`   // Cumulative energy injected by particles
+
 	// Clade tracking
 	ActiveClades int `csv:"active_clades"`
 }
@@ -128,6 +135,11 @@ func (s WindowStats) LogValue() slog.Value {
 		slog.Float64("pred_energy_p50", s.PredEnergyP50),
 		slog.Float64("pred_energy_p90", s.PredEnergyP90),
 		slog.Float64("resource_util", s.MeanResourceAtPreyPos),
+		slog.Float64("total_res", s.TotalRes),
+		slog.Float64("total_det", s.TotalDet),
+		slog.Float64("total_organisms", s.TotalOrganisms),
+		slog.Float64("heat_loss_accum", s.HeatLossAccum),
+		slog.Float64("particle_input", s.ParticleInput),
 		slog.Int("active_clades", s.ActiveClades),
 	)
 }
@@ -159,6 +171,11 @@ func (s WindowStats) LogStats() {
 		"pred_energy_p50", s.PredEnergyP50,
 		"pred_energy_p90", s.PredEnergyP90,
 		"resource_util", s.MeanResourceAtPreyPos,
+		"total_res", s.TotalRes,
+		"total_det", s.TotalDet,
+		"total_organisms", s.TotalOrganisms,
+		"heat_loss_accum", s.HeatLossAccum,
+		"particle_input", s.ParticleInput,
 		"active_clades", s.ActiveClades,
 	)
 }

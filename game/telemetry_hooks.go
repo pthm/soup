@@ -19,8 +19,11 @@ func (g *Game) flushTelemetry() {
 	// Count active clades
 	activeClades := g.lifetimeTracker.ActiveCladeCount()
 
+	// Sample energy pools for conservation tracking
+	pools := g.sampleEnergyPools(preyEnergies, predEnergies)
+
 	// Flush the stats window
-	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource, activeClades)
+	stats := g.collector.Flush(g.tick, g.numPrey, g.numPred, preyEnergies, predEnergies, meanResource, activeClades, pools)
 	perfStats := g.perfCollector.Stats()
 
 	// Call stats callback if provided
@@ -95,6 +98,26 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies []float64
 	}
 
 	return preyEnergies, predEnergies, meanResource
+}
+
+// sampleEnergyPools computes current energy pool totals for conservation tracking.
+func (g *Game) sampleEnergyPools(preyEnergies, predEnergies []float64) telemetry.EnergyPools {
+	// Sum organism energy (already collected during sampleEnergyDistributions)
+	var totalOrganisms float64
+	for _, e := range preyEnergies {
+		totalOrganisms += e
+	}
+	for _, e := range predEnergies {
+		totalOrganisms += e
+	}
+
+	return telemetry.EnergyPools{
+		TotalRes:       float64(g.resourceField.TotalResMass()),
+		TotalDet:       float64(g.resourceField.TotalDetMass()),
+		TotalOrganisms: totalOrganisms,
+		HeatLossAccum:  float64(g.heatLossAccum),
+		ParticleInput:  float64(g.particleInputAccum),
+	}
 }
 
 // saveSnapshot creates and saves a snapshot to disk.

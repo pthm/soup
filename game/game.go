@@ -89,6 +89,10 @@ type Game struct {
 	numPred        int
 	stepsPerUpdate int // simulation ticks per update call
 
+	// Energy accounting
+	heatLossAccum      float32 // cumulative energy lost to heat (metabolism, inefficiency, decay)
+	particleInputAccum float32 // cumulative energy injected by particle spawning
+
 	// Debug state
 	debugMode          bool
 	debugShowResource  bool
@@ -305,6 +309,8 @@ func (g *Game) simulationStep() {
 	// 0. Update resource field (regrowth, diffusion, capacity evolution / particle dynamics)
 	g.perfCollector.StartPhase(telemetry.PhaseResourceField)
 	g.resourceField.Step(cfg.Derived.DT32, true)
+	g.particleInputAccum += g.resourceField.ParticleInputThisTick
+	g.heatLossAccum += g.resourceField.DetritusHeatThisTick
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)
@@ -411,4 +417,14 @@ func (g *Game) WorldSize() (width, height float32) {
 // HallOfFame returns the hall of fame for optimization output.
 func (g *Game) HallOfFame() *telemetry.HallOfFame {
 	return g.hallOfFame
+}
+
+// HeatLossAccum returns the cumulative energy lost to heat.
+func (g *Game) HeatLossAccum() float32 {
+	return g.heatLossAccum
+}
+
+// ParticleInputAccum returns the cumulative energy injected by particle spawning.
+func (g *Game) ParticleInputAccum() float32 {
+	return g.particleInputAccum
 }
