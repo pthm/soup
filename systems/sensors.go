@@ -29,6 +29,9 @@ var (
 	cachedPredBaseCost float32
 	cachedPreyMoveCost float32
 	cachedPredMoveCost float32
+	// Bite cost and thrust deadzone for energy calculations
+	cachedBiteCost        float32
+	cachedThrustDeadzone  float32
 	// Diet-relative sensor thresholds
 	cachedDietThreshold float32
 	cachedKinRange      float32
@@ -56,6 +59,9 @@ func InitSensorCache() {
 	cachedPredBaseCost = float32(cfg.Energy.Predator.BaseCost)
 	cachedPreyMoveCost = float32(cfg.Energy.Prey.MoveCost)
 	cachedPredMoveCost = float32(cfg.Energy.Predator.MoveCost)
+	// Bite cost and thrust deadzone
+	cachedBiteCost = float32(cfg.Energy.Predator.BiteCost)
+	cachedThrustDeadzone = float32(cfg.Capabilities.ThrustDeadzone)
 	// Diet-relative sensor thresholds
 	cachedDietThreshold = float32(cfg.Sensors.DietThreshold)
 	cachedKinRange = float32(cfg.Sensors.KinRange)

@@ -93,6 +93,7 @@ type EnergyPools struct {
 	TotalRes       float64 // Total resource grid energy
 	TotalDet       float64 // Total detritus grid energy
 	TotalOrganisms float64 // Total energy in living organisms
+	InTransit      float64 // Energy carried by in-transit particles
 	HeatLossAccum  float64 // Cumulative energy lost to heat
 	ParticleInput  float64 // Cumulative energy injected by particles
 }
@@ -162,6 +163,7 @@ func (c *Collector) Flush(
 		TotalRes:       pools.TotalRes,
 		TotalDet:       pools.TotalDet,
 		TotalOrganisms: pools.TotalOrganisms,
+		InTransit:      pools.InTransit,
 		HeatLossAccum:  pools.HeatLossAccum,
 		ParticleInput:  pools.ParticleInput,
 

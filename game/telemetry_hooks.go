@@ -115,6 +115,7 @@ func (g *Game) sampleEnergyPools(preyEnergies, predEnergies []float64) telemetry
 		TotalRes:       float64(g.resourceField.TotalResMass()),
 		TotalDet:       float64(g.resourceField.TotalDetMass()),
 		TotalOrganisms: totalOrganisms,
+		InTransit:      float64(g.resourceField.TotalParticleMass()),
 		HeatLossAccum:  float64(g.heatLossAccum),
 		ParticleInput:  float64(g.particleInputAccum),
 	}

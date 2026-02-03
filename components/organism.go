@@ -29,6 +29,7 @@ type Energy struct {
 	Age        float32 `inspect:"label,fmt:%.1fs"` // seconds alive
 	Alive      bool    `inspect:"bool"`
 	LastThrust float32 // thrust from last tick for accel cost calculation
+	LastBite   float32 // bite output from last tick for bite cost
 }
 
 // Organism bundles identity, kind, and reproduction state.

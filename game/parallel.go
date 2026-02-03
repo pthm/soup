@@ -39,6 +39,7 @@ type intent struct {
 	NewPosX    float32
 	NewPosY    float32
 	Thrust     float32 // for accel cost calculation
+	Bite       float32 // for bite cost calculation
 }
 
 // workerScratch holds per-worker reusable buffers.
@@ -254,10 +255,11 @@ func (g *Game) applyIntents() {
 		pos.X = intent.NewPosX
 		pos.Y = intent.NewPosY
 
-		// Store thrust for accel cost calculation
+		// Store thrust and bite for cost calculations
 		energy := g.energyMap.Get(snap.Entity)
 		if energy != nil {
 			energy.LastThrust = intent.Thrust
+			energy.LastBite = intent.Bite
 		}
 
 		// Inspector capture (rare path, only for selected entity)
@@ -307,15 +309,21 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 
 		// Fill input buffer and run brain
 		inputs := sensorInputs.FillSlice(scratch.Inputs[:])
-		turn, thrust, _ := snap.Brain.Forward(inputs)
+		turn, thrust, bite := snap.Brain.Forward(inputs)
 
 		// Apply thrust deadzone
 		if thrust < thrustDeadzone {
 			thrust = 0
 		}
 
-		// Store for accel cost calculation
+		// Apply bite deadzone (same threshold)
+		if bite < thrustDeadzone {
+			bite = 0
+		}
+
+		// Store for cost calculations
 		intent.Thrust = thrust
+		intent.Bite = bite
 
 		// Compute physics (pure math, no shared state)
 		caps := &snap.Caps

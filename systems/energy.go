@@ -2,24 +2,21 @@ package systems
 
 import (
 	"github.com/pthm-cable/soup/components"
-	"github.com/pthm-cable/soup/config"
 )
 
 // UpdateEnergy applies metabolic costs and checks for death.
 // Costs are interpolated based on diet (0=herbivore, 1=carnivore).
+// Returns total metabolic cost for heat tracking (conservation accounting).
 func UpdateEnergy(
 	energy *components.Energy,
 	vel components.Velocity,
 	caps components.Capabilities,
 	diet float32,
-	biteActive bool,
 	dt float32,
-) {
+) float32 {
 	if !energy.Alive {
-		return
+		return 0
 	}
-
-	cfg := config.Cfg()
 
 	// Age
 	energy.Age += dt
@@ -29,23 +26,35 @@ func UpdateEnergy(
 	moveCost := lerp32(cachedPreyMoveCost, cachedPredMoveCost, diet)
 	accelCost := lerp32(cachedPreyAccelCost, cachedPredAccelCost, diet)
 
+	var cost float32
+
 	// Base metabolism
-	energy.Value -= baseCost * dt
+	baseDrain := baseCost * dt
+	cost += baseDrain
+	energy.Value -= baseDrain
 
 	// Movement cost: proportional to (speed/maxSpeed)^2
 	speedSq := vel.X*vel.X + vel.Y*vel.Y
 	maxSpeedSq := caps.MaxSpeed * caps.MaxSpeed
 	if maxSpeedSq > 0 {
 		speedRatio := speedSq / maxSpeedSq
-		energy.Value -= moveCost * speedRatio * dt
+		moveDrain := moveCost * speedRatio * dt
+		cost += moveDrain
+		energy.Value -= moveDrain
 	}
 
 	// Acceleration cost: proportional to thrust^2
-	energy.Value -= accelCost * energy.LastThrust * energy.LastThrust * dt
+	accelDrain := accelCost * energy.LastThrust * energy.LastThrust * dt
+	cost += accelDrain
+	energy.Value -= accelDrain
 
-	// Bite cost (predators attacking)
-	if biteActive {
-		energy.Value -= float32(cfg.Energy.Predator.BiteCost)
+	// Bite cost: charged every tick the brain signals bite
+	// Interpolated from 0 (prey) to cachedBiteCost (predator) by diet
+	if energy.LastBite > cachedThrustDeadzone {
+		biteCost := lerp32(0, cachedBiteCost, diet)
+		biteDrain := biteCost * dt
+		cost += biteDrain
+		energy.Value -= biteDrain
 	}
 
 	// Death check
@@ -53,6 +62,8 @@ func UpdateEnergy(
 		energy.Value = 0
 		energy.Alive = false
 	}
+
+	return cost
 }
 
 // lerp32 performs linear interpolation between a and b by t.

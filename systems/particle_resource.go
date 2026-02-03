@@ -595,9 +595,9 @@ func (pf *ParticleResourceField) pickup(dt float32) {
 			dm = r * 0.5 // Don't take more than half available
 		}
 
-		// Transfer: grid -> particle
-		pf.removeFromGrid(pf.X[i], pf.Y[i], dm)
-		pf.Mass[i] += dm
+		// Transfer: grid -> particle (only gain what was actually removed)
+		actual := pf.removeFromGrid(pf.X[i], pf.Y[i], dm)
+		pf.Mass[i] += actual
 	}
 }
 
@@ -707,9 +707,9 @@ func (pf *ParticleResourceField) splatToGrid(x, y, mass float32) float32 {
 }
 
 // removeFromGrid removes mass from grid at position with bilinear distribution.
-func (pf *ParticleResourceField) removeFromGrid(x, y, mass float32) {
+func (pf *ParticleResourceField) removeFromGrid(x, y, mass float32) float32 {
 	if mass <= 0 {
-		return
+		return 0
 	}
 
 	// Convert to grid coordinates
@@ -752,11 +752,29 @@ func (pf *ParticleResourceField) removeFromGrid(x, y, mass float32) {
 	i01 := y1*pf.ResW + x0
 	i11 := y1*pf.ResW + x1
 
-	// Remove proportionally, clamping to zero
-	pf.Res[i00] = maxf32(0, pf.Res[i00]-mass*w00)
-	pf.Res[i10] = maxf32(0, pf.Res[i10]-mass*w10)
-	pf.Res[i01] = maxf32(0, pf.Res[i01]-mass*w01)
-	pf.Res[i11] = maxf32(0, pf.Res[i11]-mass*w11)
+	// Remove proportionally, tracking actual removal per cell
+	var removed float32
+	if want := mass * w00; want > 0 {
+		actual := min(want, pf.Res[i00])
+		pf.Res[i00] -= actual
+		removed += actual
+	}
+	if want := mass * w10; want > 0 {
+		actual := min(want, pf.Res[i10])
+		pf.Res[i10] -= actual
+		removed += actual
+	}
+	if want := mass * w01; want > 0 {
+		actual := min(want, pf.Res[i01])
+		pf.Res[i01] -= actual
+		removed += actual
+	}
+	if want := mass * w11; want > 0 {
+		actual := min(want, pf.Res[i11])
+		pf.Res[i11] -= actual
+		removed += actual
+	}
+	return removed
 }
 
 // --- Spawning from Potential ---
@@ -1027,11 +1045,29 @@ func (pf *ParticleResourceField) depositAndPickupCompact(dt float32) {
 			if dm > r*0.5 {
 				dm = r * 0.5
 			}
-			pf.Res[i00] = maxf32(0, pf.Res[i00]-dm*w00)
-			pf.Res[i10] = maxf32(0, pf.Res[i10]-dm*w10)
-			pf.Res[i01] = maxf32(0, pf.Res[i01]-dm*w01)
-			pf.Res[i11] = maxf32(0, pf.Res[i11]-dm*w11)
-			pf.Mass[i] += dm
+			// Track actual removal per cell (cell may have less than dm*wXX)
+			var actualPickup float32
+			if want := dm * w00; want > 0 {
+				actual := min(want, pf.Res[i00])
+				pf.Res[i00] -= actual
+				actualPickup += actual
+			}
+			if want := dm * w10; want > 0 {
+				actual := min(want, pf.Res[i10])
+				pf.Res[i10] -= actual
+				actualPickup += actual
+			}
+			if want := dm * w01; want > 0 {
+				actual := min(want, pf.Res[i01])
+				pf.Res[i01] -= actual
+				actualPickup += actual
+			}
+			if want := dm * w11; want > 0 {
+				actual := min(want, pf.Res[i11])
+				pf.Res[i11] -= actual
+				actualPickup += actual
+			}
+			pf.Mass[i] += actualPickup
 		}
 	}
 }
@@ -1061,7 +1097,7 @@ func (pf *ParticleResourceField) cleanupCompact() {
 	}
 	pf.ActiveList = pf.ActiveList[:writeIdx]
 
-	// Note: Grid clamping removed - removeFromGrid already clamps with maxf32(0, ...)
+	// Note: removeFromGrid and pickup both track actual removal per cell to prevent mass creation
 }
 
 // --- Grazing (same as CPUResourceField) ---
@@ -1393,6 +1429,17 @@ func (pf *ParticleResourceField) TotalMass() float32 {
 		total += d
 	}
 
+	return total
+}
+
+// TotalParticleMass returns the mass currently carried by in-transit particles.
+func (pf *ParticleResourceField) TotalParticleMass() float32 {
+	var total float32
+	for i := 0; i < pf.MaxCount; i++ {
+		if pf.Active[i] {
+			total += pf.Mass[i]
+		}
+	}
 	return total
 }
 

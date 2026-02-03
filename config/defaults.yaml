@@ -64,7 +64,7 @@ capabilities:
   max_turn_rate: 3.5         # Maximum rotation speed (radians/sec)
   drag: 1.2                  # Velocity damping factor; higher = slower stopping
   bite_range: 10.0           # Distance at which predators can bite prey (world units)
-  bite_cost: 0.02            # Energy cost per bite attempt (currently unused, see energy.predator.bite_cost)
+  bite_cost: 0.02            # Energy cost per bite attempt (see energy.predator.bite_cost for rate)
   thrust_deadzone: 0.1       # Thrust below this value is treated as 0 (encourages dwelling)
 
 # -----------------------------------------------------------------------------

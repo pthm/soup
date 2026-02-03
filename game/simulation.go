@@ -68,15 +68,29 @@ func (g *Game) updateBehaviorAndPhysics() {
 		inputs := sensorInputs.FillSlice(g.inputBuf[:])
 
 		// Run brain (capture activations if this is the selected entity)
-		var turn, thrust float32
+		var turn, thrust, bite float32
 		if hasSelection && entity == selectedEntity {
 			var act *neural.Activations
-			turn, thrust, _, act = brain.ForwardWithCapture(inputs)
+			turn, thrust, bite, act = brain.ForwardWithCapture(inputs)
 			g.inspector.SetSensorData(&sensorInputs)
 			g.inspector.SetActivations(act)
 		} else {
-			turn, thrust, _ = brain.Forward(inputs)
+			turn, thrust, bite = brain.Forward(inputs)
 		}
+
+		// Apply thrust deadzone
+		thrustDeadzone := float32(cfg.Capabilities.ThrustDeadzone)
+		if thrust < thrustDeadzone {
+			thrust = 0
+		}
+		// Apply bite deadzone (same threshold)
+		if bite < thrustDeadzone {
+			bite = 0
+		}
+
+		// Store for cost calculations
+		energy.LastThrust = thrust
+		energy.LastBite = bite
 
 		// Scale outputs by capabilities
 		turnRate := turn * caps.MaxTurnRate * dt
@@ -295,8 +309,9 @@ func (g *Game) updateEnergy() {
 			g.lifetimeTracker.RecordForage(org.ID, gain)
 		}
 
-		// Apply metabolic costs (diet-interpolated)
-		systems.UpdateEnergy(energy, *vel, *caps, org.Diet, false, dt)
+		// Apply metabolic costs (diet-interpolated); track heat for conservation
+		metabolicCost := systems.UpdateEnergy(energy, *vel, *caps, org.Diet, dt)
+		g.heatLossAccum += metabolicCost
 	}
 }
 
