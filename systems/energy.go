@@ -122,28 +122,48 @@ func UpdatePreyForage(
 	}
 }
 
-// TransferEnergy handles predator feeding on prey.
-// Returns (removed, overflow): removed is energy taken from prey,
-// overflow is excess predator energy above Max (caller should deposit to detritus).
+// EnergyTransfer holds the full accounting for an energy transfer event.
+// The caller is responsible for depositing ToDet and tracking ToHeat.
+type EnergyTransfer struct {
+	Removed  float32 // energy taken from prey
+	ToGainer float32 // energy given to predator (after efficiency and detritus)
+	ToDet    float32 // energy to deposit as detritus at prey position
+	ToHeat   float32 // energy lost to heat sink (transfer inefficiency)
+	Overflow float32 // predator overflow above Max (deposit as detritus at predator position)
+}
+
+// TransferEnergy handles predator feeding on prey with full conservation accounting.
+// Returns EnergyTransfer with all energy flows. The caller must:
+//   - Deposit ToDet at prey position
+//   - Deposit Overflow at predator position
+//   - Add ToHeat to heatLossAccum
 func TransferEnergy(
 	predatorEnergy *components.Energy,
 	preyEnergy *components.Energy,
 	amount float32,
-) (removed float32, overflow float32) {
+) EnergyTransfer {
 	if !predatorEnergy.Alive || !preyEnergy.Alive {
-		return 0, 0
+		return EnergyTransfer{}
 	}
 
 	// Take from prey
-	removed = amount
+	removed := amount
 	if preyEnergy.Value < removed {
 		removed = preyEnergy.Value
 	}
 
-	preyEnergy.Value -= removed
-	predatorEnergy.Value += removed * cachedTransferEfficiency
+	// Accounting: split removed into predator gain, detritus, and heat
+	detFrac := cachedDetritusFraction
+	eta := cachedTransferEfficiency
+	toGainer := eta * removed * (1 - detFrac)
+	toDet := detFrac * removed
+	toHeat := removed - toGainer - toDet
 
-	// Compute overflow (caller routes to detritus)
+	preyEnergy.Value -= removed
+	predatorEnergy.Value += toGainer
+
+	// Compute overflow (caller routes to detritus at predator position)
+	var overflow float32
 	if predatorEnergy.Value > predatorEnergy.Max {
 		overflow = predatorEnergy.Value - predatorEnergy.Max
 		predatorEnergy.Value = predatorEnergy.Max
@@ -155,5 +175,11 @@ func TransferEnergy(
 		preyEnergy.Alive = false
 	}
 
-	return removed, overflow
+	return EnergyTransfer{
+		Removed:  removed,
+		ToGainer: toGainer,
+		ToDet:    toDet,
+		ToHeat:   toHeat,
+		Overflow: overflow,
+	}
 }

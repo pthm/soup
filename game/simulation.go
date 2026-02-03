@@ -207,14 +207,18 @@ func (g *Game) updateFeeding() {
 
 				// Bite reward scaled by hunting efficiency
 				biteReward := baseBiteReward * huntEff
-				transferred, predOverflow := systems.TransferEnergy(energy, nEnergy, biteReward)
+				xfer := systems.TransferEnergy(energy, nEnergy, biteReward)
 
-				// Route predator overflow to detritus at predator position
-				if predOverflow > 0 {
-					g.resourceField.DepositDetritus(pos.X, pos.Y, predOverflow)
+				// Conservation accounting: detritus and heat
+				if xfer.ToDet > 0 {
+					g.resourceField.DepositDetritus(nPos.X, nPos.Y, xfer.ToDet)
 				}
+				if xfer.Overflow > 0 {
+					g.resourceField.DepositDetritus(pos.X, pos.Y, xfer.Overflow)
+				}
+				g.heatLossAccum += xfer.ToHeat
 
-				if transferred > 0 {
+				if xfer.Removed > 0 {
 					// Record successful bite
 					g.collector.RecordBiteHit()
 					g.lifetimeTracker.RecordBiteHit(org.ID)

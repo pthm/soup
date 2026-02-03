@@ -140,6 +140,7 @@ energy:
     bite_cost: 0.003         # Energy cost per bite attempt
     bite_reward: 0.50        # Base energy transferred per successful bite
     transfer_efficiency: 0.85 # Fraction of taken energy predator actually receives
+    detritus_fraction: 0.0   # Fraction of removed energy deposited as detritus ("messy kills")
     digest_time: 0.8         # Seconds after a kill before predator can bite again
     accel_cost: 0.010        # Energy cost multiplier for thrust (acceleration penalty)
   # Diet-based interpolation between prey/predator energy economics

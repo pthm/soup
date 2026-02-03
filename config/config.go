@@ -192,6 +192,7 @@ type PredatorEnergyConfig struct {
 	BiteCost           float64 `yaml:"bite_cost"`
 	BiteReward         float64 `yaml:"bite_reward"`
 	TransferEfficiency float64 `yaml:"transfer_efficiency"`
+	DetritusFraction   float64 `yaml:"detritus_fraction"` // Fraction of removed energy to detritus ("messy kills")
 	DigestTime         float64 `yaml:"digest_time"`
 	AccelCost          float64 `yaml:"accel_cost"` // Energy penalty for thrust
 }
