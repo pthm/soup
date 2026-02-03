@@ -106,21 +106,39 @@ func (g *Game) cleanupDead() {
 		entity ecs.Entity
 		id     uint32
 		kind   components.Kind
+		x, y   float32 // last position for carcass deposit
+		energy float32 // energy at death
 	}
 	var toRemove []deadInfo
 
 	query := g.entityFilter.Query()
 	for query.Next() {
 		entity := query.Entity()
-		_, _, _, _, energy, _, org := query.Get()
+		pos, _, _, _, energy, _, org := query.Get()
 
 		if !energy.Alive {
-			toRemove = append(toRemove, deadInfo{entity: entity, id: org.ID, kind: org.Kind})
+			toRemove = append(toRemove, deadInfo{
+				entity: entity,
+				id:     org.ID,
+				kind:   org.Kind,
+				x:      pos.X,
+				y:      pos.Y,
+				energy: energy.Value,
+			})
 		}
 	}
 
+	carcassFrac := float32(cfg.Detritus.CarcassFraction)
+
 	// Second pass: remove entities (query iteration complete)
 	for _, dead := range toRemove {
+		// Deposit carcass to detritus before removal (energy economy step 5)
+		if dead.energy > 0 {
+			det := carcassFrac * dead.energy
+			g.resourceField.DepositDetritus(dead.x, dead.y, det)
+			g.heatLossAccum += (1 - carcassFrac) * dead.energy
+		}
+
 		// Record death in telemetry
 		g.collector.RecordDeath(dead.kind)
 
