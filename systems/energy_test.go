@@ -24,7 +24,7 @@ func TestUpdateEnergy_DeadEntityNoOp(t *testing.T) {
 	ensureCache()
 	e := components.Energy{Value: 0.5, Max: 1.0, Alive: false}
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	cost := UpdateEnergy(&e, vel, caps, 0, 1.0/60)
 	if cost != 0 {
@@ -40,7 +40,7 @@ func TestUpdateEnergy_AgeIncreases(t *testing.T) {
 	dt := float32(1.0 / 60.0)
 	e := components.Energy{Value: 0.5, Max: 1.0, Alive: true, Age: 10.0}
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	UpdateEnergy(&e, vel, caps, 0, dt)
 
@@ -57,7 +57,7 @@ func TestUpdateEnergy_BaseCostApplied(t *testing.T) {
 	// Stationary entity, no thrust, no bite → only base cost
 	e := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
 	vel := components.Velocity{X: 0, Y: 0}
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	cost := UpdateEnergy(&e, vel, caps, 0, dt)
 
@@ -78,7 +78,7 @@ func TestUpdateEnergy_BaseCostApplied(t *testing.T) {
 func TestUpdateEnergy_MovementCostIncreasesWithSpeed(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	// Stationary
 	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
@@ -104,7 +104,7 @@ func TestUpdateEnergy_MovementCostIncreasesWithSpeed(t *testing.T) {
 func TestUpdateEnergy_AccelCostProportionalToThrustSquared(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	// No thrust
 	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastThrust: 0}
@@ -133,7 +133,7 @@ func TestUpdateEnergy_DeathAtZero(t *testing.T) {
 	// Very low energy → should die after one tick
 	e := components.Energy{Value: 0.0001, Max: 1.0, Alive: true}
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	UpdateEnergy(&e, vel, caps, 0, 1.0) // large dt to ensure death
 
@@ -150,7 +150,7 @@ func TestUpdateEnergy_DeathAtZero(t *testing.T) {
 func TestUpdateEnergy_BiteCostAppliedForPredator(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPredator)
+	caps := components.DefaultCapabilities(1.0)
 
 	// No bite signal
 	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
@@ -174,7 +174,7 @@ func TestUpdateEnergy_BiteCostAppliedForPredator(t *testing.T) {
 func TestUpdateEnergy_BiteCostZeroForPrey(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	// No bite
 	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
@@ -192,7 +192,7 @@ func TestUpdateEnergy_BiteCostZeroForPrey(t *testing.T) {
 func TestUpdateEnergy_BiteCostDeadzoneRespected(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPredator)
+	caps := components.DefaultCapabilities(1.0)
 
 	// Bite below deadzone → no bite cost
 	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0.05}
@@ -210,7 +210,7 @@ func TestUpdateEnergy_BiteCostDeadzoneRespected(t *testing.T) {
 func TestUpdateEnergy_BiteCostScalesWithDiet(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPredator)
+	caps := components.DefaultCapabilities(1.0)
 
 	// Collect bite cost contribution at various diet levels
 	var costs [5]float32
@@ -253,7 +253,7 @@ func TestUpdateEnergy_BiteCostScalesWithDiet(t *testing.T) {
 func TestUpdateEnergy_ReturnedCostMatchesEnergyDelta(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPredator)
+	caps := components.DefaultCapabilities(1.0)
 
 	// Entity with all cost sources active
 	e := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.7, LastBite: 0.6}
@@ -273,11 +273,7 @@ func TestUpdateEnergy_CostPositiveForAllDiets(t *testing.T) {
 	dt := float32(1.0 / 60.0)
 
 	for _, diet := range []float32{0, 0.25, 0.5, 0.75, 1.0} {
-		kind := components.KindPrey
-		if diet >= 0.5 {
-			kind = components.KindPredator
-		}
-		caps := components.DefaultCapabilities(kind)
+		caps := components.DefaultCapabilities(diet)
 		e := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
 		cost := UpdateEnergy(&e, components.Velocity{}, caps, diet, dt)
 		if cost <= 0 {
@@ -291,7 +287,7 @@ func TestUpdateEnergy_CostPositiveForAllDiets(t *testing.T) {
 func TestUpdateEnergy_DietInterpolation(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	// Pure prey (diet=0)
 	e1 := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
@@ -493,7 +489,7 @@ func TestGrazing_ResourceRemovalMatchesEnergyGain(t *testing.T) {
 func TestUpdateEnergy_AllCostComponentsAccounted(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPredator)
+	caps := components.DefaultCapabilities(1.0)
 
 	// Set up entity with all cost sources active
 	e := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.6, LastBite: 0.5}
@@ -534,7 +530,7 @@ func TestUpdateEnergy_AllCostComponentsAccounted(t *testing.T) {
 func TestUpdateEnergy_NoCostLeakageOnRepeat(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0)
 
 	// Run UpdateEnergy twice with same parameters → second cost should
 	// be identical (no accumulated state leaking between calls)

@@ -59,7 +59,7 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	rot := components.Rotation{Heading: heading, AngVel: 0}
 	body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
 	energy := components.Energy{Value: float32(cfg.Entity.InitialEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
-	caps := components.DefaultCapabilities(kind)
+	caps := components.DefaultCapabilities(diet)
 	// Add jitter to desync reproduction across the population
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 	// Newborn predators can't hunt immediately
@@ -297,7 +297,7 @@ func (g *Game) spawnFromHall(kind components.Kind) bool {
 	rot := components.Rotation{Heading: heading, AngVel: 0}
 	body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
 	energy := components.Energy{Value: float32(hofCfg.ReseedEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
-	caps := components.DefaultCapabilities(kind)
+	caps := components.DefaultCapabilities(diet)
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 	// Newborn predators can't hunt immediately
 	huntCooldown := float32(0)

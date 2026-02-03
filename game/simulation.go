@@ -56,7 +56,7 @@ func (g *Game) updateBehaviorAndPhysics() {
 
 		// Compute sensors using precomputed neighbor data (avoids double distance calc)
 		sensorInputs := systems.ComputeSensorsFromNeighbors(
-			*vel, *rot, *energy, *caps, org.Kind, org.Diet,
+			*vel, *rot, *energy, *caps, org.Diet,
 			org.CladeID, org.FounderArchetypeID,
 			g.neighborBuf,
 			g.orgMap,
@@ -493,7 +493,7 @@ func (g *Game) updateReproduction() {
 		rot := components.Rotation{Heading: b.heading, AngVel: 0}
 		body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
 		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
-		caps := components.DefaultCapabilities(childKind)
+		caps := components.DefaultCapabilities(childDiet)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 		// Newborn predators can't hunt immediately
 		huntCooldown := float32(0)

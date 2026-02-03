@@ -2,8 +2,6 @@ package systems
 
 import (
 	"math"
-
-	"github.com/pthm-cable/soup/components"
 )
 
 // sectorWidth returns the angular width of a sector.
@@ -38,16 +36,13 @@ func sectorIndexFromAngle(angle float32) int {
 	return idx
 }
 
-func VisionEffectivenessForSector(sectorIdx int, kind components.Kind) float32 {
+func VisionEffectivenessForSector(sectorIdx int, diet float32) float32 {
 	if sectorIdx < 0 || sectorIdx >= NumSectors {
 		return cachedMinEffectiveness
 	}
-	var weight float32
-	if kind == components.KindPredator {
-		weight = cachedPredVisionWeights[sectorIdx]
-	} else {
-		weight = cachedPreyVisionWeights[sectorIdx]
-	}
+	preyW := cachedPreyVisionWeights[sectorIdx]
+	predW := cachedPredVisionWeights[sectorIdx]
+	weight := preyW + (predW-preyW)*diet
 	return cachedMinEffectiveness + (1-cachedMinEffectiveness)*weight
 }
 

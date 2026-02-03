@@ -19,7 +19,6 @@ const parallelThreshold = 64
 type entitySnapshot struct {
 	Entity      ecs.Entity
 	ID          uint32
-	Kind        components.Kind
 	Diet        float32
 	CladeID     uint64
 	ArchetypeID uint8
@@ -158,7 +157,6 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 		g.parallel.snapshots = append(g.parallel.snapshots, entitySnapshot{
 			Entity:      entity,
 			ID:          org.ID,
-			Kind:        org.Kind,
 			Diet:        org.Diet,
 			CladeID:     org.CladeID,
 			ArchetypeID: org.FounderArchetypeID,
@@ -271,7 +269,7 @@ func (g *Game) applyIntents() {
 				snap.Entity, g.posMap,
 			)
 			sensorInputs := systems.ComputeSensorsBounded(
-				snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Kind, snap.Diet,
+				snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet,
 				snap.CladeID, snap.ArchetypeID,
 				scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
 				&scratch.SectorBins,
@@ -301,7 +299,7 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 
 		// Compute sensors (bounded to top-k per sector)
 		sensorInputs := systems.ComputeSensorsBounded(
-			snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Kind, snap.Diet,
+			snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet,
 			snap.CladeID, snap.ArchetypeID,
 			scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
 			&scratch.SectorBins,

@@ -407,13 +407,13 @@ func (ins *Inspector) DrawSelectionHighlight(
 
 	// Draw vision sectors if we have rotation, capabilities, and organism
 	if rot != nil && caps != nil && org != nil {
-		ins.drawVisionSectors(sx, sy, rot.Heading, caps.VisionRange, cam.Zoom, org.Kind, ins.lastInputs)
+		ins.drawVisionSectors(sx, sy, rot.Heading, caps.VisionRange, cam.Zoom, org.Diet, ins.lastInputs)
 	}
 }
 
 // drawVisionSectors renders the full 360° vision field with effectiveness-based coloring.
 // If sensor inputs are available, overlays nearest-distance wedges with density-based color.
-func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange, zoom float32, kind components.Kind, inputs *systems.SensorInputs) {
+func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange, zoom float32, diet float32, inputs *systems.SensorInputs) {
 	const numSectors = systems.NumSectors
 	rangePx := visionRange * zoom
 	labels := [numSectors]string{"B", "BR", "R", "FR", "F", "FL", "L", "BL"}
@@ -426,18 +426,15 @@ func (ins *Inspector) drawVisionSectors(x, y, heading, visionRange, zoom float32
 		endAngle := heading + relEnd
 
 		// Calculate effectiveness for this sector
-		eff := systems.VisionEffectivenessForSector(i, kind)
+		eff := systems.VisionEffectivenessForSector(i, diet)
 
 		// Base color based on effectiveness: brighter = more effective
+		// Lerp between blue-cyan (diet=0) and red-orange (diet=1)
 		alpha := uint8(12 + eff*28) // 12-40 alpha range
-		var color rl.Color
-		if kind == components.KindPredator {
-			// Predator: red-orange tones
-			color = rl.Color{R: 255, G: uint8(150 + eff*100), B: 100, A: alpha}
-		} else {
-			// Prey: blue-cyan tones
-			color = rl.Color{R: 100, G: uint8(150 + eff*100), B: 255, A: alpha}
-		}
+		r := uint8(100 + diet*155)
+		g := uint8(150 + eff*100)
+		b := uint8(255 - diet*155)
+		color := rl.Color{R: r, G: g, B: b, A: alpha}
 
 		// Draw base sector as triangle fan
 		drawSectorFilled(x, y, rangePx, startAngle, endAngle, color)

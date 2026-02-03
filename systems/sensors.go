@@ -223,7 +223,6 @@ func ComputeSensorsBounded(
 	selfRot components.Rotation,
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
-	selfKind components.Kind,
 	selfDiet float32,
 	selfCladeID uint64,
 	selfArchetypeID uint8,
@@ -282,7 +281,7 @@ func ComputeSensorsBounded(
 		sectorIdx := sectorIndexFromAngle(relativeAngle)
 		dist := fastSqrt(n.DistSq)
 		distWeight := clamp01(1.0 - dist*invVisionRange)
-		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfDiet)
 		baseWeight := distWeight * effWeight
 
 		// Edibility model: edibility(pred, prey) = pred.diet * (1 - prey.diet)
@@ -362,7 +361,6 @@ func ComputeSensorsFromNeighbors(
 	selfRot components.Rotation,
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
-	selfKind components.Kind,
 	selfDiet float32,
 	selfCladeID uint64,
 	selfArchetypeID uint8,
@@ -373,7 +371,7 @@ func ComputeSensorsFromNeighbors(
 ) SensorInputs {
 	var bins SectorBins
 	return ComputeSensorsBounded(
-		selfVel, selfRot, selfEnergy, selfCaps, selfKind, selfDiet,
+		selfVel, selfRot, selfEnergy, selfCaps, selfDiet,
 		selfCladeID, selfArchetypeID,
 		neighbors, orgMap, resourceField, selfPos, &bins,
 	)
@@ -387,7 +385,6 @@ func ComputeSensors(
 	selfRot components.Rotation,
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
-	selfKind components.Kind,
 	selfDiet float32,
 	neighbors []ecs.Entity,
 	posMap *ecs.Map1[components.Position],
@@ -435,8 +432,8 @@ func ComputeSensors(
 		// Distance weight: closer = stronger signal
 		distWeight := clamp01(1.0 - dist/selfCaps.VisionRange)
 
-		// Effectiveness weight based on angle and self kind
-		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
+		// Effectiveness weight based on angle and diet
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfDiet)
 
 		// Diet-relative classification
 		dietDiff := nOrg.Diet - selfDiet

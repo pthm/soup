@@ -52,10 +52,10 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 	vel := components.Velocity{X: 1, Y: 0}
 	rot := components.Rotation{Heading: 0}
 	energy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	caps := components.DefaultCapabilities(components.KindPrey)
+	caps := components.DefaultCapabilities(0.0) // diet=0 (prey)
 
 	inputs := ComputeSensors(
-		pos, vel, rot, energy, caps, components.KindPrey,
+		pos, vel, rot, energy, caps,
 		0.0, // selfDiet (herbivore)
 		nil, nil, nil, // neighbors, posMap, orgMap
 		1280, 720,
@@ -141,8 +141,7 @@ func TestThreatDetection(t *testing.T) {
 	selfVel := components.Velocity{X: 0, Y: 0}
 	selfRot := components.Rotation{Heading: 0}
 	selfEnergy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	selfCaps := components.DefaultCapabilities(components.KindPrey)
-	selfKind := components.KindPrey
+	selfCaps := components.DefaultCapabilities(0.0) // diet=0 (prey)
 	selfDiet := float32(0.0) // Pure herbivore
 	selfCladeID := uint64(1)
 	selfArchetypeID := uint8(0) // Grazer archetype
@@ -203,7 +202,7 @@ func TestThreatDetection(t *testing.T) {
 		dist := fastSqrt(predatorNeighbor.DistSq)
 		invVisionRange := 1.0 / selfCaps.VisionRange
 		distWeight := clamp01(1.0 - dist*invVisionRange)
-		effWeight := VisionEffectivenessForSector(sectorIdx, selfKind)
+		effWeight := VisionEffectivenessForSector(sectorIdx, selfDiet)
 		baseWeight := distWeight * effWeight
 
 		t.Logf("dist=%f, visionRange=%f, distWeight=%f, effWeight=%f, baseWeight=%f",

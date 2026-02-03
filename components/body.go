@@ -8,7 +8,7 @@ type Body struct {
 }
 
 // Capabilities defines morphology knobs for an entity.
-// All entities have 360° vision; effectiveness varies by angle and kind (see systems/sensors.go).
+// All entities have 360° vision; effectiveness varies by angle and diet (see systems/sensors.go).
 type Capabilities struct {
 	VisionRange float32 `inspect:"bar,max:200"` // perception distance
 	MaxSpeed    float32 `inspect:"bar,max:200"` // maximum velocity magnitude
@@ -19,17 +19,15 @@ type Capabilities struct {
 	BiteCost    float32 `inspect:"skip"`        // energy cost per bite
 }
 
-// DefaultCapabilities returns baseline capability values from config for the given kind.
-func DefaultCapabilities(kind Kind) Capabilities {
+// DefaultCapabilities returns baseline capability values from config, interpolating
+// vision range between prey and predator settings based on diet (0=herbivore, 1=carnivore).
+func DefaultCapabilities(diet float32) Capabilities {
 	cfg := config.Cfg().Capabilities
-	var visionRange float64
-	if kind == KindPredator {
-		visionRange = cfg.Predator.VisionRange
-	} else {
-		visionRange = cfg.Prey.VisionRange
-	}
+	preyVR := float32(cfg.Prey.VisionRange)
+	predVR := float32(cfg.Predator.VisionRange)
+	visionRange := preyVR + (predVR-preyVR)*diet
 	return Capabilities{
-		VisionRange: float32(visionRange),
+		VisionRange: visionRange,
 		MaxSpeed:    float32(cfg.MaxSpeed),
 		MaxAccel:    float32(cfg.MaxAccel),
 		MaxTurnRate: float32(cfg.MaxTurnRate),
