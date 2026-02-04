@@ -25,6 +25,7 @@ func main() {
 	maxTicks := flag.Int("max-ticks", 0, "Stop after N ticks (0 = unlimited)")
 	stepsPerUpdate := flag.Int("steps-per-update", 1, "Simulation ticks per update call (higher = faster headless runs)")
 	seedHoF := flag.String("seed-hof", "", "Path to hall_of_fame.json for seeding initial brains")
+	reseedThreshold := flag.Int("reseed-threshold", -1, "Reseed from hall of fame when population drops below N (-1 = use config)")
 
 	flag.Parse()
 
@@ -34,6 +35,11 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := config.Cfg()
+
+	// Apply CLI overrides to config
+	if *reseedThreshold >= 0 {
+		cfg.HallOfFame.ReseedThreshold = *reseedThreshold
+	}
 
 	// Initialize cached config values for hot paths
 	systems.InitSensorCache()

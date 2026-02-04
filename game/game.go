@@ -358,6 +358,9 @@ func (g *Game) simulationStep() {
 	g.perfCollector.StartPhase(telemetry.PhaseCleanup)
 	g.cleanupDead()
 
+	// 7b. Reseed from hall of fame if population dropped below threshold
+	g.reseedFromHallOfFame()
+
 	// 8. Flush telemetry window if needed
 	g.perfCollector.StartPhase(telemetry.PhaseTelemetry)
 	g.flushTelemetry()

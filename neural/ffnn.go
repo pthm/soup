@@ -25,8 +25,11 @@ type FFNN struct {
 	B2 [NumOutputs]float32            // output biases
 }
 
-// NewFFNN creates a randomly initialized network.
-func NewFFNN(rng *rand.Rand) *FFNN {
+// NewFFNN creates a randomly initialized network with diet-aware output biases.
+// Herbivores (diet < 0.5) get strong negative biases on thrust and bite, making
+// the default behavior "sit still and graze." Predators get a weaker bias so some
+// fraction has enough random thrust/bite activity for selection to act on.
+func NewFFNN(rng *rand.Rand, diet float32) *FFNN {
 	nn := &FFNN{}
 	// Xavier initialization
 	scale1 := float32(math.Sqrt(2.0 / float64(NumInputs)))
@@ -44,6 +47,20 @@ func NewFFNN(rng *rand.Rand) *FFNN {
 			nn.W2[i][j] = float32(rng.NormFloat64()) * scale2
 		}
 		nn.B2[i] = 0
+	}
+
+	// Bias thrust and bite outputs toward zero.
+	// The output activation is saturate01(raw*0.5 + 0.5), so raw=0 maps to 0.5.
+	// Negative bias shifts the default toward 0 (inert).
+	if diet < 0.5 {
+		// Herbivores: strong bias toward inertia. ~0% have thrust > deadzone.
+		nn.B2[1] = -2.0 // thrust
+		nn.B2[2] = -2.0 // bite
+	} else {
+		// Predators: weaker bias. ~25% have non-trivial thrust/bite from
+		// random Xavier weights, giving selection material to work with.
+		nn.B2[1] = -1.0 // thrust
+		nn.B2[2] = -1.0 // bite
 	}
 
 	return nn

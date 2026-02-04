@@ -7,7 +7,7 @@ import (
 
 func TestNewFFNN(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	if nn == nil {
 		t.Fatal("NewFFNN returned nil")
@@ -30,7 +30,7 @@ func TestNewFFNN(t *testing.T) {
 
 func TestForward(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	// Create input vector
 	inputs := make([]float32, NumInputs)
@@ -54,7 +54,7 @@ func TestForward(t *testing.T) {
 
 func TestForwardDeterministic(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	inputs := make([]float32, NumInputs)
 	for i := range inputs {
@@ -71,7 +71,7 @@ func TestForwardDeterministic(t *testing.T) {
 
 func TestMutate(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	// Store original weights
 	originalW1_0_0 := nn.W1[0][0]
@@ -87,7 +87,7 @@ func TestMutate(t *testing.T) {
 
 func TestClone(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	clone := nn.Clone()
 
@@ -105,7 +105,7 @@ func TestClone(t *testing.T) {
 
 func BenchmarkForward(b *testing.B) {
 	rng := rand.New(rand.NewSource(42))
-	nn := NewFFNN(rng)
+	nn := NewFFNN(rng, 0)
 
 	inputs := make([]float32, NumInputs)
 	for i := range inputs {

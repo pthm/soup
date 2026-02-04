@@ -73,14 +73,14 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	var brain *neural.FFNN
 	if g.seedHallOfFame != nil {
 		if weights := g.seedHallOfFame.Sample(archetypeID); weights != nil {
-			brain = neural.NewFFNN(g.rng)
+			brain = neural.NewFFNN(g.rng, diet)
 			brain.UnmarshalWeights(*weights)
 			// Light mutation for initial population diversity
 			brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
 		}
 	}
 	if brain == nil {
-		brain = neural.NewFFNN(g.rng)
+		brain = neural.NewFFNN(g.rng, diet)
 	}
 	g.brains[id] = brain
 
@@ -98,6 +98,100 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	}
 
 	return entity
+}
+
+// reseedFromHallOfFame spawns entities from the runtime hall of fame when
+// population drops below the configured threshold. This prevents extinction
+// while preserving evolutionary progress from the current session.
+func (g *Game) reseedFromHallOfFame() {
+	cfg := g.config()
+	hofCfg := &cfg.HallOfFame
+
+	if !hofCfg.Enabled || hofCfg.ReseedThreshold <= 0 || g.hallOfFame == nil {
+		return
+	}
+
+	for archetypeIdx, arch := range cfg.Archetypes {
+		archetypeID := uint8(archetypeIdx)
+		diet := float32(arch.Diet)
+
+		// Check population for this archetype
+		var count int
+		if diet < 0.5 {
+			count = g.numHerb
+		} else {
+			count = g.numCarn
+		}
+
+		if count >= hofCfg.ReseedThreshold {
+			continue
+		}
+
+		// Spawn reseed_count entities
+		for i := 0; i < hofCfg.ReseedCount; i++ {
+			x := g.rng.Float32() * g.worldWidth
+			y := g.rng.Float32() * g.worldHeight
+			heading := g.rng.Float32() * 2 * math.Pi
+
+			id := g.nextID
+			g.nextID++
+			cladeID := g.nextCladeID
+			g.nextCladeID++
+
+			pos := components.Position{X: x, Y: y}
+			vel := components.Velocity{X: 0, Y: 0}
+			rot := components.Rotation{Heading: heading, AngVel: 0}
+			body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
+			energy := components.Energy{
+				Value: float32(hofCfg.ReseedEnergy),
+				Max:   float32(cfg.Entity.MaxEnergy),
+				Alive: true,
+			}
+			caps := components.DefaultCapabilities(diet)
+			cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
+			huntCooldown := float32(0)
+			if diet >= 0.5 {
+				huntCooldown = float32(cfg.Reproduction.NewbornHuntCooldown)
+			}
+			org := components.Organism{
+				ID:                 id,
+				FounderArchetypeID: archetypeID,
+				Diet:               diet,
+				CladeID:            cladeID,
+				ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
+				HuntCooldown:       huntCooldown,
+			}
+
+			// Try runtime hall of fame first, then seed hall, then random
+			var brain *neural.FFNN
+			if weights := g.hallOfFame.Sample(archetypeID); weights != nil {
+				brain = neural.NewFFNN(g.rng, diet)
+				brain.UnmarshalWeights(*weights)
+				brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
+			}
+			if brain == nil && g.seedHallOfFame != nil {
+				if weights := g.seedHallOfFame.Sample(archetypeID); weights != nil {
+					brain = neural.NewFFNN(g.rng, diet)
+					brain.UnmarshalWeights(*weights)
+					brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
+				}
+			}
+			if brain == nil {
+				brain = neural.NewFFNN(g.rng, diet)
+			}
+
+			g.brains[id] = brain
+			g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)
+			g.aliveCount++
+			g.lifetimeTracker.Register(id, g.tick, cladeID, archetypeID, diet)
+
+			if diet < 0.5 {
+				g.numHerb++
+			} else {
+				g.numCarn++
+			}
+		}
+	}
 }
 
 // cleanupDead removes dead entities and their brains.
