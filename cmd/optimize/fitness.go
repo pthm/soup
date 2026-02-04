@@ -17,6 +17,7 @@ type FitnessEvaluator struct {
 	seeds       []int64
 	baseConfig  *config.Config
 	statsWindow float64
+	seedHoFPath string // path to hall_of_fame.json for seeding initial brains
 
 	// Best run tracking
 	mu             sync.Mutex
@@ -26,7 +27,7 @@ type FitnessEvaluator struct {
 }
 
 // NewFitnessEvaluator creates a new evaluator.
-func NewFitnessEvaluator(params *ParamVector, maxTicks int32, seeds []int64, baseCfg *config.Config) *FitnessEvaluator {
+func NewFitnessEvaluator(params *ParamVector, maxTicks int32, seeds []int64, baseCfg *config.Config, seedHoFPath string) *FitnessEvaluator {
 	return &FitnessEvaluator{
 		params:      params,
 		maxTicks:    maxTicks,
@@ -34,6 +35,7 @@ func NewFitnessEvaluator(params *ParamVector, maxTicks int32, seeds []int64, bas
 		baseConfig:  baseCfg,
 		statsWindow: 10.0, // 10 seconds per window
 		bestFitness: math.Inf(1),
+		seedHoFPath: seedHoFPath,
 	}
 }
 
@@ -140,11 +142,12 @@ func (fe *FitnessEvaluator) runSimulation(x []float64, seed int64) *runResult {
 
 	// Create and run game, collecting window stats via callback
 	g := game.NewGameWithOptions(game.Options{
-		Seed:           seed,
-		Headless:       true,
-		StatsWindowSec: fe.statsWindow,
-		StepsPerUpdate: 1,
-		Config:         cfg,
+		Seed:               seed,
+		Headless:           true,
+		StatsWindowSec:     fe.statsWindow,
+		StepsPerUpdate:     1,
+		Config:             cfg,
+		SeedHallOfFamePath: fe.seedHoFPath,
 		StatsCallback: func(stats telemetry.WindowStats) {
 			result.windowStats = append(result.windowStats, stats)
 		},
@@ -242,6 +245,7 @@ func (fe *FitnessEvaluator) copyConfig() *config.Config {
 	cfg.Particles = fe.baseConfig.Particles
 	cfg.Archetypes = fe.baseConfig.Archetypes
 	cfg.Clades = fe.baseConfig.Clades
+	cfg.Detritus = fe.baseConfig.Detritus
 
 	return cfg
 }

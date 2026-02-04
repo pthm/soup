@@ -437,7 +437,7 @@ func TestGrazing_ResourceRemovalMatchesEnergyGain(t *testing.T) {
 	cfg := config.Cfg()
 	forageEff := float32(cfg.Resource.ForageEfficiency)
 
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	// Disable spawning for clean accounting
 	pf.SpawnRate = 0
 
@@ -577,7 +577,7 @@ func TestTransferEnergy_NoDoubleCounting(t *testing.T) {
 
 func TestDetritus_DecayConservation(t *testing.T) {
 	ensureCache()
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	pf.SpawnRate = 0
 
 	// Clear resource grid
@@ -609,7 +609,7 @@ func TestDetritus_DecayConservation(t *testing.T) {
 
 func TestParticleField_SpawnMassTracked(t *testing.T) {
 	ensureCache()
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	dt := float32(1.0 / 60.0)
 	var totalInput float32
@@ -631,7 +631,7 @@ func TestParticleField_SpawnMassTracked(t *testing.T) {
 
 func TestParticleField_TotalParticleMassMatchesDifference(t *testing.T) {
 	ensureCache()
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Run some steps to spawn particles
 	dt := float32(1.0 / 60.0)
@@ -657,7 +657,7 @@ func TestParticleField_TotalParticleMassMatchesDifference(t *testing.T) {
 
 func TestParticleField_NoGrazingMeansConserved(t *testing.T) {
 	ensureCache()
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	pf.SpawnRate = 0
 
 	// Detritus decay off by clearing detritus and not depositing any

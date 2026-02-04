@@ -120,6 +120,9 @@ type Game struct {
 
 	// Per-game config (nil = use global config.Cfg())
 	cfg *config.Config
+
+	// Seed hall of fame for initial brain seeding (nil = random brains)
+	seedHallOfFame *telemetry.HallOfFame
 }
 
 // config returns the game's config, falling back to global if not set.
@@ -132,15 +135,16 @@ func (g *Game) config() *config.Config {
 
 // Options configures game behavior.
 type Options struct {
-	Seed           int64
-	LogStats       bool
-	StatsWindowSec float64
-	SnapshotDir    string
-	Headless       bool
-	StepsPerUpdate int                            // simulation ticks per update call (1+), 0 = use default (1)
-	OutputDir      string                         // output directory for CSV logs and config snapshot
-	StatsCallback  func(telemetry.WindowStats)    // called after each window flush
-	Config         *config.Config                 // optional per-game config (nil = use global)
+	Seed               int64
+	LogStats           bool
+	StatsWindowSec     float64
+	SnapshotDir        string
+	Headless           bool
+	StepsPerUpdate     int                            // simulation ticks per update call (1+), 0 = use default (1)
+	OutputDir          string                         // output directory for CSV logs and config snapshot
+	StatsCallback      func(telemetry.WindowStats)    // called after each window flush
+	Config             *config.Config                 // optional per-game config (nil = use global)
+	SeedHallOfFamePath string                         // path to hall_of_fame.json for seeding initial brains
 }
 
 // NewGame creates a new game instance with default options.
@@ -255,7 +259,7 @@ func NewGameWithOptions(opts Options) *Game {
 		gridW = baseGridSize
 		gridH = int(float32(baseGridSize) * g.worldHeight / g.worldWidth)
 	}
-	g.resourceField = systems.NewParticleResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed)
+	g.resourceField = systems.NewParticleResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed, cfg)
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
@@ -278,6 +282,20 @@ func NewGameWithOptions(opts Options) *Game {
 
 		// Camera (centered on world with 1:1 zoom)
 		g.camera = camera.New(g.screenWidth, g.screenHeight, g.worldWidth, g.worldHeight)
+	}
+
+	// Load seed hall of fame if provided (for seeding initial brains from prior runs)
+	if opts.SeedHallOfFamePath != "" {
+		seedHoF, err := telemetry.LoadHallOfFameFromFile(
+			opts.SeedHallOfFamePath,
+			len(cfg.Archetypes),
+			cfg.Derived.ArchetypeIndex,
+			g.rng,
+		)
+		if err != nil {
+			panic("failed to load seed hall of fame: " + err.Error())
+		}
+		g.seedHallOfFame = seedHoF
 	}
 
 	// Spawn initial population

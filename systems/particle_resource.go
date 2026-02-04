@@ -102,10 +102,12 @@ type ParticleResourceField struct {
 }
 
 // NewParticleResourceField creates a new particle-based resource field.
-func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int64) *ParticleResourceField {
-	pcfg := config.Cfg().Particles
-	potCfg := config.Cfg().Potential
-	detCfg := config.Cfg().Detritus
+// cfg is used to read particle, potential, and detritus parameters, avoiding
+// the global config singleton so parallel optimizer evaluations are isolated.
+func NewParticleResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg *config.Config) *ParticleResourceField {
+	pcfg := cfg.Particles
+	potCfg := cfg.Potential
+	detCfg := cfg.Detritus
 
 	maxCount := pcfg.MaxCount
 	if maxCount < 1 {

@@ -409,6 +409,17 @@ func (g *Game) updateReproduction() {
 			}
 		}
 
+		// Density-dependent reproduction for herbivores (soft carrying capacity)
+		// p = K / (N + K) — at N=K, 50% breed probability
+		if org.Diet < 0.5 && repro.PreyDensityK > 0 {
+			herbN := float32(g.numHerb)
+			k := float32(repro.PreyDensityK)
+			breedProb := k / (herbN + k)
+			if g.rng.Float32() > breedProb {
+				continue
+			}
+		}
+
 		// Reproduction: parent pays energy, child spawns nearby
 		parentBrain, ok := g.brains[org.ID]
 		if !ok {

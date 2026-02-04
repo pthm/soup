@@ -12,7 +12,7 @@ func init() {
 }
 
 func TestParticleResourceFieldCreation(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	if pf == nil {
 		t.Fatal("expected non-nil particle field")
@@ -36,7 +36,7 @@ func TestParticleResourceFieldCreation(t *testing.T) {
 }
 
 func TestParticleResourceFieldSampling(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Sample at center
 	v := pf.Sample(640, 360)
@@ -54,7 +54,7 @@ func TestParticleResourceFieldSampling(t *testing.T) {
 }
 
 func TestParticleResourceFieldStep(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	initialMass := pf.TotalMass()
 
@@ -77,7 +77,7 @@ func TestParticleResourceFieldStep(t *testing.T) {
 }
 
 func TestParticleResourceFieldGraze(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Run a few steps to establish initial state
 	dt := float32(1.0 / 60.0)
@@ -104,7 +104,7 @@ func TestParticleResourceFieldGraze(t *testing.T) {
 }
 
 func TestParticleResourceFieldMassConservation(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Set spawn rate to 0 to test mass conservation without new mass entering
 	pf.SpawnRate = 0
@@ -128,7 +128,7 @@ func TestParticleResourceFieldMassConservation(t *testing.T) {
 }
 
 func TestDetritusDeposit(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Det grid should start empty
 	for i, d := range pf.Det {
@@ -157,7 +157,7 @@ func TestDetritusDeposit(t *testing.T) {
 }
 
 func TestDetritusDecay(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	// Disable particle spawning so we can isolate detritus behavior
 	pf.SpawnRate = 0
 
@@ -206,7 +206,7 @@ func TestDetritusDecay(t *testing.T) {
 }
 
 func TestDetritusZeroDoesNothing(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
 	// Depositing zero or negative should do nothing
 	dep := pf.DepositDetritus(640, 360, 0)
@@ -225,7 +225,7 @@ func TestDetritusZeroDoesNothing(t *testing.T) {
 }
 
 func TestDetritusIncludedInTotalMass(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	pf.SpawnRate = 0
 
 	massBefore := pf.TotalMass()
@@ -241,7 +241,7 @@ func TestDetritusIncludedInTotalMass(t *testing.T) {
 }
 
 func TestDetritusDecayConvergesButDoesNotOscillate(t *testing.T) {
-	pf := NewParticleResourceField(64, 64, 1280, 720, 42)
+	pf := NewParticleResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	pf.SpawnRate = 0
 
 	// Clear Res
@@ -276,7 +276,7 @@ func TestDetritusDecayConvergesButDoesNotOscillate(t *testing.T) {
 
 func BenchmarkParticleResourceFieldStep(b *testing.B) {
 	// Use production-like grid size (matches 2560x1440 world with 128 base)
-	pf := NewParticleResourceField(227, 128, 2560, 1440, 42)
+	pf := NewParticleResourceField(227, 128, 2560, 1440, 42, config.Cfg())
 
 	// Warm up to spawn particles
 	dt := float32(1.0 / 60.0)
@@ -292,7 +292,7 @@ func BenchmarkParticleResourceFieldStep(b *testing.B) {
 
 func BenchmarkParticleResourceFieldStepNoEvolve(b *testing.B) {
 	// Same but without evolution (potential/flow updates)
-	pf := NewParticleResourceField(227, 128, 2560, 1440, 42)
+	pf := NewParticleResourceField(227, 128, 2560, 1440, 42, config.Cfg())
 
 	dt := float32(1.0 / 60.0)
 	for i := 0; i < 600; i++ {

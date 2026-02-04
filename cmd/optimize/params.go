@@ -20,41 +20,48 @@ type ParamVector struct {
 }
 
 // NewParamVector creates the standard set of optimizable parameters.
+// exp10: locks converged params, adds detritus/diet/density params.
 func NewParamVector() *ParamVector {
 	return &ParamVector{
 		Specs: []ParamSpec{
-			// Energy - Prey (prey_base_cost locked at 0.005)
+			// --- Kept from exp9 (energy) ---
 			{Name: "prey_move_cost", Path: "energy.prey.move_cost", Min: 0.05, Max: 0.25, Default: 0.12},
-			{Name: "prey_forage_rate", Path: "energy.prey.forage_rate", Min: 0.02, Max: 0.10, Default: 0.045},
-			// Energy - Predator
-			{Name: "pred_base_cost", Path: "energy.predator.base_cost", Min: 0.002, Max: 0.02, Default: 0.008},
 			{Name: "pred_move_cost", Path: "energy.predator.move_cost", Min: 0.01, Max: 0.08, Default: 0.025},
 			{Name: "pred_bite_reward", Path: "energy.predator.bite_reward", Min: 0.4, Max: 0.8, Default: 0.5},
-			{Name: "pred_transfer_eff", Path: "energy.predator.transfer_efficiency", Min: 0.6, Max: 1.0, Default: 0.85},
 			{Name: "pred_digest_time", Path: "energy.predator.digest_time", Min: 0.2, Max: 3.0, Default: 0.8},
-			// Reproduction
-			// prey_repro_thresh locked at 0.50
+
+			// --- Kept from exp9 (reproduction) ---
 			{Name: "pred_repro_thresh", Path: "reproduction.pred_threshold", Min: 0.5, Max: 0.95, Default: 0.85},
-			{Name: "maturity_age", Path: "reproduction.maturity_age", Min: 2.0, Max: 15.0, Default: 8.0},
 			{Name: "prey_cooldown", Path: "reproduction.prey_cooldown", Min: 4.0, Max: 20.0, Default: 8.0},
 			{Name: "pred_cooldown", Path: "reproduction.pred_cooldown", Min: 6.0, Max: 20.0, Default: 12.0},
-			// cooldown_jitter locked at 3.0, child_energy locked at 0.50
 			{Name: "parent_energy_split", Path: "reproduction.parent_energy_split", Min: 0.4, Max: 0.7, Default: 0.55},
 			{Name: "spawn_offset", Path: "reproduction.spawn_offset", Min: 5.0, Max: 30.0, Default: 15.0},
 			{Name: "heading_jitter", Path: "reproduction.heading_jitter", Min: 0.0, Max: 1.0, Default: 0.25},
-			{Name: "pred_density_k", Path: "reproduction.pred_density_k", Min: 0, Max: 300, Default: 0},
+			{Name: "pred_density_k", Path: "reproduction.pred_density_k", Min: 10, Max: 600, Default: 0},
 			{Name: "newborn_hunt_cooldown", Path: "reproduction.newborn_hunt_cooldown", Min: 0.5, Max: 5.0, Default: 2.0},
-			// Population
-			{Name: "max_prey", Path: "population.max_prey", Min: 200, Max: 2000, Default: 400},
-			{Name: "max_pred", Path: "population.max_pred", Min: 40, Max: 1000, Default: 120},
-			// Refugia (prey protection in resource-rich areas)
+
+			// --- Kept from exp9 (refugia) ---
 			{Name: "refugia_strength", Path: "refugia.strength", Min: 0.5, Max: 1.5, Default: 1.0},
-			// Particles (resource transport system)
+
+			// --- Kept from exp9 (particles) ---
 			{Name: "part_spawn_rate", Path: "particles.spawn_rate", Min: 20, Max: 300, Default: 100},
 			{Name: "part_initial_mass", Path: "particles.initial_mass", Min: 0.002, Max: 0.05, Default: 0.01},
 			{Name: "part_deposit_rate", Path: "particles.deposit_rate", Min: 0.5, Max: 5.0, Default: 2.0},
 			{Name: "part_pickup_rate", Path: "particles.pickup_rate", Min: 0.1, Max: 3.0, Default: 0.5},
 			{Name: "part_cell_capacity", Path: "particles.cell_capacity", Min: 0.3, Max: 2.0, Default: 1.0},
+
+			// --- New for exp10 (detritus) ---
+			{Name: "detritus_fraction", Path: "energy.predator.detritus_fraction", Min: 0.0, Max: 0.30, Default: 0.10},
+			{Name: "carcass_fraction", Path: "detritus.carcass_fraction", Min: 0.30, Max: 0.90, Default: 0.70},
+			{Name: "detritus_decay_rate", Path: "detritus.decay_rate", Min: 0.01, Max: 0.20, Default: 0.05},
+			{Name: "detritus_decay_eff", Path: "detritus.decay_efficiency", Min: 0.30, Max: 0.80, Default: 0.50},
+
+			// --- New for exp10 (diet thresholds) ---
+			{Name: "grazing_diet_cap", Path: "energy.interpolation.grazing_diet_cap", Min: 0.15, Max: 0.50, Default: 0.30},
+			{Name: "hunting_diet_floor", Path: "energy.interpolation.hunting_diet_floor", Min: 0.50, Max: 0.85, Default: 0.70},
+
+			// --- New for exp10 (prey soft cap) ---
+			{Name: "prey_density_k", Path: "reproduction.prey_density_k", Min: 50, Max: 500, Default: 200},
 		},
 	}
 }
@@ -108,83 +115,80 @@ func (pv *ParamVector) Clamp(v []float64) []float64 {
 }
 
 // ApplyToConfig applies parameter values to a Config struct.
+// Converged params from exp9 are locked to their best values.
 func (pv *ParamVector) ApplyToConfig(cfg *config.Config, values []float64) {
-	// Clamp values to ensure they're within bounds
 	clamped := pv.Clamp(values)
-
-	// Apply each parameter to the config
-	// Order must match Specs order
 	i := 0
 
-	// Energy - Prey (base_cost locked)
+	// --- Locked from exp9 ---
 	cfg.Energy.Prey.BaseCost = 0.005
-	cfg.Energy.Prey.MoveCost = clamped[i]; i++
-	cfg.Energy.Prey.ForageRate = clamped[i]; i++
+	cfg.Energy.Prey.ForageRate = 0.10
+	cfg.Energy.Predator.BaseCost = 0.002
+	cfg.Energy.Predator.TransferEfficiency = 1.0
+	cfg.Reproduction.PreyThreshold = 0.50
+	cfg.Reproduction.MaturityAge = 2.0
+	cfg.Reproduction.CooldownJitter = 3.0
+	cfg.Reproduction.ChildEnergy = 0.50
+	cfg.Population.MaxPrey = 2000
+	cfg.Population.MaxPred = 500
 
-	// Energy - Predator
-	cfg.Energy.Predator.BaseCost = clamped[i]; i++
+	// --- Energy (optimizable) ---
+	cfg.Energy.Prey.MoveCost = clamped[i]; i++
 	cfg.Energy.Predator.MoveCost = clamped[i]; i++
 	cfg.Energy.Predator.BiteReward = clamped[i]; i++
-	cfg.Energy.Predator.TransferEfficiency = clamped[i]; i++
 	cfg.Energy.Predator.DigestTime = clamped[i]; i++
 
-	// Reproduction (prey_threshold locked)
-	cfg.Reproduction.PreyThreshold = 0.50
+	// --- Reproduction (optimizable) ---
 	cfg.Reproduction.PredThreshold = clamped[i]; i++
-	cfg.Reproduction.MaturityAge = clamped[i]; i++
 	cfg.Reproduction.PreyCooldown = clamped[i]; i++
 	cfg.Reproduction.PredCooldown = clamped[i]; i++
-	// cooldown_jitter and child_energy locked
-	cfg.Reproduction.CooldownJitter = 3.0
 	cfg.Reproduction.ParentEnergySplit = clamped[i]; i++
-	cfg.Reproduction.ChildEnergy = 0.50
 	cfg.Reproduction.SpawnOffset = clamped[i]; i++
 	cfg.Reproduction.HeadingJitter = clamped[i]; i++
 	cfg.Reproduction.PredDensityK = clamped[i]; i++
 	cfg.Reproduction.NewbornHuntCooldown = clamped[i]; i++
 
-	// Population
-	cfg.Population.MaxPrey = int(clamped[i]); i++
-	cfg.Population.MaxPred = int(clamped[i]); i++
-
-	// Refugia
+	// --- Refugia ---
 	cfg.Refugia.Strength = clamped[i]; i++
 
-	// Particles
+	// --- Particles ---
 	cfg.Particles.SpawnRate = clamped[i]; i++
 	cfg.Particles.InitialMass = clamped[i]; i++
 	cfg.Particles.DepositRate = clamped[i]; i++
 	cfg.Particles.PickupRate = clamped[i]; i++
-	cfg.Particles.CellCapacity = clamped[i]
+	cfg.Particles.CellCapacity = clamped[i]; i++
+
+	// --- New: Detritus ---
+	cfg.Energy.Predator.DetritusFraction = clamped[i]; i++
+	cfg.Detritus.CarcassFraction = clamped[i]; i++
+	cfg.Detritus.DecayRate = clamped[i]; i++
+	cfg.Detritus.DecayEfficiency = clamped[i]; i++
+
+	// --- New: Diet thresholds ---
+	cfg.Energy.Interpolation.GrazingDietCap = clamped[i]; i++
+	cfg.Energy.Interpolation.HuntingDietFloor = clamped[i]; i++
+
+	// --- New: Prey soft cap ---
+	cfg.Reproduction.PreyDensityK = clamped[i]
 }
 
 // ExtractFromConfig extracts current parameter values from a Config struct.
 func (pv *ParamVector) ExtractFromConfig(cfg *config.Config) []float64 {
 	return []float64{
-		// Energy - Prey (base_cost locked)
+		// Energy
 		cfg.Energy.Prey.MoveCost,
-		cfg.Energy.Prey.ForageRate,
-		// Energy - Predator
-		cfg.Energy.Predator.BaseCost,
 		cfg.Energy.Predator.MoveCost,
 		cfg.Energy.Predator.BiteReward,
-		cfg.Energy.Predator.TransferEfficiency,
 		cfg.Energy.Predator.DigestTime,
 		// Reproduction
-		// prey_threshold locked
 		cfg.Reproduction.PredThreshold,
-		cfg.Reproduction.MaturityAge,
 		cfg.Reproduction.PreyCooldown,
 		cfg.Reproduction.PredCooldown,
-		// cooldown_jitter and child_energy locked
 		cfg.Reproduction.ParentEnergySplit,
 		cfg.Reproduction.SpawnOffset,
 		cfg.Reproduction.HeadingJitter,
 		cfg.Reproduction.PredDensityK,
 		cfg.Reproduction.NewbornHuntCooldown,
-		// Population
-		float64(cfg.Population.MaxPrey),
-		float64(cfg.Population.MaxPred),
 		// Refugia
 		cfg.Refugia.Strength,
 		// Particles
@@ -193,5 +197,15 @@ func (pv *ParamVector) ExtractFromConfig(cfg *config.Config) []float64 {
 		cfg.Particles.DepositRate,
 		cfg.Particles.PickupRate,
 		cfg.Particles.CellCapacity,
+		// Detritus
+		cfg.Energy.Predator.DetritusFraction,
+		cfg.Detritus.CarcassFraction,
+		cfg.Detritus.DecayRate,
+		cfg.Detritus.DecayEfficiency,
+		// Diet thresholds
+		cfg.Energy.Interpolation.GrazingDietCap,
+		cfg.Energy.Interpolation.HuntingDietFloor,
+		// Prey soft cap
+		cfg.Reproduction.PreyDensityK,
 	}
 }

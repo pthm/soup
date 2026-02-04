@@ -24,6 +24,7 @@ func main() {
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
 	maxTicks := flag.Int("max-ticks", 0, "Stop after N ticks (0 = unlimited)")
 	stepsPerUpdate := flag.Int("steps-per-update", 1, "Simulation ticks per update call (higher = faster headless runs)")
+	seedHoF := flag.String("seed-hof", "", "Path to hall_of_fame.json for seeding initial brains")
 
 	flag.Parse()
 
@@ -55,13 +56,14 @@ func main() {
 
 	// Build game options
 	opts := game.Options{
-		Seed:           rngSeed,
-		LogStats:       *logStats,
-		StatsWindowSec: statsWindowSec,
-		SnapshotDir:    *snapshotDir,
-		OutputDir:      *outputDir,
-		Headless:       *headless,
-		StepsPerUpdate: *stepsPerUpdate,
+		Seed:               rngSeed,
+		LogStats:           *logStats,
+		StatsWindowSec:     statsWindowSec,
+		SnapshotDir:        *snapshotDir,
+		OutputDir:          *outputDir,
+		Headless:           *headless,
+		StepsPerUpdate:     *stepsPerUpdate,
+		SeedHallOfFamePath: *seedHoF,
 	}
 
 	if *headless {

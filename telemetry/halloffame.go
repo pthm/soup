@@ -2,8 +2,10 @@ package telemetry
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math/rand"
+	"os"
 	"sort"
 
 	"github.com/pthm-cable/soup/config"
@@ -278,4 +280,63 @@ func (hof *HallOfFame) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.MarshalIndent(export, "", "  ")
+}
+
+// LoadHallOfFameFromFile reads a hall of fame JSON file and returns a HallOfFame
+// populated with the entries. archetypeIndex maps archetype names (e.g. "grazer")
+// to their index, and numArchetypes is the total number of archetypes.
+func LoadHallOfFameFromFile(path string, numArchetypes int, archetypeIndex map[string]uint8, rng *rand.Rand) (*HallOfFame, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading hall of fame: %w", err)
+	}
+
+	var raw map[string][]hallEntryJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing hall of fame JSON: %w", err)
+	}
+
+	// Determine max size from the largest hall in the file
+	maxSize := 30 // reasonable default
+	for _, entries := range raw {
+		if len(entries) > maxSize {
+			maxSize = len(entries)
+		}
+	}
+
+	hof := NewHallOfFame(maxSize, numArchetypes, rng)
+
+	for archName, entries := range raw {
+		archIdx, ok := archetypeIndex[archName]
+		if !ok {
+			slog.Warn("hall_of_fame_load: unknown archetype, skipping", "archetype", archName)
+			continue
+		}
+
+		for _, ej := range entries {
+			// Map the founder archetype name back to index
+			founderIdx := archIdx // default to the hall's archetype
+			if fi, ok := archetypeIndex[ej.FounderArchetype]; ok {
+				founderIdx = fi
+			}
+
+			entry := HallEntry{
+				Weights:            ej.Weights,
+				Fitness:            ej.Fitness,
+				EntityID:           ej.EntityID,
+				Children:           ej.Children,
+				Kills:              ej.Kills,
+				Survival:           ej.Survival,
+				Foraging:           ej.Foraging,
+				CladeID:            ej.CladeID,
+				FounderArchetypeID: founderIdx,
+				Diet:               ej.Diet,
+			}
+
+			hall := hof.getHall(archIdx)
+			*hall = hof.insertEntry(*hall, entry)
+		}
+	}
+
+	return hof, nil
 }

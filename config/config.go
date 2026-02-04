@@ -133,6 +133,7 @@ type ReproductionConfig struct {
 	SpawnOffset          float64 `yaml:"spawn_offset"`
 	HeadingJitter        float64 `yaml:"heading_jitter"`
 	PredDensityK         float64 `yaml:"pred_density_k"`          // Density-dependent reproduction: p = prey / (prey + K)
+	PreyDensityK         float64 `yaml:"prey_density_k"`          // Soft prey carrying capacity: p = K / (N + K)
 	NewbornHuntCooldown  float64 `yaml:"newborn_hunt_cooldown"`   // Seconds before newborn predators can bite
 }
 

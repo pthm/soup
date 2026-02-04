@@ -41,6 +41,7 @@ func main() {
 	maxEvals := flag.Int("max-evals", 200, "Maximum number of evaluations")
 	population := flag.Int("population", 0, "CMA-ES population size (0 = auto)")
 	outputDir := flag.String("output", "", "Output directory for results")
+	seedHoF := flag.String("seed-hof", "", "Path to hall_of_fame.json for seeding initial brains")
 	flag.Parse()
 
 	if *outputDir == "" {
@@ -68,7 +69,7 @@ func main() {
 	}
 
 	// Create fitness evaluator
-	evaluator := NewFitnessEvaluator(params, int32(*maxTicks), evalSeeds, baseCfg)
+	evaluator := NewFitnessEvaluator(params, int32(*maxTicks), evalSeeds, baseCfg, *seedHoF)
 
 	// Set up CMA-ES
 	dim := params.Dim()

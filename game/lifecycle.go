@@ -69,8 +69,19 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 		HuntCooldown:       huntCooldown,
 	}
 
-	// Create brain
-	brain := neural.NewFFNN(g.rng)
+	// Create brain: use seed hall of fame if available, otherwise random
+	var brain *neural.FFNN
+	if g.seedHallOfFame != nil {
+		if weights := g.seedHallOfFame.Sample(archetypeID); weights != nil {
+			brain = neural.NewFFNN(g.rng)
+			brain.UnmarshalWeights(*weights)
+			// Light mutation for initial population diversity
+			brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
+		}
+	}
+	if brain == nil {
+		brain = neural.NewFFNN(g.rng)
+	}
 	g.brains[id] = brain
 
 	entity := g.entityMapper.NewEntity(&pos, &vel, &rot, &body, &energy, &caps, &org)

@@ -104,6 +104,8 @@ reproduction:
   pred_density_k: 0          # Density-dependent predator reproduction: p = prey/(prey+K)
                              # When K > 0, predators breed less when prey are scarce
                              # K=0 disables (default), K=150 is a good starting value
+  prey_density_k: 0          # Soft prey carrying capacity: p = K/(N+K)
+                             # At N=K, 50% breed probability. K=0 disables (default)
   newborn_hunt_cooldown: 2.0 # Seconds before newborn predators can bite
                              # Prevents cascade kills when offspring spawn in prey swarms
 
