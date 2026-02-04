@@ -146,6 +146,7 @@ func (g *Game) updateFeeding() {
 	digestTime := float32(cfg.Energy.Predator.DigestTime)
 	refugiaStrength := float32(cfg.Refugia.Strength)
 	baseBiteReward := float32(cfg.Energy.Predator.BiteReward)
+	thrustDeadzone := float32(cfg.Capabilities.ThrustDeadzone)
 
 	query := g.entityFilter.Query()
 	for query.Next() {
@@ -153,6 +154,11 @@ func (g *Game) updateFeeding() {
 		pos, _, _, _, energy, caps, org := query.Get()
 
 		if !energy.Alive {
+			continue
+		}
+
+		// Skip if brain isn't signaling bite
+		if energy.LastBite <= thrustDeadzone {
 			continue
 		}
 
@@ -364,6 +370,7 @@ func (g *Game) updateReproduction() {
 		parentDiet         float32
 		parentCladeID      uint64
 		founderArchetypeID uint8
+		childEnergy        float32
 	}
 	var births []birthInfo
 
@@ -426,8 +433,10 @@ func (g *Game) updateReproduction() {
 			continue
 		}
 
-		// Energy split
+		// Energy split: child gets what the parent loses (conservation)
+		parentEnergyBefore := energy.Value
 		energy.Value *= float32(repro.ParentEnergySplit)
+		childEnergyValue := parentEnergyBefore - energy.Value
 
 		// Set cooldown
 		org.ReproCooldown = cooldown
@@ -449,6 +458,7 @@ func (g *Game) updateReproduction() {
 			parentDiet:         org.Diet,
 			parentCladeID:      org.CladeID,
 			founderArchetypeID: org.FounderArchetypeID,
+			childEnergy:        childEnergyValue,
 		})
 	}
 
@@ -497,7 +507,7 @@ func (g *Game) updateReproduction() {
 		vel := components.Velocity{X: 0, Y: 0}
 		rot := components.Rotation{Heading: b.heading, AngVel: 0}
 		body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
-		childEnergy := components.Energy{Value: float32(repro.ChildEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
+		childEnergy := components.Energy{Value: b.childEnergy, Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
 		caps := components.DefaultCapabilities(childDiet)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 		// Carnivores can't hunt immediately at birth
