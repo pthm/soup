@@ -1,0 +1,18 @@
+tick,type,description
+7787,stable_ecosystem,"Stable ecosystem with 401 prey, 29 predators over 5+ windows"
+11980,prey_crash,Prey crashed 30% from peak 546 to 382
+13178,prey_crash,Prey crashed 47% from peak 382 to 204
+14376,prey_crash,Prey crashed 43% from peak 204 to 117
+14975,prey_crash,Prey crashed 34% from peak 117 to 77
+16173,prey_crash,Prey crashed 39% from peak 77 to 47
+18569,prey_crash,Prey crashed 34% from peak 47 to 31
+20965,stable_ecosystem,"Stable ecosystem with 31 prey, 44 predators over 5+ windows"
+48519,prey_crash,Prey crashed 31% from peak 545 to 374
+52113,prey_crash,Prey crashed 36% from peak 374 to 239
+55108,prey_crash,Prey crashed 31% from peak 239 to 166
+58103,prey_crash,Prey crashed 37% from peak 166 to 104
+61098,prey_crash,Prey crashed 38% from peak 104 to 64
+63494,prey_crash,Prey crashed 31% from peak 64 to 44
+65890,prey_crash,Prey crashed 34% from peak 44 to 29
+70083,prey_crash,Prey crashed 38% from peak 29 to 18
+83860,prey_crash,Prey crashed 58% from peak 19 to 8

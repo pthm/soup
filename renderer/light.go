@@ -113,6 +113,20 @@ func (l *LightRenderer) Init(potW, potH int) {
 	l.initialized = true
 }
 
+// Resize updates screen dimensions for the light shaders.
+func (l *LightRenderer) Resize(w, h float32) {
+	if w == l.screenW && h == l.screenH {
+		return
+	}
+	l.screenW = w
+	l.screenH = h
+	if l.initialized {
+		resolution := []float32{w, h}
+		rl.SetShaderValue(l.shader, l.resolutionLoc, resolution, rl.ShaderUniformVec2)
+		rl.SetShaderValue(l.shadowShader, l.shadowResolutionLoc, resolution, rl.ShaderUniformVec2)
+	}
+}
+
 // UpdatePotential uploads new potential field data to the GPU texture.
 // Swaps buffers and starts blending from previous to new.
 func (l *LightRenderer) UpdatePotential(data []float32, w, h int) {

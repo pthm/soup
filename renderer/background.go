@@ -52,6 +52,19 @@ func (b *BackgroundRenderer) Init() {
 	b.initialized = true
 }
 
+// Resize updates screen dimensions for the background shader.
+func (b *BackgroundRenderer) Resize(w, h float32) {
+	if w == b.screenW && h == b.screenH {
+		return
+	}
+	b.screenW = w
+	b.screenH = h
+	if b.initialized {
+		resolution := []float32{w, h}
+		rl.SetShaderValue(b.shader, b.resolutionLoc, resolution, rl.ShaderUniformVec2)
+	}
+}
+
 // Draw renders the background with noise texture.
 func (b *BackgroundRenderer) Draw(time float32, cameraX, cameraY, cameraZoom, worldW, worldH float32) {
 	if !b.initialized {

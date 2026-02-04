@@ -55,6 +55,16 @@ func NewInspector(screenWidth, screenHeight int32) *Inspector {
 	}
 }
 
+// Resize updates screen dimensions and recalculates panel position.
+func (ins *Inspector) Resize(screenWidth, screenHeight int32) {
+	if screenWidth == ins.screenWidth && screenHeight == ins.screenHeight {
+		return
+	}
+	ins.screenWidth = screenWidth
+	ins.screenHeight = screenHeight
+	ins.panelX = screenWidth - PanelWidth - 10
+}
+
 // HandleInput processes click detection for entity selection.
 func (ins *Inspector) HandleInput(
 	mouseX, mouseY float32,

@@ -88,7 +88,9 @@ func main() {
 		}
 	} else {
 		// Graphical mode
+		rl.SetConfigFlags(rl.FlagWindowResizable)
 		rl.InitWindow(int32(cfg.Screen.Width), int32(cfg.Screen.Height), "Primordial Soup")
+		rl.SetWindowMinSize(640, 360)
 		defer rl.CloseWindow()
 
 		rl.SetTargetFPS(int32(cfg.Screen.TargetFPS))

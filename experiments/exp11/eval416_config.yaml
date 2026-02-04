@@ -1,0 +1,53 @@
+# exp11 best config (eval #416, fitness -52187)
+# Optimized parameters + locked exp9 convergence values.
+# Unspecified values use embedded defaults.
+
+population:
+  max_prey: 2000
+  max_pred: 500
+
+reproduction:
+  prey_threshold: 0.50           # locked exp9
+  pred_threshold: 0.95
+  maturity_age: 2.0              # locked exp9
+  prey_cooldown: 20.0
+  pred_cooldown: 20.0
+  cooldown_jitter: 3.0           # locked exp9
+  parent_energy_split: 0.40
+  child_energy: 0.50             # locked exp9
+  spawn_offset: 30.0
+  heading_jitter: 0.701097
+  pred_density_k: 600.0
+  prey_density_k: 500.0
+  newborn_hunt_cooldown: 0.5
+
+energy:
+  prey:
+    base_cost: 0.005             # locked exp9
+    move_cost: 0.25
+    forage_rate: 0.10            # locked exp9
+  predator:
+    base_cost: 0.002             # locked exp9
+    move_cost: 0.08
+    bite_reward: 0.564732
+    transfer_efficiency: 1.0     # locked exp9
+    detritus_fraction: 0.0
+    digest_time: 0.2
+  interpolation:
+    grazing_diet_cap: 0.15
+    hunting_diet_floor: 0.600727
+
+refugia:
+  strength: 1.5
+
+particles:
+  spawn_rate: 56.740504
+  initial_mass: 0.05
+  deposit_rate: 5.0
+  pickup_rate: 0.1
+  cell_capacity: 0.3
+
+detritus:
+  decay_rate: 0.01
+  decay_efficiency: 0.30
+  carcass_fraction: 0.30

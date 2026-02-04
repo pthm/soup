@@ -54,6 +54,21 @@ func (p *ParticleRenderer) Init() {
 	p.initialized = true
 }
 
+// Resize updates screen dimensions and recreates the render texture.
+func (p *ParticleRenderer) Resize(w, h int32) {
+	if w == p.width && h == p.height {
+		return
+	}
+	p.width = w
+	p.height = h
+	if p.initialized {
+		rl.UnloadRenderTexture(p.renderTarget)
+		p.renderTarget = rl.LoadRenderTexture(w, h)
+		resolution := []float32{float32(w), float32(h)}
+		rl.SetShaderValue(p.shader, p.resolutionLoc, resolution, rl.ShaderUniformVec2)
+	}
+}
+
 // BeginParticles starts particle rendering. Call this before drawing particles.
 func (p *ParticleRenderer) BeginParticles() {
 	if !p.initialized {

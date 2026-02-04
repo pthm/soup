@@ -61,6 +61,15 @@ func (r *ResourceFogRenderer) Init(gridW, gridH int) {
 	r.initialized = true
 }
 
+// Resize updates screen dimensions for the resource fog renderer.
+func (r *ResourceFogRenderer) Resize(w, h float32) {
+	if w == r.screenW && h == r.screenH {
+		return
+	}
+	r.screenW = w
+	r.screenH = h
+}
+
 // UpdateResource uploads new resource field data to the GPU texture.
 func (r *ResourceFogRenderer) UpdateResource(data []float32, w, h int) {
 	if !r.initialized {

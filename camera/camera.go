@@ -146,6 +146,24 @@ func (c *Camera) GhostPositions(wx, wy, radius float32) []struct{ X, Y float32 }
 	return ghosts
 }
 
+// Resize updates viewport dimensions and recalculates zoom constraints.
+func (c *Camera) Resize(viewportW, viewportH float32) {
+	if viewportW == c.ViewportW && viewportH == c.ViewportH {
+		return
+	}
+	c.ViewportW = viewportW
+	c.ViewportH = viewportH
+	minZoomX := viewportW / c.WorldW
+	minZoomY := viewportH / c.WorldH
+	c.MinZoom = minZoomX
+	if minZoomY > c.MinZoom {
+		c.MinZoom = minZoomY
+	}
+	if c.Zoom < c.MinZoom {
+		c.Zoom = c.MinZoom
+	}
+}
+
 // Pan moves the camera by the given delta in screen pixels.
 // Automatically wraps around world boundaries.
 func (c *Camera) Pan(dx, dy float32) {
