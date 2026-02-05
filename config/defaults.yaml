@@ -307,7 +307,7 @@ archetypes:
     diet: 1.0                  # Pure carnivore - hunts only
     metabolic_rate: 0.75       # Efficient metabolism (ambush predator)
     energy_capacity: 1.2       # Less buffer needed (gets big meals)
-    vision_range: 140.0        # Longer range for hunting
+    vision_range: 240.0        # Longer range for hunting
     # Vision weights: forward focus for tracking prey
     vision_weights: [0.0, 0.0, 0.0, 0.6, 1.0, 0.6, 0.0, 0.0]
 

@@ -50,6 +50,11 @@ func (g *Game) handleInput() {
 		mousePos := rl.GetMousePosition()
 		g.inspector.HandleInput(mousePos.X, mousePos.Y, g.posMap, g.bodyMap, g.orgMap, g.entityFilter, g.camera)
 	}
+
+	// Energy panel input (legend toggling)
+	if g.energyPanel != nil {
+		g.energyPanel.HandleInput()
+	}
 }
 
 // handleResize checks for window resize and propagates new dimensions.
@@ -70,6 +75,9 @@ func (g *Game) handleResize() {
 	}
 	if g.inspector != nil {
 		g.inspector.Resize(int32(w), int32(h))
+	}
+	if g.energyPanel != nil {
+		g.energyPanel.Resize(int32(w), int32(h))
 	}
 }
 
