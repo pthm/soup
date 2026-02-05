@@ -13,7 +13,18 @@ func TestSnapshotSaveLoad(t *testing.T) {
 	// Create a temporary directory
 	tmpDir := t.TempDir()
 
-	// Create a test snapshot
+	// Create a test snapshot with the new BrainWeights structure
+	// Network: 28 -> 16 -> 3
+	layers := []int{neural.NumInputs, 16, neural.NumOutputs}
+	weights := [][]float32{
+		make([]float32, 16*neural.NumInputs), // input -> hidden
+		make([]float32, neural.NumOutputs*16), // hidden -> output
+	}
+	biases := [][]float32{
+		make([]float32, 16),
+		make([]float32, neural.NumOutputs),
+	}
+
 	snapshot := &Snapshot{
 		Version:       SnapshotVersion,
 		RNGSeed:       42,
@@ -31,20 +42,19 @@ func TestSnapshotSaveLoad(t *testing.T) {
 				Diet:               0.1,
 				FounderArchetypeID: 0,
 				X:                  150,
-				Y:             250,
-				VelX:          0.5,
-				VelY:          -0.3,
-				Heading:       1.2,
-				Met:           0.75,
-				Bio:           1.0,
-				BioCap:        1.5,
-				Age:           30.5,
-				ReproCooldown: 2.0,
+				Y:                  250,
+				VelX:               0.5,
+				VelY:               -0.3,
+				Heading:            1.2,
+				Met:                0.75,
+				Bio:                1.0,
+				BioCap:             1.5,
+				Age:                30.5,
+				ReproCooldown:      2.0,
 				Brain: neural.BrainWeights{
-					W1: make([]float32, neural.NumHidden*neural.NumInputs),
-					B1: make([]float32, neural.NumHidden),
-					W2: make([]float32, neural.NumOutputs*neural.NumHidden),
-					B2: make([]float32, neural.NumOutputs),
+					Layers:  layers,
+					Weights: weights,
+					Biases:  biases,
 				},
 				Lifetime: &LifetimeStatsJSON{
 					BirthTick:       100,
@@ -140,20 +150,26 @@ func TestSnapshotFilename(t *testing.T) {
 }
 
 func TestBrainWeightsSerialization(t *testing.T) {
-	// Create a brain with known weights
+	// Create a brain with the new structure
+	// Network: 28 -> 16 -> 3
 	brain := neural.BrainWeights{
-		W1: make([]float32, neural.NumHidden*neural.NumInputs),
-		B1: make([]float32, neural.NumHidden),
-		W2: make([]float32, neural.NumOutputs*neural.NumHidden),
-		B2: make([]float32, neural.NumOutputs),
+		Layers: []int{neural.NumInputs, 16, neural.NumOutputs},
+		Weights: [][]float32{
+			make([]float32, 16*neural.NumInputs),
+			make([]float32, neural.NumOutputs*16),
+		},
+		Biases: [][]float32{
+			make([]float32, 16),
+			make([]float32, neural.NumOutputs),
+		},
 	}
 
 	// Set some test values
-	brain.W1[0] = 1.5
-	brain.W1[10] = -0.3
-	brain.B1[0] = 0.1
-	brain.W2[0] = 2.0
-	brain.B2[0] = -0.5
+	brain.Weights[0][0] = 1.5
+	brain.Weights[0][10] = -0.3
+	brain.Biases[0][0] = 0.1
+	brain.Weights[1][0] = 2.0
+	brain.Biases[1][0] = -0.5
 
 	// Serialize to JSON
 	data, err := json.Marshal(brain)
@@ -168,13 +184,16 @@ func TestBrainWeightsSerialization(t *testing.T) {
 	}
 
 	// Verify values
-	if loaded.W1[0] != brain.W1[0] {
-		t.Errorf("W1[0] mismatch: got %f, want %f", loaded.W1[0], brain.W1[0])
+	if loaded.Weights[0][0] != brain.Weights[0][0] {
+		t.Errorf("Weights[0][0] mismatch: got %f, want %f", loaded.Weights[0][0], brain.Weights[0][0])
 	}
-	if loaded.W1[10] != brain.W1[10] {
-		t.Errorf("W1[10] mismatch: got %f, want %f", loaded.W1[10], brain.W1[10])
+	if loaded.Weights[0][10] != brain.Weights[0][10] {
+		t.Errorf("Weights[0][10] mismatch: got %f, want %f", loaded.Weights[0][10], brain.Weights[0][10])
 	}
-	if loaded.B1[0] != brain.B1[0] {
-		t.Errorf("B1[0] mismatch: got %f, want %f", loaded.B1[0], brain.B1[0])
+	if loaded.Biases[0][0] != brain.Biases[0][0] {
+		t.Errorf("Biases[0][0] mismatch: got %f, want %f", loaded.Biases[0][0], brain.Biases[0][0])
+	}
+	if len(loaded.Layers) != len(brain.Layers) {
+		t.Errorf("Layers length mismatch: got %d, want %d", len(loaded.Layers), len(brain.Layers))
 	}
 }

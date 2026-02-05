@@ -1,0 +1,166 @@
+screen:
+    width: 1280
+    height: 720
+    target_fps: 60
+world:
+    width: 2560
+    height: 1440
+physics:
+    dt: 0.016666666666666666
+    grid_cell_size: 64
+entity:
+    body_radius: 10
+    initial_energy: 1
+    max_energy: 1.5
+capabilities:
+    min_effectiveness: 0.05
+    max_speed: 80
+    max_accel: 180
+    max_turn_rate: 3.5
+    drag: 1.2
+    bite_range: 10
+    thrust_deadzone: 0.1
+population:
+    initial: 1000
+    max_prey: 400
+    max_pred: 120
+    respawn_threshold: 0
+    respawn_count: 5
+    predator_spawn_chance: 0.25
+    min_predators: 0
+    min_prey: 0
+reproduction:
+    prey_threshold: 0.85
+    pred_threshold: 0.85
+    maturity_age: 8
+    prey_cooldown: 8
+    pred_cooldown: 12
+    cooldown_jitter: 1
+    parent_energy_split: 0.55
+    spawn_offset: 15
+    heading_jitter: 0.25
+    pred_density_k: 0
+    prey_density_k: 0
+    newborn_hunt_cooldown: 2
+mutation:
+    rate: 0.05
+    sigma: 0.08
+    big_rate: 0.01
+    big_sigma: 0.4
+    bias_rate_multiplier: 0.5
+energy:
+    base_cost: 0.007
+    move_cost: 0.035
+    accel_cost: 0.012
+    feeding_rate: 0.06
+    feeding_efficiency: 0.8
+    cooldown_factor: 1.5
+resource:
+    graze_radius: 1
+    regen_rate: 0.43
+    decay_rate: 0.169
+potential:
+    scale: 0.7
+    octaves: 6
+    lacunarity: 3
+    gain: 0.77
+    contrast: 8
+    time_speed: 0.02
+    update_interval: 0.25
+neural:
+    hidden_layers:
+        - 16
+        - 8
+    num_outputs: 3
+sensors:
+    num_sectors: 8
+    resource_sample_distance: 0.7
+    diet_threshold: 0.2
+    kin_range: 0.2
+gpu:
+    resource_texture_size: 128
+telemetry:
+    stats_window: 10
+    bookmark_history_size: 10
+    perf_collector_window: 600
+bookmarks:
+    hunt_breakthrough:
+        multiplier: 2
+        min_kills: 3
+    forage_breakthrough:
+        multiplier: 2
+        min_resource: 0.3
+    predator_recovery:
+        min_population: 3
+        recovery_multiplier: 3
+        min_final: 6
+    prey_crash:
+        drop_percent: 0.3
+        min_drop: 10
+    stable_ecosystem:
+        min_prey: 10
+        min_pred: 3
+        cv_threshold: 0.04
+        stable_windows: 5
+refugia:
+    strength: 0.5
+hall_of_fame:
+    enabled: true
+    size: 30
+    reseed_threshold: 5
+    reseed_count: 3
+    reseed_energy: 0.9
+    fitness:
+        children_weight: 3
+        survival_weight: 0.1
+        kills_weight: 2
+        forage_weight: 1
+    entry:
+        min_children: 1
+        min_survival_sec: 60
+        min_foraging: 0.5
+        min_kills: 1
+archetypes:
+    - name: grazer
+      diet: 0
+      metabolic_rate: 1
+      energy_capacity: 1.5
+      vision_range: 100
+      vision_weights:
+        - 0.05
+        - 0.6
+        - 1
+        - 0.6
+        - 0.15
+        - 0.6
+        - 1
+        - 0.6
+    - name: hunter
+      diet: 1
+      metabolic_rate: 0.75
+      energy_capacity: 1.2
+      vision_range: 140
+      vision_weights:
+        - 0
+        - 0
+        - 0
+        - 0.6
+        - 1
+        - 0.6
+        - 0
+        - 0
+clades:
+    split_chance: 0.005
+    delta_threshold: 0.015
+    diet_threshold: 0.05
+detritus:
+    decay_rate: 0.05
+    decay_efficiency: 0.5
+    carcass_fraction: 0.7
+biomass:
+    met_per_bio: 1
+    growth_rate: 0.03
+    growth_threshold: 0.8
+    min_bio: 0.3
+    birth_efficiency: 0.8
+    bio_cost: 0.003

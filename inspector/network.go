@@ -9,7 +9,7 @@ import (
 )
 
 // Input labels for the neural network visualization.
-// Order: Food[8], Threat[8], Kin[8], Energy, Speed, Diet
+// Order: Food[8], Threat[8], Kin[8], Energy, Speed, Diet, MetRate
 // Sector order: B, BR, R, FR, F, FL, L, BL
 var InputLabels = []string{
 	// Food (8 sectors)
@@ -19,7 +19,7 @@ var InputLabels = []string{
 	// Kin (8 sectors)
 	"Kin B", "Kin BR", "Kin R", "Kin FR", "Kin F", "Kin FL", "Kin L", "Kin BL",
 	// Self state
-	"Energy", "Speed", "Diet",
+	"Energy", "Speed", "Diet", "MetRate",
 }
 
 // Output labels for the neural network visualization.
@@ -36,108 +36,95 @@ var (
 )
 
 // DrawNetworkDiagram renders the neural network with activations.
+// Supports multiple hidden layers dynamically based on nn.Layers.
 func DrawNetworkDiagram(x, y, width, height int32, nn *neural.FFNN, act *neural.Activations) {
-	if nn == nil || act == nil {
+	if nn == nil || act == nil || len(nn.Layers) < 2 {
 		rl.DrawText("No network data", x+10, y+10, 14, ColorLabelDim)
 		return
 	}
 
-	// Layout: 3 columns
-	colWidth := width / 3
+	numLayers := len(nn.Layers)
 	nodeRadius := float32(6)
 
-	// Vertical spacing for each layer
-	inputSpacing := float32(height-20) / float32(neural.NumInputs)
-	hiddenSpacing := float32(height-20) / float32(neural.NumHidden)
-	outputSpacing := float32(height-20) / float32(neural.NumOutputs)
-
-	// Column X positions
-	inputX := float32(x) + float32(colWidth)/2
-	hiddenX := float32(x) + float32(colWidth) + float32(colWidth)/2
-	outputX := float32(x) + float32(2*colWidth) + float32(colWidth)/2
-
-	// Compute node positions
-	inputNodes := make([]rl.Vector2, neural.NumInputs)
-	for i := 0; i < neural.NumInputs; i++ {
-		inputNodes[i] = rl.Vector2{
-			X: inputX,
-			Y: float32(y) + 10 + float32(i)*inputSpacing,
-		}
+	// Calculate column positions (one per layer)
+	colWidth := float32(width) / float32(numLayers)
+	colX := make([]float32, numLayers)
+	for i := 0; i < numLayers; i++ {
+		colX[i] = float32(x) + colWidth*float32(i) + colWidth/2
 	}
 
-	hiddenNodes := make([]rl.Vector2, neural.NumHidden)
-	for i := 0; i < neural.NumHidden; i++ {
-		hiddenNodes[i] = rl.Vector2{
-			X: hiddenX,
-			Y: float32(y) + 10 + float32(i)*hiddenSpacing + (float32(height-20)-float32(neural.NumHidden)*hiddenSpacing)/2,
-		}
-	}
+	// Compute node positions for each layer
+	allNodes := make([][]rl.Vector2, numLayers)
+	for layer := 0; layer < numLayers; layer++ {
+		layerSize := nn.Layers[layer]
+		spacing := float32(height-20) / float32(layerSize)
+		allNodes[layer] = make([]rl.Vector2, layerSize)
 
-	outputNodes := make([]rl.Vector2, neural.NumOutputs)
-	for i := 0; i < neural.NumOutputs; i++ {
-		outputNodes[i] = rl.Vector2{
-			X: outputX,
-			Y: float32(y) + 10 + float32(i)*outputSpacing + (float32(height-20)-float32(neural.NumOutputs)*outputSpacing)/2,
-		}
-	}
-
-	// Draw edges (input -> hidden)
-	for h := 0; h < neural.NumHidden; h++ {
-		for i := 0; i < neural.NumInputs; i++ {
-			weight := nn.W1[h][i]
-			if absFloat(weight) < 0.1 {
-				continue
+		for i := 0; i < layerSize; i++ {
+			// Center the layer vertically
+			yOffset := (float32(height-20) - float32(layerSize)*spacing) / 2
+			allNodes[layer][i] = rl.Vector2{
+				X: colX[layer],
+				Y: float32(y) + 10 + float32(i)*spacing + yOffset,
 			}
-			drawEdge(inputNodes[i], hiddenNodes[h], weight)
 		}
 	}
 
-	// Draw edges (hidden -> output)
-	for o := 0; o < neural.NumOutputs; o++ {
-		for h := 0; h < neural.NumHidden; h++ {
-			weight := nn.W2[o][h]
-			if absFloat(weight) < 0.1 {
-				continue
+	// Draw edges between consecutive layers
+	for layer := 0; layer < len(nn.Weights); layer++ {
+		fromNodes := allNodes[layer]
+		toNodes := allNodes[layer+1]
+
+		for j := 0; j < len(nn.Weights[layer]); j++ {
+			for k := 0; k < len(nn.Weights[layer][j]); k++ {
+				weight := nn.Weights[layer][j][k]
+				if absFloat(weight) < 0.1 {
+					continue
+				}
+				drawEdge(fromNodes[k], toNodes[j], weight)
 			}
-			drawEdge(hiddenNodes[h], outputNodes[o], weight)
 		}
 	}
 
 	// Draw input nodes with labels
-	for i := 0; i < neural.NumInputs; i++ {
+	for i := 0; i < nn.Layers[0]; i++ {
 		var activation float32
 		if i < len(act.Inputs) {
 			activation = act.Inputs[i]
 		}
-		drawNode(inputNodes[i], nodeRadius, activation)
+		drawNode(allNodes[0][i], nodeRadius, activation)
 
 		// Label on the left
 		if i < len(InputLabels) {
 			labelWidth := rl.MeasureText(InputLabels[i], 10)
-			rl.DrawText(InputLabels[i], int32(inputNodes[i].X-nodeRadius)-labelWidth-4, int32(inputNodes[i].Y)-5, 10, ColorLabelDim)
+			rl.DrawText(InputLabels[i], int32(allNodes[0][i].X-nodeRadius)-labelWidth-4, int32(allNodes[0][i].Y)-5, 10, ColorLabelDim)
 		}
 	}
 
-	// Draw hidden nodes
-	for i := 0; i < neural.NumHidden; i++ {
-		var activation float32
-		if i < len(act.Hidden) {
-			activation = act.Hidden[i]
+	// Draw hidden layer nodes
+	for layer := 1; layer < numLayers-1; layer++ {
+		hiddenIdx := layer - 1 // Index into act.Hidden
+		for i := 0; i < nn.Layers[layer]; i++ {
+			var activation float32
+			if hiddenIdx < len(act.Hidden) && i < len(act.Hidden[hiddenIdx]) {
+				activation = act.Hidden[hiddenIdx][i]
+			}
+			drawNode(allNodes[layer][i], nodeRadius, activation)
 		}
-		drawNode(hiddenNodes[i], nodeRadius, activation)
 	}
 
 	// Draw output nodes with labels
-	for i := 0; i < neural.NumOutputs; i++ {
+	outputLayer := numLayers - 1
+	for i := 0; i < nn.Layers[outputLayer]; i++ {
 		var activation float32
 		if i < len(act.Outputs) {
 			activation = act.Outputs[i]
 		}
-		drawNode(outputNodes[i], nodeRadius+2, activation)
+		drawNode(allNodes[outputLayer][i], nodeRadius+2, activation)
 
 		// Label on the right
 		if i < len(OutputLabels) {
-			rl.DrawText(OutputLabels[i], int32(outputNodes[i].X+nodeRadius+6), int32(outputNodes[i].Y)-5, 10, ColorLabelDim)
+			rl.DrawText(OutputLabels[i], int32(allNodes[outputLayer][i].X+nodeRadius+6), int32(allNodes[outputLayer][i].Y)-5, 10, ColorLabelDim)
 		}
 	}
 }

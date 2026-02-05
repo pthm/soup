@@ -84,9 +84,11 @@ func TestComputeSensorsNoNeighbors(t *testing.T) {
 		t.Errorf("Energy wrong: got %f, want 0.8", inputs.Energy)
 	}
 
-	expectedSpeed := 1.0 / caps.MaxSpeed
-	if inputs.Speed != expectedSpeed {
-		t.Errorf("Speed wrong: got %f, want %f", inputs.Speed, expectedSpeed)
+	// Velocity is stored in units/tick, so normalize by MaxSpeed * dt
+	// vel=(1,0) means 1 unit/tick. At 60 tps this is 60 units/sec, which is 75% of MaxSpeed (80).
+	expectedSpeed := 1.0 / (caps.MaxSpeed * cachedDT)
+	if inputs.Speed < expectedSpeed-0.01 || inputs.Speed > expectedSpeed+0.01 {
+		t.Errorf("Speed wrong: got %f, want ~%f", inputs.Speed, expectedSpeed)
 	}
 }
 

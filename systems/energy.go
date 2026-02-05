@@ -35,10 +35,12 @@ func UpdateEnergy(
 	energy.Met -= baseDrain
 
 	// Movement cost: proportional to (speed/maxSpeed)^2
+	// Velocity is stored in units/tick, so normalize by MaxSpeed * dt
 	speedSq := vel.X*vel.X + vel.Y*vel.Y
-	maxSpeedSq := caps.MaxSpeed * caps.MaxSpeed
-	if maxSpeedSq > 0 {
-		speedRatio := speedSq / maxSpeedSq
+	maxSpeedPerTick := caps.MaxSpeed * dt
+	maxSpeedSqPerTick := maxSpeedPerTick * maxSpeedPerTick
+	if maxSpeedSqPerTick > 0 {
+		speedRatio := speedSq / maxSpeedSqPerTick
 		moveDrain := moveCost * speedRatio * dt
 		cost += moveDrain
 		energy.Met -= moveDrain

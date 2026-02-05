@@ -85,17 +85,18 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	}
 
 	// Create brain: use seed hall of fame if available, otherwise random
+	hiddenLayers := cfg.Neural.HiddenLayers
 	var brain *neural.FFNN
 	if g.seedHallOfFame != nil {
 		if weights := g.seedHallOfFame.Sample(archetypeID); weights != nil {
-			brain = neural.NewFFNN(g.rng, diet)
+			brain = neural.NewFFNN(g.rng, hiddenLayers, diet)
 			brain.UnmarshalWeights(*weights)
 			// Light mutation for initial population diversity
 			brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
 		}
 	}
 	if brain == nil {
-		brain = neural.NewFFNN(g.rng, diet)
+		brain = neural.NewFFNN(g.rng, hiddenLayers, diet)
 	}
 	g.brains[id] = brain
 
@@ -186,21 +187,22 @@ func (g *Game) reseedFromHallOfFame() {
 			}
 
 			// Try runtime hall of fame first, then seed hall, then random
+			hiddenLayers := cfg.Neural.HiddenLayers
 			var brain *neural.FFNN
 			if weights := g.hallOfFame.Sample(archetypeID); weights != nil {
-				brain = neural.NewFFNN(g.rng, diet)
+				brain = neural.NewFFNN(g.rng, hiddenLayers, diet)
 				brain.UnmarshalWeights(*weights)
 				brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
 			}
 			if brain == nil && g.seedHallOfFame != nil {
 				if weights := g.seedHallOfFame.Sample(archetypeID); weights != nil {
-					brain = neural.NewFFNN(g.rng, diet)
+					brain = neural.NewFFNN(g.rng, hiddenLayers, diet)
 					brain.UnmarshalWeights(*weights)
 					brain.MutateSparse(g.rng, 0.10, 0.05, 0.0, 0.0)
 				}
 			}
 			if brain == nil {
-				brain = neural.NewFFNN(g.rng, diet)
+				brain = neural.NewFFNN(g.rng, hiddenLayers, diet)
 			}
 
 			g.brains[id] = brain

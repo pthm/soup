@@ -6,54 +6,68 @@ import (
 	"math/rand"
 )
 
-// Network dimensions (compile-time constants for array sizing).
-// These values must match the corresponding config values:
-// - NumInputs = sensors.num_sectors * 3 + 4
-// - NumHidden = neural.num_hidden
-// - NumOutputs = neural.num_outputs
+// Network dimension constants.
+// NumInputs and NumOutputs are fixed based on sensor/action space.
+// Hidden layer sizes are configurable via config.
 const (
 	NumInputs  = 28 // K*3 sectors + 4 self-state (K=8): energy, speed, diet, metabolic_rate
-	NumHidden  = 16
-	NumOutputs = 3 // turn, thrust, bite
+	NumOutputs = 3  // turn, thrust, bite
 )
 
-// FFNN is a simple two-layer feedforward neural network.
+// FFNN is a feedforward neural network with configurable hidden layers.
 type FFNN struct {
-	W1 [NumHidden][NumInputs]float32  // input -> hidden weights
-	B1 [NumHidden]float32             // hidden biases
-	W2 [NumOutputs][NumHidden]float32 // hidden -> output weights
-	B2 [NumOutputs]float32            // output biases
+	// Layer sizes: [input, hidden1, hidden2, ..., output]
+	Layers []int
+
+	// Weights[i] connects layer i to layer i+1
+	// Weights[i][j][k] = weight from neuron k in layer i to neuron j in layer i+1
+	Weights [][][]float32
+
+	// Biases[i] are biases for layer i+1 (no biases for input layer)
+	Biases [][]float32
 }
 
-// NewFFNN creates a randomly initialized network with diet-aware output biases.
-// Herbivores (diet < 0.5) get strong negative biases on thrust and bite, making
-// the default behavior "sit still and graze." Predators get a weaker bias so some
-// fraction has enough random thrust/bite activity for selection to act on.
-func NewFFNN(rng *rand.Rand, diet float32) *FFNN {
-	nn := &FFNN{}
-	// Xavier initialization
-	scale1 := float32(math.Sqrt(2.0 / float64(NumInputs)))
-	scale2 := float32(math.Sqrt(2.0 / float64(NumHidden)))
+// NewFFNN creates a randomly initialized network with the given hidden layer sizes.
+// hiddenLayers specifies the size of each hidden layer, e.g. [16, 8] for two hidden layers.
+func NewFFNN(rng *rand.Rand, hiddenLayers []int, diet float32) *FFNN {
+	// Build layer sizes: input, hidden..., output
+	layers := make([]int, len(hiddenLayers)+2)
+	layers[0] = NumInputs
+	copy(layers[1:], hiddenLayers)
+	layers[len(layers)-1] = NumOutputs
 
-	for i := range nn.W1 {
-		for j := range nn.W1[i] {
-			nn.W1[i][j] = float32(rng.NormFloat64()) * scale1
-		}
-		nn.B1[i] = 0
+	nn := &FFNN{
+		Layers:  layers,
+		Weights: make([][][]float32, len(layers)-1),
+		Biases:  make([][]float32, len(layers)-1),
 	}
 
-	for i := range nn.W2 {
-		for j := range nn.W2[i] {
-			nn.W2[i][j] = float32(rng.NormFloat64()) * scale2
+	// Initialize weights and biases for each layer connection
+	for l := 0; l < len(layers)-1; l++ {
+		fanIn := layers[l]
+		fanOut := layers[l+1]
+
+		// Xavier initialization
+		scale := float32(math.Sqrt(2.0 / float64(fanIn)))
+
+		nn.Weights[l] = make([][]float32, fanOut)
+		nn.Biases[l] = make([]float32, fanOut)
+
+		for j := 0; j < fanOut; j++ {
+			nn.Weights[l][j] = make([]float32, fanIn)
+			for k := 0; k < fanIn; k++ {
+				nn.Weights[l][j][k] = float32(rng.NormFloat64()) * scale
+			}
+			nn.Biases[l][j] = 0
 		}
-		nn.B2[i] = 0
 	}
 
-	// Bias bite output toward zero (bite rarely needed).
-	// Thrust bias is neutral - organisms need to move to find resources.
-	// The output activation is saturate01(raw*0.5 + 0.5), so raw=0 maps to 0.5.
-	nn.B2[1] = 0.0  // thrust: neutral, outputs ~0.5 by default
-	nn.B2[2] = -2.0 // bite: biased toward 0
+	// Bias output layer: bite toward zero
+	outputLayer := len(nn.Biases) - 1
+	if len(nn.Biases[outputLayer]) >= 3 {
+		nn.Biases[outputLayer][1] = 0.0  // thrust: neutral
+		nn.Biases[outputLayer][2] = -2.0 // bite: biased toward 0
+	}
 
 	return nn
 }
@@ -61,29 +75,36 @@ func NewFFNN(rng *rand.Rand, diet float32) *FFNN {
 // Forward computes the network output.
 // Returns: turn [-1,1], thrust [0,1], bite [0,1]
 func (nn *FFNN) Forward(inputs []float32) (turn, thrust, bite float32) {
-	// Hidden layer with fast tanh activation
-	// (tanh's |x|>4 branches are rarely taken, good for branch prediction)
-	var hidden [NumHidden]float32
-	for i := 0; i < NumHidden; i++ {
-		sum := nn.B1[i]
-		for j := 0; j < NumInputs; j++ {
-			sum += nn.W1[i][j] * inputs[j]
+	// Current layer activations
+	current := inputs
+
+	// Forward through all layers except output
+	for l := 0; l < len(nn.Weights)-1; l++ {
+		fanOut := nn.Layers[l+1]
+		next := make([]float32, fanOut)
+
+		for j := 0; j < fanOut; j++ {
+			sum := nn.Biases[l][j]
+			for k := 0; k < len(current); k++ {
+				sum += nn.Weights[l][j][k] * current[k]
+			}
+			next[j] = tanh(sum)
 		}
-		hidden[i] = tanh(sum)
+		current = next
 	}
 
-	// Output layer
-	var outputs [NumOutputs]float32
-	for i := 0; i < NumOutputs; i++ {
-		sum := nn.B2[i]
-		for j := 0; j < NumHidden; j++ {
-			sum += nn.W2[i][j] * hidden[j]
+	// Output layer (last weight matrix)
+	outputLayer := len(nn.Weights) - 1
+	outputs := make([]float32, NumOutputs)
+	for j := 0; j < NumOutputs; j++ {
+		sum := nn.Biases[outputLayer][j]
+		for k := 0; k < len(current); k++ {
+			sum += nn.Weights[outputLayer][j][k] * current[k]
 		}
-		outputs[i] = sum
+		outputs[j] = sum
 	}
 
 	// Apply output activations
-	// tanh for turn [-1,1], saturating linear for thrust/bite [0,1]
 	turn = tanh(outputs[0])
 	thrust = saturate01(outputs[1]*0.5 + 0.5)
 	bite = saturate01(outputs[2]*0.5 + 0.5)
@@ -91,7 +112,7 @@ func (nn *FFNN) Forward(inputs []float32) (turn, thrust, bite float32) {
 	return turn, thrust, bite
 }
 
-// saturate01 clamps x to [0, 1] - fastest possible [0,1] activation.
+// saturate01 clamps x to [0, 1].
 func saturate01(x float32) float32 {
 	if x <= 0 {
 		return 0
@@ -104,50 +125,60 @@ func saturate01(x float32) float32 {
 
 // Activations holds captured intermediate layer values.
 type Activations struct {
-	Inputs  []float32
-	Hidden  []float32
-	Outputs []float32 // [turn, thrust, bite] after activation
+	Inputs  []float32   // Input layer
+	Hidden  [][]float32 // Hidden layers (one slice per hidden layer)
+	Outputs []float32   // Output layer [turn, thrust, bite] after activation
 }
 
 // ForwardWithCapture computes the network output and captures all layer activations.
-// Returns: turn [-1,1], thrust [0,1], bite [0,1], and activations for visualization.
 func (nn *FFNN) ForwardWithCapture(inputs []float32) (turn, thrust, bite float32, act *Activations) {
+	numHiddenLayers := len(nn.Layers) - 2
+
 	act = &Activations{
 		Inputs:  make([]float32, len(inputs)),
-		Hidden:  make([]float32, NumHidden),
+		Hidden:  make([][]float32, numHiddenLayers),
 		Outputs: make([]float32, NumOutputs),
 	}
-
-	// Capture inputs
 	copy(act.Inputs, inputs)
 
-	// Hidden layer with fast tanh activation
-	var hidden [NumHidden]float32
-	for i := 0; i < NumHidden; i++ {
-		sum := nn.B1[i]
-		for j := 0; j < NumInputs; j++ {
-			sum += nn.W1[i][j] * inputs[j]
+	current := inputs
+
+	// Forward through hidden layers
+	for l := 0; l < len(nn.Weights)-1; l++ {
+		fanOut := nn.Layers[l+1]
+		next := make([]float32, fanOut)
+
+		for j := 0; j < fanOut; j++ {
+			sum := nn.Biases[l][j]
+			for k := 0; k < len(current); k++ {
+				sum += nn.Weights[l][j][k] * current[k]
+			}
+			next[j] = tanh(sum)
 		}
-		hidden[i] = tanh(sum)
-		act.Hidden[i] = hidden[i]
+
+		// Capture hidden layer activations
+		act.Hidden[l] = make([]float32, fanOut)
+		copy(act.Hidden[l], next)
+
+		current = next
 	}
 
 	// Output layer
-	var outputs [NumOutputs]float32
-	for i := 0; i < NumOutputs; i++ {
-		sum := nn.B2[i]
-		for j := 0; j < NumHidden; j++ {
-			sum += nn.W2[i][j] * hidden[j]
+	outputLayer := len(nn.Weights) - 1
+	outputs := make([]float32, NumOutputs)
+	for j := 0; j < NumOutputs; j++ {
+		sum := nn.Biases[outputLayer][j]
+		for k := 0; k < len(current); k++ {
+			sum += nn.Weights[outputLayer][j][k] * current[k]
 		}
-		outputs[i] = sum
+		outputs[j] = sum
 	}
 
-	// Apply output activations (same as Forward)
+	// Apply output activations
 	turn = tanh(outputs[0])
 	thrust = saturate01(outputs[1]*0.5 + 0.5)
 	bite = saturate01(outputs[2]*0.5 + 0.5)
 
-	// Capture activated outputs
 	act.Outputs[0] = turn
 	act.Outputs[1] = thrust
 	act.Outputs[2] = bite
@@ -155,90 +186,54 @@ func (nn *FFNN) ForwardWithCapture(inputs []float32) (turn, thrust, bite float32
 	return turn, thrust, bite, act
 }
 
-// Mutate perturbs weights and biases with Gaussian noise.
+// Mutate perturbs all weights and biases with Gaussian noise.
 func (nn *FFNN) Mutate(rng *rand.Rand, strength float32) {
-	for i := range nn.W1 {
-		for j := range nn.W1[i] {
-			nn.W1[i][j] += float32(rng.NormFloat64()) * strength
+	for l := range nn.Weights {
+		for j := range nn.Weights[l] {
+			for k := range nn.Weights[l][j] {
+				nn.Weights[l][j][k] += float32(rng.NormFloat64()) * strength
+			}
+			nn.Biases[l][j] += float32(rng.NormFloat64()) * strength
 		}
-		nn.B1[i] += float32(rng.NormFloat64()) * strength
-	}
-
-	for i := range nn.W2 {
-		for j := range nn.W2[i] {
-			nn.W2[i][j] += float32(rng.NormFloat64()) * strength
-		}
-		nn.B2[i] += float32(rng.NormFloat64()) * strength
 	}
 }
 
 // MutateSparse applies sparse per-weight mutation for stable lineages.
-// rate: probability each weight mutates (e.g., 0.05)
-// sigma: standard deviation of normal perturbation (e.g., 0.08)
-// bigRate: probability of a large mutation (e.g., 0.01)
-// bigSigma: sigma for large mutations (e.g., 0.4)
 // Returns avgAbsDelta: the average absolute delta of all applied mutations.
 func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma float32) float32 {
-	biasRate := rate * 0.5 // biases mutate at half the rate
+	biasRate := rate * 0.5
 
 	var totalDelta float32
 	var count int
 
-	// Hidden layer weights
-	for i := range nn.W1 {
-		for j := range nn.W1[i] {
-			if rng.Float32() < rate {
+	for l := range nn.Weights {
+		for j := range nn.Weights[l] {
+			// Weights
+			for k := range nn.Weights[l][j] {
+				if rng.Float32() < rate {
+					var delta float32
+					if rng.Float32() < bigRate {
+						delta = float32(rng.NormFloat64()) * bigSigma
+					} else {
+						delta = float32(rng.NormFloat64()) * sigma
+					}
+					nn.Weights[l][j][k] += delta
+					totalDelta += abs32(delta)
+					count++
+				}
+			}
+			// Biases
+			if rng.Float32() < biasRate {
 				var delta float32
 				if rng.Float32() < bigRate {
 					delta = float32(rng.NormFloat64()) * bigSigma
 				} else {
 					delta = float32(rng.NormFloat64()) * sigma
 				}
-				nn.W1[i][j] += delta
+				nn.Biases[l][j] += delta
 				totalDelta += abs32(delta)
 				count++
 			}
-		}
-		// Hidden biases
-		if rng.Float32() < biasRate {
-			var delta float32
-			if rng.Float32() < bigRate {
-				delta = float32(rng.NormFloat64()) * bigSigma
-			} else {
-				delta = float32(rng.NormFloat64()) * sigma
-			}
-			nn.B1[i] += delta
-			totalDelta += abs32(delta)
-			count++
-		}
-	}
-
-	// Output layer weights
-	for i := range nn.W2 {
-		for j := range nn.W2[i] {
-			if rng.Float32() < rate {
-				var delta float32
-				if rng.Float32() < bigRate {
-					delta = float32(rng.NormFloat64()) * bigSigma
-				} else {
-					delta = float32(rng.NormFloat64()) * sigma
-				}
-				nn.W2[i][j] += delta
-				totalDelta += abs32(delta)
-				count++
-			}
-		}
-		// Output biases
-		if rng.Float32() < biasRate {
-			var delta float32
-			if rng.Float32() < bigRate {
-				delta = float32(rng.NormFloat64()) * bigSigma
-			} else {
-				delta = float32(rng.NormFloat64()) * sigma
-			}
-			nn.B2[i] += delta
-			totalDelta += abs32(delta)
-			count++
 		}
 	}
 
@@ -248,7 +243,6 @@ func (nn *FFNN) MutateSparse(rng *rand.Rand, rate, sigma, bigRate, bigSigma floa
 	return totalDelta / float32(count)
 }
 
-// abs32 returns the absolute value of x.
 func abs32(x float32) float32 {
 	if x < 0 {
 		return -x
@@ -258,15 +252,24 @@ func abs32(x float32) float32 {
 
 // Clone creates a deep copy of the network.
 func (nn *FFNN) Clone() *FFNN {
-	clone := &FFNN{}
-	for i := range nn.W1 {
-		clone.W1[i] = nn.W1[i]
+	clone := &FFNN{
+		Layers:  make([]int, len(nn.Layers)),
+		Weights: make([][][]float32, len(nn.Weights)),
+		Biases:  make([][]float32, len(nn.Biases)),
 	}
-	clone.B1 = nn.B1
-	for i := range nn.W2 {
-		clone.W2[i] = nn.W2[i]
+	copy(clone.Layers, nn.Layers)
+
+	for l := range nn.Weights {
+		clone.Weights[l] = make([][]float32, len(nn.Weights[l]))
+		clone.Biases[l] = make([]float32, len(nn.Biases[l]))
+		copy(clone.Biases[l], nn.Biases[l])
+
+		for j := range nn.Weights[l] {
+			clone.Weights[l][j] = make([]float32, len(nn.Weights[l][j]))
+			copy(clone.Weights[l][j], nn.Weights[l][j])
+		}
 	}
-	clone.B2 = nn.B2
+
 	return clone
 }
 
@@ -284,71 +287,83 @@ func tanh(x float32) float32 {
 
 // BrainWeights holds flattened network weights for serialization.
 type BrainWeights struct {
-	W1 []float32 `json:"w1"` // [NumHidden * NumInputs]
-	B1 []float32 `json:"b1"` // [NumHidden]
-	W2 []float32 `json:"w2"` // [NumOutputs * NumHidden]
-	B2 []float32 `json:"b2"` // [NumOutputs]
+	Layers  []int       `json:"layers"`  // Layer sizes [input, hidden..., output]
+	Weights [][]float32 `json:"weights"` // Flattened weights per layer connection
+	Biases  [][]float32 `json:"biases"`  // Biases per layer
 }
 
 // MarshalWeights flattens the network weights for JSON serialization.
 func (nn *FFNN) MarshalWeights() BrainWeights {
 	bw := BrainWeights{
-		W1: make([]float32, NumHidden*NumInputs),
-		B1: make([]float32, NumHidden),
-		W2: make([]float32, NumOutputs*NumHidden),
-		B2: make([]float32, NumOutputs),
+		Layers:  make([]int, len(nn.Layers)),
+		Weights: make([][]float32, len(nn.Weights)),
+		Biases:  make([][]float32, len(nn.Biases)),
 	}
+	copy(bw.Layers, nn.Layers)
 
-	// Flatten W1
-	for i := 0; i < NumHidden; i++ {
-		for j := 0; j < NumInputs; j++ {
-			bw.W1[i*NumInputs+j] = nn.W1[i][j]
+	for l := range nn.Weights {
+		// Flatten weights for this layer
+		fanIn := nn.Layers[l]
+		fanOut := nn.Layers[l+1]
+		bw.Weights[l] = make([]float32, fanIn*fanOut)
+		for j := 0; j < fanOut; j++ {
+			for k := 0; k < fanIn; k++ {
+				bw.Weights[l][j*fanIn+k] = nn.Weights[l][j][k]
+			}
 		}
+
+		// Copy biases
+		bw.Biases[l] = make([]float32, len(nn.Biases[l]))
+		copy(bw.Biases[l], nn.Biases[l])
 	}
-
-	// Copy B1
-	copy(bw.B1, nn.B1[:])
-
-	// Flatten W2
-	for i := 0; i < NumOutputs; i++ {
-		for j := 0; j < NumHidden; j++ {
-			bw.W2[i*NumHidden+j] = nn.W2[i][j]
-		}
-	}
-
-	// Copy B2
-	copy(bw.B2, nn.B2[:])
 
 	return bw
 }
 
 // UnmarshalWeights restores network weights from flattened form.
 func (nn *FFNN) UnmarshalWeights(bw BrainWeights) {
-	// Restore W1
-	for i := 0; i < NumHidden; i++ {
-		for j := 0; j < NumInputs; j++ {
-			if i*NumInputs+j < len(bw.W1) {
-				nn.W1[i][j] = bw.W1[i*NumInputs+j]
+	nn.Layers = make([]int, len(bw.Layers))
+	copy(nn.Layers, bw.Layers)
+
+	nn.Weights = make([][][]float32, len(bw.Weights))
+	nn.Biases = make([][]float32, len(bw.Biases))
+
+	for l := range bw.Weights {
+		fanIn := nn.Layers[l]
+		fanOut := nn.Layers[l+1]
+
+		nn.Weights[l] = make([][]float32, fanOut)
+		nn.Biases[l] = make([]float32, fanOut)
+
+		for j := 0; j < fanOut; j++ {
+			nn.Weights[l][j] = make([]float32, fanIn)
+			for k := 0; k < fanIn; k++ {
+				idx := j*fanIn + k
+				if idx < len(bw.Weights[l]) {
+					nn.Weights[l][j][k] = bw.Weights[l][idx]
+				}
 			}
 		}
-	}
 
-	// Restore B1
-	for i := 0; i < NumHidden && i < len(bw.B1); i++ {
-		nn.B1[i] = bw.B1[i]
-	}
-
-	// Restore W2
-	for i := 0; i < NumOutputs; i++ {
-		for j := 0; j < NumHidden; j++ {
-			if i*NumHidden+j < len(bw.W2) {
-				nn.W2[i][j] = bw.W2[i*NumHidden+j]
-			}
+		if l < len(bw.Biases) {
+			copy(nn.Biases[l], bw.Biases[l])
 		}
 	}
+}
 
-	// Restore B2
-	for i := 0; i < NumOutputs && i < len(bw.B2); i++ {
-		nn.B2[i] = bw.B2[i]
+// HiddenLayerSizes returns the sizes of hidden layers (excluding input and output).
+func (nn *FFNN) HiddenLayerSizes() []int {
+	if len(nn.Layers) <= 2 {
+		return nil
 	}
+	return nn.Layers[1 : len(nn.Layers)-1]
+}
+
+// TotalHiddenNeurons returns the total number of hidden neurons across all hidden layers.
+func (nn *FFNN) TotalHiddenNeurons() int {
+	total := 0
+	for _, size := range nn.HiddenLayerSizes() {
+		total += size
+	}
+	return total
 }

@@ -185,8 +185,8 @@ type RefugiaConfig struct {
 
 // NeuralConfig holds neural network parameters.
 type NeuralConfig struct {
-	NumHidden  int `yaml:"num_hidden"`
-	NumOutputs int `yaml:"num_outputs"`
+	HiddenLayers []int `yaml:"hidden_layers"` // Sizes of hidden layers, e.g. [16, 8]
+	NumOutputs   int   `yaml:"num_outputs"`
 }
 
 // SensorsConfig holds sensor parameters.

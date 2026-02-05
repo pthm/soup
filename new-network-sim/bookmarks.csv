@@ -1,0 +1,1394 @@
+tick,type,description
+5391,stable_ecosystem,"Stable ecosystem with 762 prey, 140 predators over 5+ windows"
+14975,stable_ecosystem,"Stable ecosystem with 612 prey, 6 predators over 5+ windows"
+20965,stable_ecosystem,"Stable ecosystem with 557 prey, 8 predators over 5+ windows"
+23960,prey_crash,Prey crashed 31% from peak 774 to 537
+26955,stable_ecosystem,"Stable ecosystem with 519 prey, 12 predators over 5+ windows"
+27554,hunt_breakthrough,Kill rate 0.03 is 2.9x average (0.01)
+38935,stable_ecosystem,"Stable ecosystem with 453 prey, 15 predators over 5+ windows"
+53910,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+54509,hunt_breakthrough,Kill rate 0.07 is 5.2x average (0.01)
+62895,prey_crash,Prey crashed 31% from peak 630 to 434
+62895,stable_ecosystem,"Stable ecosystem with 434 prey, 94 predators over 5+ windows"
+67687,stable_ecosystem,"Stable ecosystem with 447 prey, 120 predators over 5+ windows"
+71281,prey_crash,Prey crashed 32% from peak 529 to 358
+74875,prey_crash,Prey crashed 33% from peak 358 to 241
+79667,prey_crash,Prey crashed 34% from peak 241 to 160
+80865,stable_ecosystem,"Stable ecosystem with 163 prey, 86 predators over 5+ windows"
+86855,stable_ecosystem,"Stable ecosystem with 205 prey, 35 predators over 5+ windows"
+91048,hunt_breakthrough,Kill rate 0.05 is 2.1x average (0.03)
+92845,stable_ecosystem,"Stable ecosystem with 320 prey, 33 predators over 5+ windows"
+98236,stable_ecosystem,"Stable ecosystem with 416 prey, 53 predators over 5+ windows"
+104825,stable_ecosystem,"Stable ecosystem with 410 prey, 99 predators over 5+ windows"
+107221,hunt_breakthrough,Kill rate 0.05 is 2.3x average (0.02)
+133577,prey_crash,Prey crashed 30% from peak 532 to 370
+152146,prey_crash,Prey crashed 34% from peak 370 to 246
+156339,prey_crash,Prey crashed 32% from peak 246 to 167
+164725,stable_ecosystem,"Stable ecosystem with 186 prey, 56 predators over 5+ windows"
+182096,stable_ecosystem,"Stable ecosystem with 404 prey, 65 predators over 5+ windows"
+188685,stable_ecosystem,"Stable ecosystem with 323 prey, 129 predators over 5+ windows"
+189883,prey_crash,Prey crashed 33% from peak 418 to 281
+200665,stable_ecosystem,"Stable ecosystem with 238 prey, 69 predators over 5+ windows"
+212645,stable_ecosystem,"Stable ecosystem with 276 prey, 26 predators over 5+ windows"
+224625,prey_crash,Prey crashed 32% from peak 397 to 271
+224625,stable_ecosystem,"Stable ecosystem with 271 prey, 105 predators over 5+ windows"
+230615,stable_ecosystem,"Stable ecosystem with 192 prey, 54 predators over 5+ windows"
+236605,stable_ecosystem,"Stable ecosystem with 238 prey, 30 predators over 5+ windows"
+248585,stable_ecosystem,"Stable ecosystem with 291 prey, 84 predators over 5+ windows"
+255773,prey_crash,Prey crashed 35% from peak 313 to 205
+266555,stable_ecosystem,"Stable ecosystem with 153 prey, 21 predators over 5+ windows"
+272545,stable_ecosystem,"Stable ecosystem with 219 prey, 16 predators over 5+ windows"
+284525,stable_ecosystem,"Stable ecosystem with 259 prey, 60 predators over 5+ windows"
+286921,prey_crash,Prey crashed 30% from peak 299 to 208
+293510,prey_crash,Prey crashed 32% from peak 208 to 142
+297104,prey_crash,Prey crashed 31% from peak 142 to 98
+302495,stable_ecosystem,"Stable ecosystem with 98 prey, 24 predators over 5+ windows"
+308485,stable_ecosystem,"Stable ecosystem with 112 prey, 16 predators over 5+ windows"
+319866,stable_ecosystem,"Stable ecosystem with 253 prey, 20 predators over 5+ windows"
+326455,stable_ecosystem,"Stable ecosystem with 308 prey, 71 predators over 5+ windows"
+330049,prey_crash,Prey crashed 33% from peak 317 to 213
+331846,prey_crash,Prey crashed 42% from peak 213 to 123
+332445,stable_ecosystem,"Stable ecosystem with 95 prey, 99 predators over 5+ windows"
+333044,prey_crash,Prey crashed 37% from peak 123 to 77
+334242,prey_crash,Prey crashed 36% from peak 77 to 49
+335440,prey_crash,Prey crashed 39% from peak 49 to 30
+344425,stable_ecosystem,"Stable ecosystem with 41 prey, 7 predators over 5+ windows"
+350415,stable_ecosystem,"Stable ecosystem with 99 prey, 6 predators over 5+ windows"
+357603,hunt_breakthrough,Kill rate 0.04 is 2.2x average (0.02)
+362395,stable_ecosystem,"Stable ecosystem with 348 prey, 35 predators over 5+ windows"
+368385,stable_ecosystem,"Stable ecosystem with 277 prey, 119 predators over 5+ windows"
+368984,prey_crash,Prey crashed 32% from peak 366 to 249
+370781,prey_crash,Prey crashed 34% from peak 249 to 164
+371979,prey_crash,Prey crashed 40% from peak 164 to 99
+373177,prey_crash,Prey crashed 35% from peak 99 to 64
+374375,prey_crash,Prey crashed 34% from peak 64 to 42
+386355,stable_ecosystem,"Stable ecosystem with 110 prey, 7 predators over 5+ windows"
+388751,hunt_breakthrough,Kill rate 0.06 is 4.1x average (0.01)
+392345,hunt_breakthrough,Kill rate 0.06 is 2.2x average (0.03)
+392345,stable_ecosystem,"Stable ecosystem with 170 prey, 15 predators over 5+ windows"
+397137,stable_ecosystem,"Stable ecosystem with 282 prey, 12 predators over 5+ windows"
+400132,hunt_breakthrough,Kill rate 0.05 is 2.7x average (0.02)
+404325,stable_ecosystem,"Stable ecosystem with 408 prey, 24 predators over 5+ windows"
+409117,hunt_breakthrough,Kill rate 0.03 is 7.0x average (0.00)
+412711,hunt_breakthrough,Kill rate 0.04 is 2.5x average (0.01)
+412711,prey_crash,Prey crashed 31% from peak 626 to 435
+413310,hunt_breakthrough,Kill rate 0.05 is 2.4x average (0.02)
+416305,stable_ecosystem,"Stable ecosystem with 432 prey, 121 predators over 5+ windows"
+418701,prey_crash,Prey crashed 31% from peak 492 to 338
+419899,prey_crash,Prey crashed 32% from peak 338 to 230
+422295,prey_crash,Prey crashed 38% from peak 230 to 142
+423493,prey_crash,Prey crashed 36% from peak 142 to 91
+424691,prey_crash,Prey crashed 45% from peak 91 to 50
+426488,hunt_breakthrough,Kill rate 0.09 is 2.2x average (0.04)
+440265,stable_ecosystem,"Stable ecosystem with 166 prey, 12 predators over 5+ windows"
+442062,hunt_breakthrough,Kill rate 0.04 is 2.2x average (0.02)
+443260,hunt_breakthrough,Kill rate 0.06 is 2.5x average (0.02)
+444458,hunt_breakthrough,Kill rate 0.07 is 2.6x average (0.02)
+446255,stable_ecosystem,"Stable ecosystem with 315 prey, 11 predators over 5+ windows"
+455839,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+458235,hunt_breakthrough,Kill rate 0.04 is 3.5x average (0.01)
+458834,hunt_breakthrough,Kill rate 0.04 is 2.6x average (0.02)
+459433,hunt_breakthrough,Kill rate 0.04 is 2.2x average (0.02)
+460631,hunt_breakthrough,Kill rate 0.07 is 2.7x average (0.03)
+462428,prey_crash,Prey crashed 30% from peak 617 to 430
+464225,stable_ecosystem,"Stable ecosystem with 417 prey, 47 predators over 5+ windows"
+467819,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+468418,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+469616,stable_ecosystem,"Stable ecosystem with 465 prey, 131 predators over 5+ windows"
+470215,prey_crash,Prey crashed 32% from peak 613 to 418
+475606,prey_crash,Prey crashed 35% from peak 460 to 301
+476205,stable_ecosystem,"Stable ecosystem with 288 prey, 133 predators over 5+ windows"
+478601,prey_crash,Prey crashed 36% from peak 301 to 194
+480997,prey_crash,Prey crashed 34% from peak 194 to 129
+482195,stable_ecosystem,"Stable ecosystem with 104 prey, 117 predators over 5+ windows"
+482794,prey_crash,Prey crashed 31% from peak 129 to 89
+484591,prey_crash,Prey crashed 35% from peak 89 to 58
+488185,stable_ecosystem,"Stable ecosystem with 59 prey, 10 predators over 5+ windows"
+494175,stable_ecosystem,"Stable ecosystem with 112 prey, 6 predators over 5+ windows"
+500165,stable_ecosystem,"Stable ecosystem with 231 prey, 6 predators over 5+ windows"
+503759,hunt_breakthrough,Kill rate 0.06 is 3.7x average (0.02)
+506155,stable_ecosystem,"Stable ecosystem with 451 prey, 12 predators over 5+ windows"
+506754,hunt_breakthrough,Kill rate 0.05 is 2.0x average (0.03)
+512145,stable_ecosystem,"Stable ecosystem with 427 prey, 38 predators over 5+ windows"
+514541,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+515140,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+518135,stable_ecosystem,"Stable ecosystem with 507 prey, 89 predators over 5+ windows"
+521729,prey_crash,Prey crashed 34% from peak 611 to 401
+524125,stable_ecosystem,"Stable ecosystem with 354 prey, 133 predators over 5+ windows"
+525922,prey_crash,Prey crashed 38% from peak 405 to 253
+528318,prey_crash,Prey crashed 35% from peak 253 to 164
+530115,stable_ecosystem,"Stable ecosystem with 116 prey, 104 predators over 5+ windows"
+530714,prey_crash,Prey crashed 38% from peak 164 to 101
+533110,prey_crash,Prey crashed 36% from peak 101 to 65
+542095,stable_ecosystem,"Stable ecosystem with 139 prey, 7 predators over 5+ windows"
+550481,hunt_breakthrough,Kill rate 0.05 is 3.0x average (0.02)
+554075,stable_ecosystem,"Stable ecosystem with 402 prey, 21 predators over 5+ windows"
+561263,hunt_breakthrough,Kill rate 0.03 is 3.0x average (0.01)
+570248,prey_crash,Prey crashed 30% from peak 581 to 406
+572045,stable_ecosystem,"Stable ecosystem with 318 prey, 147 predators over 5+ windows"
+573243,prey_crash,Prey crashed 31% from peak 406 to 282
+575639,prey_crash,Prey crashed 42% from peak 282 to 164
+576837,prey_crash,Prey crashed 34% from peak 164 to 108
+577436,hunt_breakthrough,Kill rate 0.08 is 2.3x average (0.04)
+578035,stable_ecosystem,"Stable ecosystem with 80 prey, 76 predators over 5+ windows"
+579233,prey_crash,Prey crashed 35% from peak 108 to 70
+585223,hunt_breakthrough,Kill rate 0.13 is 4.0x average (0.03)
+590015,stable_ecosystem,"Stable ecosystem with 154 prey, 5 predators over 5+ windows"
+593010,hunt_breakthrough,Kill rate 0.05 is 2.5x average (0.02)
+596005,stable_ecosystem,"Stable ecosystem with 265 prey, 15 predators over 5+ windows"
+601995,stable_ecosystem,"Stable ecosystem with 415 prey, 44 predators over 5+ windows"
+607985,stable_ecosystem,"Stable ecosystem with 324 prey, 121 predators over 5+ windows"
+608584,prey_crash,Prey crashed 33% from peak 437 to 293
+610381,prey_crash,Prey crashed 32% from peak 293 to 200
+612178,prey_crash,Prey crashed 37% from peak 200 to 126
+613975,stable_ecosystem,"Stable ecosystem with 109 prey, 46 predators over 5+ windows"
+619965,stable_ecosystem,"Stable ecosystem with 107 prey, 20 predators over 5+ windows"
+630148,hunt_breakthrough,Kill rate 0.04 is 2.1x average (0.02)
+631346,stable_ecosystem,"Stable ecosystem with 201 prey, 7 predators over 5+ windows"
+631945,hunt_breakthrough,Kill rate 0.05 is 2.6x average (0.02)
+637935,stable_ecosystem,"Stable ecosystem with 406 prey, 13 predators over 5+ windows"
+643925,stable_ecosystem,"Stable ecosystem with 434 prey, 12 predators over 5+ windows"
+649316,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+658301,hunt_breakthrough,Kill rate 0.01 is 8.6x average (0.00)
+659499,hunt_breakthrough,Kill rate 0.01 is 4.1x average (0.00)
+660098,hunt_breakthrough,Kill rate 0.03 is 9.5x average (0.00)
+660697,hunt_breakthrough,Kill rate 0.03 is 3.6x average (0.01)
+661296,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+663093,prey_crash,Prey crashed 32% from peak 590 to 404
+665489,prey_crash,Prey crashed 33% from peak 404 to 271
+667286,prey_crash,Prey crashed 35% from peak 271 to 176
+667885,stable_ecosystem,"Stable ecosystem with 147 prey, 133 predators over 5+ windows"
+669083,prey_crash,Prey crashed 40% from peak 176 to 106
+670281,prey_crash,Prey crashed 30% from peak 106 to 74
+671479,prey_crash,Prey crashed 35% from peak 74 to 48
+673875,prey_crash,Prey crashed 31% from peak 48 to 33
+685855,stable_ecosystem,"Stable ecosystem with 97 prey, 6 predators over 5+ windows"
+691845,stable_ecosystem,"Stable ecosystem with 243 prey, 5 predators over 5+ windows"
+697835,stable_ecosystem,"Stable ecosystem with 400 prey, 8 predators over 5+ windows"
+702627,hunt_breakthrough,Kill rate 0.02 is 6.8x average (0.00)
+703226,hunt_breakthrough,Kill rate 0.02 is 3.6x average (0.01)
+703825,stable_ecosystem,"Stable ecosystem with 590 prey, 39 predators over 5+ windows"
+709815,stable_ecosystem,"Stable ecosystem with 483 prey, 126 predators over 5+ windows"
+712211,prey_crash,Prey crashed 32% from peak 615 to 419
+713409,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+714008,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+715805,stable_ecosystem,"Stable ecosystem with 442 prey, 161 predators over 5+ windows"
+720597,prey_crash,Prey crashed 31% from peak 506 to 347
+724191,prey_crash,Prey crashed 30% from peak 347 to 242
+727186,prey_crash,Prey crashed 31% from peak 242 to 168
+730181,prey_crash,Prey crashed 32% from peak 168 to 114
+739166,hunt_breakthrough,Kill rate 0.05 is 2.5x average (0.02)
+739765,stable_ecosystem,"Stable ecosystem with 212 prey, 28 predators over 5+ windows"
+740364,hunt_breakthrough,Kill rate 0.06 is 3.1x average (0.02)
+751745,stable_ecosystem,"Stable ecosystem with 356 prey, 105 predators over 5+ windows"
+757735,stable_ecosystem,"Stable ecosystem with 331 prey, 89 predators over 5+ windows"
+766121,prey_crash,Prey crashed 31% from peak 378 to 260
+769715,prey_crash,Prey crashed 31% from peak 260 to 179
+781695,stable_ecosystem,"Stable ecosystem with 345 prey, 41 predators over 5+ windows"
+787685,stable_ecosystem,"Stable ecosystem with 410 prey, 65 predators over 5+ windows"
+788883,hunt_breakthrough,Kill rate 0.04 is 2.8x average (0.01)
+793675,stable_ecosystem,"Stable ecosystem with 511 prey, 97 predators over 5+ windows"
+799665,prey_crash,Prey crashed 31% from peak 511 to 355
+805056,prey_crash,Prey crashed 31% from peak 357 to 246
+809848,prey_crash,Prey crashed 33% from peak 246 to 165
+811645,stable_ecosystem,"Stable ecosystem with 149 prey, 85 predators over 5+ windows"
+817635,stable_ecosystem,"Stable ecosystem with 171 prey, 48 predators over 5+ windows"
+823625,stable_ecosystem,"Stable ecosystem with 260 prey, 40 predators over 5+ windows"
+829615,stable_ecosystem,"Stable ecosystem with 293 prey, 73 predators over 5+ windows"
+842793,prey_crash,Prey crashed 31% from peak 362 to 251
+848783,prey_crash,Prey crashed 33% from peak 251 to 168
+851778,prey_crash,Prey crashed 36% from peak 168 to 107
+859565,stable_ecosystem,"Stable ecosystem with 93 prey, 33 predators over 5+ windows"
+860164,hunt_breakthrough,Kill rate 0.05 is 2.5x average (0.02)
+867951,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+871545,stable_ecosystem,"Stable ecosystem with 364 prey, 24 predators over 5+ windows"
+877535,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.02)
+877535,stable_ecosystem,"Stable ecosystem with 400 prey, 125 predators over 5+ windows"
+878134,hunt_breakthrough,Kill rate 0.05 is 2.3x average (0.02)
+882327,prey_crash,Prey crashed 31% from peak 441 to 303
+883525,stable_ecosystem,"Stable ecosystem with 301 prey, 123 predators over 5+ windows"
+894906,prey_crash,Prey crashed 31% from peak 303 to 209
+900896,prey_crash,Prey crashed 31% from peak 209 to 145
+905688,hunt_breakthrough,Kill rate 0.05 is 2.1x average (0.02)
+913475,stable_ecosystem,"Stable ecosystem with 243 prey, 28 predators over 5+ windows"
+918866,stable_ecosystem,"Stable ecosystem with 360 prey, 45 predators over 5+ windows"
+921861,hunt_breakthrough,Kill rate 0.04 is 2.1x average (0.02)
+925455,stable_ecosystem,"Stable ecosystem with 334 prey, 111 predators over 5+ windows"
+929648,prey_crash,Prey crashed 33% from peak 380 to 255
+936836,prey_crash,Prey crashed 31% from peak 255 to 177
+943425,stable_ecosystem,"Stable ecosystem with 188 prey, 55 predators over 5+ windows"
+952410,hunt_breakthrough,Kill rate 0.05 is 2.2x average (0.02)
+967385,stable_ecosystem,"Stable ecosystem with 290 prey, 85 predators over 5+ windows"
+970380,prey_crash,Prey crashed 33% from peak 294 to 196
+973375,prey_crash,Prey crashed 34% from peak 196 to 130
+973375,stable_ecosystem,"Stable ecosystem with 130 prey, 109 predators over 5+ windows"
+976969,prey_crash,Prey crashed 31% from peak 130 to 90
+979365,stable_ecosystem,"Stable ecosystem with 78 prey, 37 predators over 5+ windows"
+985355,stable_ecosystem,"Stable ecosystem with 75 prey, 21 predators over 5+ windows"
+987751,hunt_breakthrough,Kill rate 0.08 is 2.4x average (0.03)
+995538,hunt_breakthrough,Kill rate 0.05 is 2.7x average (0.02)
+996736,hunt_breakthrough,Kill rate 0.09 is 4.0x average (0.02)
+996736,stable_ecosystem,"Stable ecosystem with 173 prey, 8 predators over 5+ windows"
+1003325,hunt_breakthrough,Kill rate 0.04 is 2.3x average (0.02)
+1004523,hunt_breakthrough,Kill rate 0.05 is 2.3x average (0.02)
+1009315,stable_ecosystem,"Stable ecosystem with 469 prey, 42 predators over 5+ windows"
+1011711,hunt_breakthrough,Kill rate 0.03 is 2.1x average (0.02)
+1015305,stable_ecosystem,"Stable ecosystem with 462 prey, 65 predators over 5+ windows"
+1025488,prey_crash,Prey crashed 34% from peak 521 to 344
+1027884,prey_crash,Prey crashed 40% from peak 344 to 206
+1032676,prey_crash,Prey crashed 30% from peak 206 to 144
+1033275,stable_ecosystem,"Stable ecosystem with 135 prey, 118 predators over 5+ windows"
+1036270,prey_crash,Prey crashed 35% from peak 144 to 93
+1038067,hunt_breakthrough,Kill rate 0.06 is 2.1x average (0.03)
+1039265,hunt_breakthrough,Kill rate 0.08 is 2.4x average (0.03)
+1039265,prey_crash,Prey crashed 31% from peak 93 to 64
+1039265,stable_ecosystem,"Stable ecosystem with 64 prey, 43 predators over 5+ windows"
+1044656,hunt_breakthrough,Kill rate 0.06 is 2.1x average (0.03)
+1051245,stable_ecosystem,"Stable ecosystem with 157 prey, 7 predators over 5+ windows"
+1056636,stable_ecosystem,"Stable ecosystem with 290 prey, 7 predators over 5+ windows"
+1062626,stable_ecosystem,"Stable ecosystem with 409 prey, 16 predators over 5+ windows"
+1064423,hunt_breakthrough,Kill rate 0.03 is 3.9x average (0.01)
+1065621,hunt_breakthrough,Kill rate 0.04 is 2.7x average (0.01)
+1066819,hunt_breakthrough,Kill rate 0.04 is 2.2x average (0.02)
+1069215,stable_ecosystem,"Stable ecosystem with 413 prey, 46 predators over 5+ windows"
+1078200,prey_crash,Prey crashed 31% from peak 580 to 403
+1081195,stable_ecosystem,"Stable ecosystem with 392 prey, 132 predators over 5+ windows"
+1085987,prey_crash,Prey crashed 30% from peak 408 to 284
+1088982,prey_crash,Prey crashed 37% from peak 284 to 180
+1091378,prey_crash,Prey crashed 30% from peak 180 to 126
+1093175,stable_ecosystem,"Stable ecosystem with 106 prey, 87 predators over 5+ windows"
+1104556,hunt_breakthrough,Kill rate 0.05 is 2.3x average (0.02)
+1105155,stable_ecosystem,"Stable ecosystem with 174 prey, 14 predators over 5+ windows"
+1109947,stable_ecosystem,"Stable ecosystem with 261 prey, 20 predators over 5+ windows"
+1110546,hunt_breakthrough,Kill rate 0.04 is 2.3x average (0.02)
+1116536,stable_ecosystem,"Stable ecosystem with 403 prey, 30 predators over 5+ windows"
+1119531,hunt_breakthrough,Kill rate 0.04 is 2.2x average (0.02)
+1120729,hunt_breakthrough,Kill rate 0.04 is 2.0x average (0.02)
+1123125,stable_ecosystem,"Stable ecosystem with 418 prey, 38 predators over 5+ windows"
+1127318,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.01)
+1127917,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+1129115,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+1133308,prey_crash,Prey crashed 30% from peak 575 to 401
+1135105,stable_ecosystem,"Stable ecosystem with 357 prey, 148 predators over 5+ windows"
+1140496,prey_crash,Prey crashed 32% from peak 405 to 276
+1144090,prey_crash,Prey crashed 31% from peak 276 to 190
+1149481,prey_crash,Prey crashed 34% from peak 190 to 126
+1159065,stable_ecosystem,"Stable ecosystem with 149 prey, 31 predators over 5+ windows"
+1162060,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.02)
+1172243,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+1172842,hunt_breakthrough,Kill rate 0.04 is 2.6x average (0.02)
+1176436,stable_ecosystem,"Stable ecosystem with 302 prey, 67 predators over 5+ windows"
+1182426,prey_crash,Prey crashed 32% from peak 311 to 213
+1183025,stable_ecosystem,"Stable ecosystem with 205 prey, 95 predators over 5+ windows"
+1195005,stable_ecosystem,"Stable ecosystem with 284 prey, 48 predators over 5+ windows"
+1200396,stable_ecosystem,"Stable ecosystem with 275 prey, 104 predators over 5+ windows"
+1205787,prey_crash,Prey crashed 30% from peak 303 to 211
+1205787,stable_ecosystem,"Stable ecosystem with 211 prey, 88 predators over 5+ windows"
+1218366,prey_crash,Prey crashed 31% from peak 211 to 146
+1236336,stable_ecosystem,"Stable ecosystem with 400 prey, 31 predators over 5+ windows"
+1241727,hunt_breakthrough,Kill rate 0.03 is 2.1x average (0.02)
+1241727,stable_ecosystem,"Stable ecosystem with 533 prey, 56 predators over 5+ windows"
+1248915,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1251311,hunt_breakthrough,Kill rate 0.04 is 2.3x average (0.02)
+1251311,prey_crash,Prey crashed 36% from peak 533 to 340
+1253108,prey_crash,Prey crashed 31% from peak 340 to 235
+1254306,prey_crash,Prey crashed 32% from peak 235 to 159
+1254905,stable_ecosystem,"Stable ecosystem with 128 prey, 144 predators over 5+ windows"
+1255504,prey_crash,Prey crashed 38% from peak 159 to 99
+1256702,hunt_breakthrough,Kill rate 0.08 is 2.0x average (0.04)
+1256702,prey_crash,Prey crashed 43% from peak 99 to 56
+1257900,prey_crash,Prey crashed 34% from peak 56 to 37
+1259098,prey_crash,Prey crashed 35% from peak 37 to 24
+1261494,prey_crash,Prey crashed 46% from peak 24 to 13
+1272276,stable_ecosystem,"Stable ecosystem with 30 prey, 6 predators over 5+ windows"
+1278266,stable_ecosystem,"Stable ecosystem with 57 prey, 6 predators over 5+ windows"
+1284256,stable_ecosystem,"Stable ecosystem with 102 prey, 6 predators over 5+ windows"
+1290845,stable_ecosystem,"Stable ecosystem with 213 prey, 8 predators over 5+ windows"
+1295637,hunt_breakthrough,Kill rate 0.04 is 3.1x average (0.01)
+1296835,stable_ecosystem,"Stable ecosystem with 408 prey, 25 predators over 5+ windows"
+1301028,hunt_breakthrough,Kill rate 0.06 is 3.1x average (0.02)
+1302825,stable_ecosystem,"Stable ecosystem with 426 prey, 37 predators over 5+ windows"
+1308815,hunt_breakthrough,Kill rate 0.03 is 3.7x average (0.01)
+1309414,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+1314805,stable_ecosystem,"Stable ecosystem with 452 prey, 120 predators over 5+ windows"
+1316602,prey_crash,Prey crashed 32% from peak 612 to 418
+1342359,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1351344,hunt_breakthrough,Kill rate 0.04 is 2.5x average (0.01)
+1362725,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.01)
+1369314,hunt_breakthrough,Kill rate 0.04 is 2.8x average (0.02)
+1376502,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+1377101,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+1396269,hunt_breakthrough,Kill rate 0.03 is 3.5x average (0.01)
+1404655,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.01)
+1411843,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+1412442,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+1420828,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1422026,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1429214,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+1429813,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+1440595,hunt_breakthrough,Kill rate 0.03 is 4.1x average (0.01)
+1441194,hunt_breakthrough,Kill rate 0.03 is 3.5x average (0.01)
+1449580,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1450179,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+1450778,hunt_breakthrough,Kill rate 0.03 is 2.6x average (0.01)
+1457367,hunt_breakthrough,Kill rate 0.04 is 2.5x average (0.01)
+1457966,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.02)
+1467550,hunt_breakthrough,Kill rate 0.03 is 3.6x average (0.01)
+1474139,prey_crash,Prey crashed 30% from peak 585 to 409
+1475337,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1487317,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+1487916,hunt_breakthrough,Kill rate 0.03 is 5.7x average (0.01)
+1495703,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+1505287,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+1505886,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+1529247,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+1532242,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+1532841,hunt_breakthrough,Kill rate 0.03 is 2.7x average (0.01)
+1540628,stable_ecosystem,"Stable ecosystem with 465 prey, 126 predators over 5+ windows"
+1545420,prey_crash,Prey crashed 30% from peak 611 to 425
+1548415,hunt_breakthrough,Kill rate 0.03 is 4.3x average (0.01)
+1549014,hunt_breakthrough,Kill rate 0.04 is 3.9x average (0.01)
+1562791,prey_crash,Prey crashed 30% from peak 588 to 411
+1564588,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+1565187,hunt_breakthrough,Kill rate 0.03 is 3.1x average (0.01)
+1565786,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1577167,prey_crash,Prey crashed 30% from peak 599 to 419
+1580162,hunt_breakthrough,Kill rate 0.03 is 5.2x average (0.01)
+1580761,hunt_breakthrough,Kill rate 0.03 is 3.1x average (0.01)
+1590345,prey_crash,Prey crashed 30% from peak 591 to 413
+1592142,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+1592741,hunt_breakthrough,Kill rate 0.03 is 3.6x average (0.01)
+1604721,prey_crash,Prey crashed 30% from peak 601 to 419
+1607716,hunt_breakthrough,Kill rate 0.03 is 4.1x average (0.01)
+1608315,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+1619097,prey_crash,Prey crashed 30% from peak 583 to 406
+1620295,hunt_breakthrough,Kill rate 0.04 is 4.7x average (0.01)
+1620894,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1634072,prey_crash,Prey crashed 31% from peak 583 to 404
+1635270,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+1635869,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+1636468,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+1637067,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+1646651,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+1647250,prey_crash,Prey crashed 31% from peak 604 to 417
+1649047,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+1649646,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+1650844,hunt_breakthrough,Kill rate 0.03 is 2.7x average (0.01)
+1655037,stable_ecosystem,"Stable ecosystem with 463 prey, 155 predators over 5+ windows"
+1698165,stable_ecosystem,"Stable ecosystem with 408 prey, 156 predators over 5+ windows"
+1698764,prey_crash,Prey crashed 30% from peak 573 to 401
+1699363,hunt_breakthrough,Kill rate 0.04 is 5.4x average (0.01)
+1699962,hunt_breakthrough,Kill rate 0.03 is 2.7x average (0.01)
+1717932,hunt_breakthrough,Kill rate 0.04 is 5.1x average (0.01)
+1718531,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1725120,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+1725719,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1726917,stable_ecosystem,"Stable ecosystem with 480 prey, 144 predators over 5+ windows"
+1732907,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+1734105,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+1744288,hunt_breakthrough,Kill rate 0.03 is 5.1x average (0.01)
+1744887,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+1745486,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+1756268,prey_crash,Prey crashed 30% from peak 575 to 400
+1756867,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.01)
+1757466,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+1764654,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+1765253,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+1773040,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1779629,prey_crash,Prey crashed 30% from peak 575 to 401
+1780228,hunt_breakthrough,Kill rate 0.03 is 3.0x average (0.01)
+1793406,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+1794005,hunt_breakthrough,Kill rate 0.03 is 6.5x average (0.01)
+1794604,hunt_breakthrough,Kill rate 0.03 is 3.1x average (0.01)
+1795203,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1798797,stable_ecosystem,"Stable ecosystem with 430 prey, 152 predators over 5+ windows"
+1802990,hunt_breakthrough,Kill rate 0.03 is 2.9x average (0.01)
+1803589,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+1810777,prey_crash,Prey crashed 30% from peak 603 to 422
+1813173,hunt_breakthrough,Kill rate 0.03 is 3.4x average (0.01)
+1814371,hunt_breakthrough,Kill rate 0.03 is 2.9x average (0.01)
+1823356,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+1823955,hunt_breakthrough,Kill rate 0.04 is 4.6x average (0.01)
+1823955,stable_ecosystem,"Stable ecosystem with 540 prey, 156 predators over 5+ windows"
+1824554,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+1834138,prey_crash,Prey crashed 30% from peak 576 to 401
+1834737,hunt_breakthrough,Kill rate 0.03 is 5.9x average (0.01)
+1835336,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+1844321,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+1845519,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+1859296,hunt_breakthrough,Kill rate 0.02 is 5.8x average (0.00)
+1859895,hunt_breakthrough,Kill rate 0.03 is 5.1x average (0.01)
+1860494,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+1861093,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1867682,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+1868880,prey_crash,Prey crashed 30% from peak 589 to 412
+1870078,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+1870677,hunt_breakthrough,Kill rate 0.03 is 2.7x average (0.01)
+1880860,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1881459,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1892840,prey_crash,Prey crashed 30% from peak 572 to 400
+1893439,hunt_breakthrough,Kill rate 0.03 is 4.4x average (0.01)
+1894038,hunt_breakthrough,Kill rate 0.03 is 3.2x average (0.01)
+1900028,stable_ecosystem,"Stable ecosystem with 445 prey, 156 predators over 5+ windows"
+1903622,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1912008,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+1920993,hunt_breakthrough,Kill rate 0.03 is 3.7x average (0.01)
+1933572,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+1934171,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.01)
+1937166,stable_ecosystem,"Stable ecosystem with 469 prey, 179 predators over 5+ windows"
+1939562,prey_crash,Prey crashed 32% from peak 598 to 409
+1940760,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.01)
+1955735,hunt_breakthrough,Kill rate 0.03 is 2.4x average (0.01)
+1971908,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+1972507,hunt_breakthrough,Kill rate 0.03 is 3.3x average (0.01)
+1981492,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+1982091,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+1982690,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+1994071,hunt_breakthrough,Kill rate 0.03 is 5.6x average (0.01)
+1994670,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+1995269,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2003056,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+2003655,hunt_breakthrough,Kill rate 0.03 is 3.0x average (0.01)
+2003655,stable_ecosystem,"Stable ecosystem with 506 prey, 170 predators over 5+ windows"
+2009046,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+2022224,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2033006,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2033605,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2042590,prey_crash,Prey crashed 30% from peak 589 to 412
+2044387,hunt_breakthrough,Kill rate 0.03 is 3.5x average (0.01)
+2044986,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+2051575,stable_ecosystem,"Stable ecosystem with 415 prey, 165 predators over 5+ windows"
+2052773,hunt_breakthrough,Kill rate 0.03 is 2.8x average (0.01)
+2053372,hunt_breakthrough,Kill rate 0.03 is 2.2x average (0.01)
+2066550,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2083322,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2083921,hunt_breakthrough,Kill rate 0.03 is 2.1x average (0.01)
+2091109,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+2097099,prey_crash,Prey crashed 31% from peak 579 to 402
+2097698,hunt_breakthrough,Kill rate 0.03 is 5.7x average (0.01)
+2098297,hunt_breakthrough,Kill rate 0.03 is 3.6x average (0.01)
+2098896,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2109678,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+2111475,prey_crash,Prey crashed 31% from peak 597 to 413
+2113871,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+2114470,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+2115069,hunt_breakthrough,Kill rate 0.03 is 4.2x average (0.01)
+2122856,stable_ecosystem,"Stable ecosystem with 445 prey, 164 predators over 5+ windows"
+2123455,prey_crash,Prey crashed 31% from peak 621 to 430
+2126450,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2127049,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+2133039,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+2145019,hunt_breakthrough,Kill rate 0.02 is 4.7x average (0.00)
+2145618,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+2146217,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2153405,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2154603,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2162989,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2177964,hunt_breakthrough,Kill rate 0.03 is 8.1x average (0.00)
+2178563,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+2199528,hunt_breakthrough,Kill rate 0.03 is 2.0x average (0.01)
+2216899,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2217498,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2224686,hunt_breakthrough,Kill rate 0.03 is 3.2x average (0.01)
+2239661,hunt_breakthrough,Kill rate 0.02 is 4.5x average (0.00)
+2240260,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2240859,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+2242656,stable_ecosystem,"Stable ecosystem with 474 prey, 171 predators over 5+ windows"
+2246250,prey_crash,Prey crashed 30% from peak 585 to 407
+2248047,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+2289977,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+2290576,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+2291175,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+2300759,prey_crash,Prey crashed 30% from peak 584 to 408
+2302556,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+2303155,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+2303754,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2304353,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2307348,prey_crash,Prey crashed 31% from peak 583 to 403
+2308546,stable_ecosystem,"Stable ecosystem with 488 prey, 172 predators over 5+ windows"
+2336100,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+2346283,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+2349877,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.01)
+2350476,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2357664,prey_crash,Prey crashed 32% from peak 598 to 408
+2358862,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2369644,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2391807,hunt_breakthrough,Kill rate 0.03 is 2.5x average (0.01)
+2406183,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2414569,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2431341,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+2431940,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+2432539,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2434336,stable_ecosystem,"Stable ecosystem with 426 prey, 177 predators over 5+ windows"
+2440925,hunt_breakthrough,Kill rate 0.03 is 2.3x average (0.01)
+2468479,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+2469078,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2478662,hunt_breakthrough,Kill rate 0.03 is 4.7x average (0.01)
+2479261,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2479860,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2490642,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+2491241,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+2491840,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2505018,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.01)
+2505617,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.01)
+2512206,stable_ecosystem,"Stable ecosystem with 441 prey, 176 predators over 5+ windows"
+2513404,prey_crash,Prey crashed 31% from peak 608 to 417
+2572705,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+2581690,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+2582289,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+2597863,prey_crash,Prey crashed 30% from peak 590 to 413
+2599660,hunt_breakthrough,Kill rate 0.02 is 4.6x average (0.01)
+2600259,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+2608046,stable_ecosystem,"Stable ecosystem with 411 prey, 177 predators over 5+ windows"
+2608645,prey_crash,Prey crashed 31% from peak 583 to 401
+2638595,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2654768,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2664951,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+2667946,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+2670342,hunt_breakthrough,Kill rate 0.02 is 4.5x average (0.00)
+2670941,hunt_breakthrough,Kill rate 0.03 is 4.2x average (0.01)
+2671540,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+2674535,stable_ecosystem,"Stable ecosystem with 459 prey, 173 predators over 5+ windows"
+2677530,prey_crash,Prey crashed 32% from peak 590 to 404
+2678728,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2694302,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2714069,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+2714668,hunt_breakthrough,Kill rate 0.03 is 2.9x average (0.01)
+2722455,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+2732638,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+2744019,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.01)
+2744618,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2745217,stable_ecosystem,"Stable ecosystem with 514 prey, 149 predators over 5+ windows"
+2752405,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+2762588,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+2763187,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+2770375,hunt_breakthrough,Kill rate 0.03 is 3.1x average (0.01)
+2783553,hunt_breakthrough,Kill rate 0.02 is 5.3x average (0.00)
+2784152,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+2794335,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+2794934,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+2808112,prey_crash,Prey crashed 31% from peak 589 to 406
+2808711,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.00)
+2809310,hunt_breakthrough,Kill rate 0.03 is 3.9x average (0.01)
+2811706,stable_ecosystem,"Stable ecosystem with 475 prey, 168 predators over 5+ windows"
+2817097,hunt_breakthrough,Kill rate 0.03 is 2.7x average (0.01)
+2834468,prey_crash,Prey crashed 30% from peak 575 to 400
+2845849,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2846448,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2851240,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2859626,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+2860225,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+2876997,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+2877596,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+2878794,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2888378,prey_crash,Prey crashed 30% from peak 572 to 400
+2888977,hunt_breakthrough,Kill rate 0.03 is 4.6x average (0.01)
+2889576,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2903353,hunt_breakthrough,Kill rate 0.02 is 4.6x average (0.00)
+2903952,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+2920125,prey_crash,Prey crashed 30% from peak 595 to 415
+2923120,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+2923719,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+2924318,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+2930907,prey_crash,Prey crashed 31% from peak 599 to 414
+2932704,hunt_breakthrough,Kill rate 0.03 is 3.2x average (0.01)
+2933902,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+2947080,hunt_breakthrough,Kill rate 0.03 is 3.3x average (0.01)
+2958461,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+2959060,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+2959659,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+2969243,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+2973436,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.01)
+2990807,prey_crash,Prey crashed 30% from peak 582 to 407
+2993203,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+2993802,hunt_breakthrough,Kill rate 0.02 is 5.5x average (0.00)
+2995599,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+3008777,prey_crash,Prey crashed 30% from peak 617 to 430
+3016564,hunt_breakthrough,Kill rate 0.01 is 4.6x average (0.00)
+3017163,hunt_breakthrough,Kill rate 0.02 is 4.3x average (0.00)
+3017762,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+3021955,stable_ecosystem,"Stable ecosystem with 473 prey, 190 predators over 5+ windows"
+3023752,prey_crash,Prey crashed 31% from peak 628 to 432
+3026747,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+3041123,hunt_breakthrough,Kill rate 0.03 is 2.1x average (0.02)
+3068677,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+3069276,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+3078261,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+3079459,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+3089642,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+3100424,prey_crash,Prey crashed 30% from peak 577 to 402
+3101023,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+3101622,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+3102221,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+3113602,prey_crash,Prey crashed 30% from peak 590 to 411
+3114800,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.01)
+3115399,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.01)
+3115998,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+3131572,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+3131572,prey_crash,Prey crashed 30% from peak 588 to 411
+3133369,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+3133968,hunt_breakthrough,Kill rate 0.02 is 7.9x average (0.00)
+3134567,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.00)
+3147146,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3148344,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3150740,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+3156131,prey_crash,Prey crashed 30% from peak 626 to 436
+3162121,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+3165715,hunt_breakthrough,Kill rate 0.02 is 7.4x average (0.00)
+3166314,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+3175898,prey_crash,Prey crashed 30% from peak 590 to 413
+3177695,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+3178294,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+3192071,hunt_breakthrough,Kill rate 0.02 is 5.7x average (0.00)
+3192670,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+3193269,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+3199858,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+3203452,prey_crash,Prey crashed 30% from peak 572 to 400
+3204051,hunt_breakthrough,Kill rate 0.03 is 4.1x average (0.01)
+3220224,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+3220823,hunt_breakthrough,Kill rate 0.02 is 4.2x average (0.01)
+3221422,hunt_breakthrough,Kill rate 0.03 is 3.9x average (0.01)
+3222021,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+3241788,prey_crash,Prey crashed 31% from peak 579 to 402
+3243585,hunt_breakthrough,Kill rate 0.01 is 4.8x average (0.00)
+3244783,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+3256763,prey_crash,Prey crashed 30% from peak 641 to 448
+3260956,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3267545,hunt_breakthrough,Kill rate 0.02 is 7.3x average (0.00)
+3268144,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.01)
+3269342,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+3288510,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+3290307,prey_crash,Prey crashed 30% from peak 618 to 432
+3302287,hunt_breakthrough,Kill rate 0.02 is 10.6x average (0.00)
+3302886,hunt_breakthrough,Kill rate 0.02 is 5.9x average (0.00)
+3303485,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+3310673,prey_crash,Prey crashed 31% from peak 641 to 441
+3315465,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+3325049,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+3325648,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+3333435,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+3340623,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+3350207,hunt_breakthrough,Kill rate 0.02 is 3.6x average (0.01)
+3360390,hunt_breakthrough,Kill rate 0.02 is 3.6x average (0.01)
+3375365,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+3375964,hunt_breakthrough,Kill rate 0.02 is 5.1x average (0.00)
+3388543,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3389741,prey_crash,Prey crashed 30% from peak 580 to 405
+3391538,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+3392137,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.00)
+3392736,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+3405914,prey_crash,Prey crashed 30% from peak 587 to 408
+3408310,hunt_breakthrough,Kill rate 0.03 is 7.2x average (0.00)
+3430473,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+3431072,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+3431671,hunt_breakthrough,Kill rate 0.03 is 11.3x average (0.00)
+3432270,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+3432869,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+3435265,stable_ecosystem,"Stable ecosystem with 552 prey, 128 predators over 5+ windows"
+3450240,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+3451438,prey_crash,Prey crashed 30% from peak 656 to 458
+3453834,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+3464616,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+3465814,hunt_breakthrough,Kill rate 0.02 is 5.7x average (0.00)
+3466413,hunt_breakthrough,Kill rate 0.02 is 5.5x average (0.00)
+3467012,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+3482586,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+3486180,prey_crash,Prey crashed 30% from peak 648 to 451
+3488576,stable_ecosystem,"Stable ecosystem with 428 prey, 178 predators over 5+ windows"
+3493368,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+3493967,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+3494566,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+3495165,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+3504150,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+3504749,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+3513135,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+3513734,hunt_breakthrough,Kill rate 0.03 is 3.5x average (0.01)
+3521521,hunt_breakthrough,Kill rate 0.03 is 3.3x average (0.01)
+3522719,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+3536496,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+3550872,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.01)
+3551471,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+3561654,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.01)
+3572436,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3577228,hunt_breakthrough,Kill rate 0.02 is 4.3x average (0.01)
+3577827,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+3597594,prey_crash,Prey crashed 30% from peak 577 to 403
+3599391,hunt_breakthrough,Kill rate 0.01 is 5.2x average (0.00)
+3599990,hunt_breakthrough,Kill rate 0.02 is 5.4x average (0.00)
+3600589,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+3601188,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+3607178,stable_ecosystem,"Stable ecosystem with 503 prey, 133 predators over 5+ windows"
+3618559,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+3618559,prey_crash,Prey crashed 30% from peak 630 to 441
+3625148,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+3626346,hunt_breakthrough,Kill rate 0.02 is 5.5x average (0.00)
+3628143,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+3643717,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+3652702,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+3656895,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+3659291,hunt_breakthrough,Kill rate 0.00 is 3.6x average (0.00)
+3659291,prey_crash,Prey crashed 30% from peak 640 to 447
+3664083,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+3665880,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+3668276,hunt_breakthrough,Kill rate 0.00 is 2.7x average (0.00)
+3668875,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+3670672,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3673068,hunt_breakthrough,Kill rate 0.02 is 6.6x average (0.00)
+3673667,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+3680256,stable_ecosystem,"Stable ecosystem with 509 prey, 173 predators over 5+ windows"
+3688642,prey_crash,Prey crashed 31% from peak 621 to 430
+3694033,hunt_breakthrough,Kill rate 0.02 is 4.2x average (0.00)
+3707211,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+3707810,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.01)
+3708409,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+3719191,prey_crash,Prey crashed 31% from peak 578 to 400
+3719790,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+3720389,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+3732968,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+3733567,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+3747344,prey_crash,Prey crashed 30% from peak 580 to 406
+3750938,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.00)
+3751537,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+3752136,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+3764715,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+3765314,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+3780888,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+3781487,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.00)
+3782086,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+3800056,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+3800655,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3803051,hunt_breakthrough,Kill rate 0.02 is 4.9x average (0.00)
+3803650,hunt_breakthrough,Kill rate 0.03 is 5.1x average (0.01)
+3804249,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+3810838,stable_ecosystem,"Stable ecosystem with 509 prey, 139 predators over 5+ windows"
+3825813,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+3825813,prey_crash,Prey crashed 30% from peak 615 to 429
+3831803,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+3834199,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+3834798,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+3835397,hunt_breakthrough,Kill rate 0.02 is 4.3x average (0.00)
+3835996,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+3850971,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+3851570,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+3856362,prey_crash,Prey crashed 31% from peak 609 to 423
+3863550,hunt_breakthrough,Kill rate 0.02 is 9.9x average (0.00)
+3864149,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+3870738,stable_ecosystem,"Stable ecosystem with 515 prey, 129 predators over 5+ windows"
+3883916,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3885114,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+3888708,prey_crash,Prey crashed 30% from peak 617 to 431
+3892302,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+3894698,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+3895297,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+3900089,hunt_breakthrough,Kill rate 0.01 is 5.2x average (0.00)
+3900688,hunt_breakthrough,Kill rate 0.02 is 7.8x average (0.00)
+3901287,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+3901886,stable_ecosystem,"Stable ecosystem with 535 prey, 176 predators over 5+ windows"
+3909673,prey_crash,Prey crashed 31% from peak 595 to 410
+3911470,hunt_breakthrough,Kill rate 0.03 is 4.2x average (0.01)
+3920455,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+3921054,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+3931836,hunt_breakthrough,Kill rate 0.03 is 4.8x average (0.01)
+3943816,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+3958192,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+3959989,hunt_breakthrough,Kill rate 0.02 is 5.4x average (0.00)
+3960588,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+3961187,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+3976162,hunt_breakthrough,Kill rate 0.01 is 5.1x average (0.00)
+3976761,hunt_breakthrough,Kill rate 0.02 is 5.4x average (0.00)
+3977360,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+3986944,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+3991736,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+3992335,hunt_breakthrough,Kill rate 0.03 is 7.0x average (0.00)
+3992934,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+3993533,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+4012102,prey_crash,Prey crashed 30% from peak 614 to 428
+4013899,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+4019290,hunt_breakthrough,Kill rate 0.01 is 5.3x average (0.00)
+4019889,hunt_breakthrough,Kill rate 0.02 is 6.9x average (0.00)
+4020488,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+4026478,stable_ecosystem,"Stable ecosystem with 514 prey, 136 predators over 5+ windows"
+4043849,hunt_breakthrough,Kill rate 0.01 is 3.9x average (0.00)
+4045047,prey_crash,Prey crashed 30% from peak 622 to 435
+4048042,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+4057626,hunt_breakthrough,Kill rate 0.03 is 16.1x average (0.00)
+4058225,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+4073799,hunt_breakthrough,Kill rate 0.01 is 3.5x average (0.00)
+4077393,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+4084581,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4090571,prey_crash,Prey crashed 30% from peak 609 to 426
+4091769,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+4100754,hunt_breakthrough,Kill rate 0.02 is 13.3x average (0.00)
+4101353,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.01)
+4105546,stable_ecosystem,"Stable ecosystem with 456 prey, 193 predators over 5+ windows"
+4109140,prey_crash,Prey crashed 31% from peak 594 to 412
+4118724,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+4122917,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+4139689,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+4161253,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+4161852,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+4173832,hunt_breakthrough,Kill rate 0.03 is 5.1x average (0.01)
+4187609,hunt_breakthrough,Kill rate 0.02 is 7.0x average (0.00)
+4188208,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.01)
+4207975,prey_crash,Prey crashed 30% from peak 574 to 400
+4208574,hunt_breakthrough,Kill rate 0.02 is 7.5x average (0.00)
+4209173,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+4217559,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+4231336,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+4232534,hunt_breakthrough,Kill rate 0.03 is 12.2x average (0.00)
+4233133,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+4249306,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+4252301,prey_crash,Prey crashed 30% from peak 627 to 438
+4255895,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+4259489,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+4261885,hunt_breakthrough,Kill rate 0.02 is 4.9x average (0.00)
+4262484,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.00)
+4263083,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+4279256,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+4279855,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+4288241,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+4288241,prey_crash,Prey crashed 31% from peak 615 to 426
+4291236,hunt_breakthrough,Kill rate 0.00 is 2.9x average (0.00)
+4294231,hunt_breakthrough,Kill rate 0.01 is 3.9x average (0.00)
+4296627,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+4297825,hunt_breakthrough,Kill rate 0.02 is 9.9x average (0.00)
+4299023,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+4314597,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+4321186,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4325978,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+4331369,prey_crash,Prey crashed 30% from peak 598 to 417
+4339156,hunt_breakthrough,Kill rate 0.02 is 12.7x average (0.00)
+4339755,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.00)
+4340354,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+4352933,prey_crash,Prey crashed 30% from peak 593 to 415
+4356527,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.00)
+4357126,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+4370304,prey_crash,Prey crashed 30% from peak 576 to 403
+4372101,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+4373299,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.01)
+4382883,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+4383482,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+4384081,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+4391269,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+4402051,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+4402650,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+4417026,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+4417625,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+4418224,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.01)
+4418823,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+4420021,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+4429006,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+4431402,prey_crash,Prey crashed 30% from peak 585 to 408
+4434397,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+4434996,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+4452966,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+4455362,prey_crash,Prey crashed 30% from peak 581 to 404
+4455961,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+4456560,hunt_breakthrough,Kill rate 0.03 is 12.2x average (0.00)
+4457159,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.01)
+4474530,prey_crash,Prey crashed 30% from peak 575 to 401
+4475129,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+4475728,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+4497891,prey_crash,Prey crashed 30% from peak 595 to 415
+4502084,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+4503282,hunt_breakthrough,Kill rate 0.01 is 8.0x average (0.00)
+4503881,hunt_breakthrough,Kill rate 0.01 is 4.6x average (0.00)
+4504480,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+4505079,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+4507475,stable_ecosystem,"Stable ecosystem with 547 prey, 144 predators over 5+ windows"
+4525445,prey_crash,Prey crashed 30% from peak 619 to 433
+4531435,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+4534430,hunt_breakthrough,Kill rate 0.02 is 6.7x average (0.00)
+4535029,hunt_breakthrough,Kill rate 0.02 is 4.2x average (0.01)
+4552999,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+4552999,prey_crash,Prey crashed 31% from peak 603 to 419
+4558390,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+4559588,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+4560786,hunt_breakthrough,Kill rate 0.03 is 16.5x average (0.00)
+4561385,hunt_breakthrough,Kill rate 0.02 is 4.4x average (0.00)
+4561984,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+4578157,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+4581751,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+4582949,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4593132,prey_crash,Prey crashed 30% from peak 628 to 438
+4593731,hunt_breakthrough,Kill rate 0.01 is 3.5x average (0.00)
+4599721,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+4605112,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+4606909,hunt_breakthrough,Kill rate 0.02 is 9.3x average (0.00)
+4607508,hunt_breakthrough,Kill rate 0.02 is 5.4x average (0.00)
+4608107,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+4623681,hunt_breakthrough,Kill rate 0.00 is 2.8x average (0.00)
+4627275,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+4632067,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+4633864,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+4639854,prey_crash,Prey crashed 30% from peak 646 to 452
+4651235,hunt_breakthrough,Kill rate 0.00 is 3.4x average (0.00)
+4656027,hunt_breakthrough,Kill rate 0.00 is 2.8x average (0.00)
+4657824,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+4661418,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4662616,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+4665611,hunt_breakthrough,Kill rate 0.02 is 9.7x average (0.00)
+4666210,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+4673398,stable_ecosystem,"Stable ecosystem with 538 prey, 120 predators over 5+ windows"
+4676992,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+4684180,hunt_breakthrough,Kill rate 0.00 is 2.7x average (0.00)
+4684779,hunt_breakthrough,Kill rate 0.00 is 2.8x average (0.00)
+4685378,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+4691368,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4691967,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4692566,stable_ecosystem,"Stable ecosystem with 463 prey, 187 predators over 5+ windows"
+4693165,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+4694962,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+4694962,prey_crash,Prey crashed 31% from peak 637 to 439
+4696759,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+4700952,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.00)
+4701551,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+4702150,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+4709338,prey_crash,Prey crashed 31% from peak 580 to 400
+4709937,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+4712932,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+4733897,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+4744679,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.01)
+4745877,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+4753664,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+4754263,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+4763847,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.00)
+4772832,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+4801584,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+4802183,hunt_breakthrough,Kill rate 0.02 is 2.8x average (0.01)
+4812366,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+4823148,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+4835128,hunt_breakthrough,Kill rate 0.02 is 5.7x average (0.00)
+4836326,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+4836925,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+4850103,hunt_breakthrough,Kill rate 0.02 is 8.2x average (0.00)
+4850702,hunt_breakthrough,Kill rate 0.02 is 4.5x average (0.00)
+4868073,prey_crash,Prey crashed 30% from peak 575 to 402
+4869271,hunt_breakthrough,Kill rate 0.03 is 9.7x average (0.00)
+4887840,hunt_breakthrough,Kill rate 0.03 is 7.3x average (0.00)
+4899221,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+4904013,prey_crash,Prey crashed 30% from peak 579 to 403
+4905211,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+4905810,hunt_breakthrough,Kill rate 0.02 is 4.3x average (0.01)
+4923181,prey_crash,Prey crashed 30% from peak 589 to 412
+4926775,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+4927374,hunt_breakthrough,Kill rate 0.03 is 7.2x average (0.00)
+4927973,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+4943547,prey_crash,Prey crashed 30% from peak 604 to 421
+4944745,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+4945344,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+4948938,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+4949537,hunt_breakthrough,Kill rate 0.02 is 4.6x average (0.00)
+4950136,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+4965111,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+4969304,prey_crash,Prey crashed 30% from peak 608 to 425
+4969903,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+4975294,hunt_breakthrough,Kill rate 0.02 is 6.1x average (0.00)
+4975893,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.00)
+4977091,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+4992665,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+4995660,prey_crash,Prey crashed 30% from peak 599 to 419
+5001650,hunt_breakthrough,Kill rate 0.01 is 6.4x average (0.00)
+5002249,hunt_breakthrough,Kill rate 0.01 is 3.8x average (0.00)
+5002848,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+5014828,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+5021417,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+5027407,prey_crash,Prey crashed 30% from peak 611 to 426
+5028605,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5032798,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+5033397,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+5033996,hunt_breakthrough,Kill rate 0.02 is 9.1x average (0.00)
+5034595,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.01)
+5049570,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+5057956,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+5059154,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+5061550,prey_crash,Prey crashed 30% from peak 603 to 421
+5062149,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+5067540,hunt_breakthrough,Kill rate 0.03 is 11.5x average (0.00)
+5068139,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+5075327,stable_ecosystem,"Stable ecosystem with 555 prey, 135 predators over 5+ windows"
+5078921,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+5080119,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+5093896,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5099886,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5101683,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+5101683,prey_crash,Prey crashed 30% from peak 643 to 450
+5105876,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+5107074,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+5113663,hunt_breakthrough,Kill rate 0.00 is 2.8x average (0.00)
+5122648,hunt_breakthrough,Kill rate 0.00 is 3.5x average (0.00)
+5123846,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+5124445,hunt_breakthrough,Kill rate 0.03 is 15.1x average (0.00)
+5125044,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.00)
+5150202,hunt_breakthrough,Kill rate 0.01 is 3.5x average (0.00)
+5152598,prey_crash,Prey crashed 30% from peak 635 to 444
+5156791,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+5160984,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+5169969,hunt_breakthrough,Kill rate 0.02 is 13.6x average (0.00)
+5170568,hunt_breakthrough,Kill rate 0.02 is 4.3x average (0.00)
+5186142,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+5187939,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+5190934,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+5202315,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5204112,hunt_breakthrough,Kill rate 0.01 is 3.5x average (0.00)
+5204711,prey_crash,Prey crashed 30% from peak 647 to 450
+5219087,hunt_breakthrough,Kill rate 0.01 is 5.1x average (0.00)
+5222681,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+5228072,hunt_breakthrough,Kill rate 0.01 is 5.8x average (0.00)
+5231067,hunt_breakthrough,Kill rate 0.02 is 18.8x average (0.00)
+5231666,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+5232864,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+5256824,hunt_breakthrough,Kill rate 0.00 is 2.7x average (0.00)
+5257423,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+5264012,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5265210,hunt_breakthrough,Kill rate 0.00 is 3.1x average (0.00)
+5266408,prey_crash,Prey crashed 30% from peak 640 to 447
+5268804,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+5270002,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5271200,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+5271799,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+5273596,stable_ecosystem,"Stable ecosystem with 414 prey, 181 predators over 5+ windows"
+5274794,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+5276591,hunt_breakthrough,Kill rate 0.02 is 5.8x average (0.00)
+5277190,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+5290368,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.00)
+5290967,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+5292764,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+5301749,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+5315526,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+5319120,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+5319719,hunt_breakthrough,Kill rate 0.02 is 4.7x average (0.01)
+5338288,hunt_breakthrough,Kill rate 0.03 is 7.7x average (0.00)
+5338887,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+5339486,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+5351466,prey_crash,Prey crashed 30% from peak 597 to 415
+5355060,hunt_breakthrough,Kill rate 0.02 is 6.5x average (0.00)
+5355659,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+5370634,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+5374228,prey_crash,Prey crashed 30% from peak 586 to 408
+5377223,hunt_breakthrough,Kill rate 0.02 is 6.7x average (0.00)
+5377822,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+5393396,prey_crash,Prey crashed 30% from peak 591 to 413
+5395792,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+5396391,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+5396990,hunt_breakthrough,Kill rate 0.02 is 4.8x average (0.00)
+5397589,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.01)
+5416757,prey_crash,Prey crashed 30% from peak 574 to 400
+5417356,hunt_breakthrough,Kill rate 0.02 is 4.6x average (0.00)
+5417955,hunt_breakthrough,Kill rate 0.02 is 3.4x average (0.01)
+5419153,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+5433529,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+5437722,prey_crash,Prey crashed 30% from peak 575 to 402
+5438321,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+5438920,hunt_breakthrough,Kill rate 0.02 is 6.0x average (0.00)
+5446108,stable_ecosystem,"Stable ecosystem with 496 prey, 154 predators over 5+ windows"
+5450301,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+5450900,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+5455692,prey_crash,Prey crashed 30% from peak 630 to 439
+5464078,hunt_breakthrough,Kill rate 0.02 is 7.2x average (0.00)
+5464677,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+5483246,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+5487439,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+5488637,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+5489835,prey_crash,Prey crashed 30% from peak 589 to 410
+5493429,hunt_breakthrough,Kill rate 0.02 is 5.7x average (0.00)
+5494028,hunt_breakthrough,Kill rate 0.03 is 6.6x average (0.00)
+5494627,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+5495825,hunt_breakthrough,Kill rate 0.02 is 2.0x average (0.01)
+5512597,prey_crash,Prey crashed 30% from peak 633 to 441
+5520384,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+5524577,hunt_breakthrough,Kill rate 0.01 is 4.0x average (0.00)
+5525775,hunt_breakthrough,Kill rate 0.02 is 6.5x average (0.00)
+5526374,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+5526973,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)
+5548537,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+5549136,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+5549136,prey_crash,Prey crashed 30% from peak 622 to 435
+5556923,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+5558121,hunt_breakthrough,Kill rate 0.02 is 7.4x average (0.00)
+5558720,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.00)
+5559918,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+5574893,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+5584477,hunt_breakthrough,Kill rate 0.01 is 4.1x average (0.00)
+5586274,hunt_breakthrough,Kill rate 0.01 is 2.6x average (0.00)
+5586274,prey_crash,Prey crashed 30% from peak 593 to 414
+5589868,hunt_breakthrough,Kill rate 0.03 is 8.7x average (0.00)
+5590467,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+5609036,hunt_breakthrough,Kill rate 0.00 is 2.7x average (0.00)
+5617422,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+5621615,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+5625808,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+5625808,prey_crash,Prey crashed 30% from peak 612 to 427
+5628204,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+5634793,hunt_breakthrough,Kill rate 0.01 is 6.0x average (0.00)
+5635392,hunt_breakthrough,Kill rate 0.02 is 5.4x average (0.00)
+5635991,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.01)
+5636590,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+5638986,stable_ecosystem,"Stable ecosystem with 550 prey, 129 predators over 5+ windows"
+5659951,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+5661149,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5666540,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5671931,prey_crash,Prey crashed 30% from peak 639 to 446
+5673129,hunt_breakthrough,Kill rate 0.00 is 3.8x average (0.00)
+5673728,hunt_breakthrough,Kill rate 0.00 is 3.4x average (0.00)
+5700683,hunt_breakthrough,Kill rate 0.02 is 19.7x average (0.00)
+5701282,hunt_breakthrough,Kill rate 0.02 is 5.3x average (0.00)
+5701881,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+5702480,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+5704876,stable_ecosystem,"Stable ecosystem with 558 prey, 126 predators over 5+ windows"
+5719252,hunt_breakthrough,Kill rate 0.01 is 4.2x average (0.00)
+5739019,prey_crash,Prey crashed 30% from peak 648 to 453
+5742014,hunt_breakthrough,Kill rate 0.00 is 3.7x average (0.00)
+5746806,hunt_breakthrough,Kill rate 0.01 is 4.3x average (0.00)
+5749202,hunt_breakthrough,Kill rate 0.01 is 4.1x average (0.00)
+5753994,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+5756390,hunt_breakthrough,Kill rate 0.00 is 3.2x average (0.00)
+5764776,stable_ecosystem,"Stable ecosystem with 402 prey, 175 predators over 5+ windows"
+5765375,hunt_breakthrough,Kill rate 0.02 is 15.0x average (0.00)
+5765974,hunt_breakthrough,Kill rate 0.02 is 4.0x average (0.00)
+5782746,prey_crash,Prey crashed 30% from peak 603 to 422
+5783944,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+5788736,hunt_breakthrough,Kill rate 0.03 is 8.9x average (0.00)
+5789335,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+5808503,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+5809102,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+5809701,prey_crash,Prey crashed 30% from peak 583 to 407
+5812097,hunt_breakthrough,Kill rate 0.02 is 5.2x average (0.00)
+5831864,prey_crash,Prey crashed 30% from peak 615 to 430
+5841448,hunt_breakthrough,Kill rate 0.01 is 8.6x average (0.00)
+5842047,hunt_breakthrough,Kill rate 0.02 is 5.6x average (0.00)
+5842646,hunt_breakthrough,Kill rate 0.02 is 3.2x average (0.01)
+5857621,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+5860017,prey_crash,Prey crashed 30% from peak 593 to 413
+5863611,hunt_breakthrough,Kill rate 0.03 is 7.9x average (0.00)
+5864210,hunt_breakthrough,Kill rate 0.02 is 2.9x average (0.01)
+5885774,prey_crash,Prey crashed 30% from peak 614 to 427
+5886373,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+5895358,hunt_breakthrough,Kill rate 0.01 is 7.5x average (0.00)
+5895957,hunt_breakthrough,Kill rate 0.01 is 6.1x average (0.00)
+5896556,hunt_breakthrough,Kill rate 0.01 is 3.1x average (0.00)
+5897155,hunt_breakthrough,Kill rate 0.02 is 2.5x average (0.01)
+5915125,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+5915125,prey_crash,Prey crashed 31% from peak 628 to 434
+5922912,hunt_breakthrough,Kill rate 0.00 is 2.8x average (0.00)
+5923511,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+5924709,hunt_breakthrough,Kill rate 0.03 is 11.8x average (0.00)
+5925308,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+5940882,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+5955258,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+5956456,prey_crash,Prey crashed 30% from peak 590 to 413
+5958852,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.00)
+5960050,hunt_breakthrough,Kill rate 0.02 is 7.4x average (0.00)
+5960649,hunt_breakthrough,Kill rate 0.02 is 5.2x average (0.00)
+5967238,stable_ecosystem,"Stable ecosystem with 511 prey, 143 predators over 5+ windows"
+5974426,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+5981614,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+5984010,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+5984609,prey_crash,Prey crashed 30% from peak 626 to 438
+5991797,hunt_breakthrough,Kill rate 0.00 is 4.0x average (0.00)
+5997188,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+6001980,hunt_breakthrough,Kill rate 0.01 is 6.4x average (0.00)
+6002579,hunt_breakthrough,Kill rate 0.03 is 10.5x average (0.00)
+6003178,hunt_breakthrough,Kill rate 0.02 is 2.6x average (0.01)
+6009168,stable_ecosystem,"Stable ecosystem with 493 prey, 141 predators over 5+ windows"
+6014559,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.00)
+6018752,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+6022346,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+6023544,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6024742,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+6025341,prey_crash,Prey crashed 30% from peak 617 to 429
+6040316,hunt_breakthrough,Kill rate 0.02 is 10.5x average (0.00)
+6040915,hunt_breakthrough,Kill rate 0.02 is 5.9x average (0.00)
+6041514,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+6061281,hunt_breakthrough,Kill rate 0.00 is 3.3x average (0.00)
+6063677,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+6066073,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6066672,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+6068469,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+6076855,prey_crash,Prey crashed 30% from peak 621 to 434
+6083444,hunt_breakthrough,Kill rate 0.01 is 4.1x average (0.00)
+6093028,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+6094226,hunt_breakthrough,Kill rate 0.02 is 12.1x average (0.00)
+6094825,hunt_breakthrough,Kill rate 0.02 is 5.3x average (0.00)
+6116389,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+6116988,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+6120582,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+6124176,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+6128369,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+6130166,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+6130765,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+6134958,prey_crash,Prey crashed 30% from peak 644 to 450
+6136156,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+6138552,hunt_breakthrough,Kill rate 0.01 is 5.1x average (0.00)
+6146339,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6146938,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+6155923,hunt_breakthrough,Kill rate 0.02 is 20.5x average (0.00)
+6156522,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+6157121,hunt_breakthrough,Kill rate 0.02 is 3.6x average (0.01)
+6160116,stable_ecosystem,"Stable ecosystem with 584 prey, 128 predators over 5+ windows"
+6177487,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+6185274,hunt_breakthrough,Kill rate 0.01 is 7.3x average (0.00)
+6193660,hunt_breakthrough,Kill rate 0.00 is 3.3x average (0.00)
+6199051,hunt_breakthrough,Kill rate 0.01 is 4.0x average (0.00)
+6199650,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+6205041,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6207437,prey_crash,Prey crashed 30% from peak 640 to 447
+6208635,hunt_breakthrough,Kill rate 0.01 is 5.0x average (0.00)
+6221214,hunt_breakthrough,Kill rate 0.00 is 5.4x average (0.00)
+6226006,hunt_breakthrough,Kill rate 0.00 is 3.6x average (0.00)
+6227204,hunt_breakthrough,Kill rate 0.01 is 3.6x average (0.00)
+6233194,hunt_breakthrough,Kill rate 0.02 is 15.6x average (0.00)
+6233793,hunt_breakthrough,Kill rate 0.01 is 4.5x average (0.00)
+6234392,hunt_breakthrough,Kill rate 0.02 is 3.6x average (0.00)
+6234991,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+6237986,stable_ecosystem,"Stable ecosystem with 576 prey, 123 predators over 5+ windows"
+6246372,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+6258951,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+6268535,hunt_breakthrough,Kill rate 0.01 is 6.5x average (0.00)
+6270332,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+6276921,hunt_breakthrough,Kill rate 0.00 is 4.7x average (0.00)
+6278119,hunt_breakthrough,Kill rate 0.01 is 5.6x average (0.00)
+6278718,hunt_breakthrough,Kill rate 0.01 is 3.5x average (0.00)
+6278718,prey_crash,Prey crashed 31% from peak 659 to 458
+6294292,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+6306272,hunt_breakthrough,Kill rate 0.02 is 10.3x average (0.00)
+6306871,hunt_breakthrough,Kill rate 0.02 is 4.5x average (0.01)
+6310465,stable_ecosystem,"Stable ecosystem with 576 prey, 121 predators over 5+ windows"
+6316455,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+6321247,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6324242,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+6332029,hunt_breakthrough,Kill rate 0.00 is 3.1x average (0.00)
+6333227,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+6333826,hunt_breakthrough,Kill rate 0.00 is 2.0x average (0.00)
+6335024,hunt_breakthrough,Kill rate 0.00 is 3.2x average (0.00)
+6338618,stable_ecosystem,"Stable ecosystem with 486 prey, 186 predators over 5+ windows"
+6341613,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+6345806,prey_crash,Prey crashed 30% from peak 649 to 452
+6355390,hunt_breakthrough,Kill rate 0.02 is 5.0x average (0.00)
+6356588,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.01)
+6373959,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+6374558,hunt_breakthrough,Kill rate 0.03 is 6.9x average (0.00)
+6375157,hunt_breakthrough,Kill rate 0.03 is 3.9x average (0.01)
+6387736,prey_crash,Prey crashed 31% from peak 598 to 414
+6391929,hunt_breakthrough,Kill rate 0.02 is 5.3x average (0.00)
+6392528,hunt_breakthrough,Kill rate 0.02 is 6.0x average (0.00)
+6405107,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+6410498,prey_crash,Prey crashed 30% from peak 580 to 404
+6412295,hunt_breakthrough,Kill rate 0.03 is 8.6x average (0.00)
+6412894,hunt_breakthrough,Kill rate 0.02 is 3.0x average (0.01)
+6424874,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+6425473,hunt_breakthrough,Kill rate 0.02 is 2.3x average (0.01)
+6426671,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+6440448,hunt_breakthrough,Kill rate 0.02 is 4.2x average (0.00)
+6441047,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+6458418,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6459616,hunt_breakthrough,Kill rate 0.02 is 9.4x average (0.00)
+6460215,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+6461413,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.01)
+6475190,prey_crash,Prey crashed 30% from peak 585 to 409
+6476987,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.00)
+6490165,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+6491363,prey_crash,Prey crashed 30% from peak 606 to 424
+6496754,hunt_breakthrough,Kill rate 0.01 is 4.0x average (0.00)
+6497353,hunt_breakthrough,Kill rate 0.02 is 3.9x average (0.00)
+6497952,hunt_breakthrough,Kill rate 0.02 is 3.7x average (0.01)
+6498551,hunt_breakthrough,Kill rate 0.02 is 2.1x average (0.01)
+6512328,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.00)
+6512328,prey_crash,Prey crashed 30% from peak 633 to 441
+6521313,hunt_breakthrough,Kill rate 0.02 is 6.0x average (0.00)
+6521912,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.01)
+6542877,hunt_breakthrough,Kill rate 0.01 is 2.7x average (0.00)
+6543476,hunt_breakthrough,Kill rate 0.03 is 8.1x average (0.00)
+6544075,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.01)
+6544674,hunt_breakthrough,Kill rate 0.02 is 3.1x average (0.01)
+6563243,prey_crash,Prey crashed 30% from peak 619 to 432
+6565040,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+6569233,hunt_breakthrough,Kill rate 0.01 is 2.8x average (0.00)
+6571030,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+6572228,hunt_breakthrough,Kill rate 0.02 is 7.0x average (0.00)
+6572827,hunt_breakthrough,Kill rate 0.02 is 3.3x average (0.01)
+6574025,hunt_breakthrough,Kill rate 0.02 is 2.2x average (0.01)
+6583609,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.00)
+6590198,hunt_breakthrough,Kill rate 0.01 is 3.2x average (0.00)
+6594990,hunt_breakthrough,Kill rate 0.00 is 2.3x average (0.00)
+6599183,hunt_breakthrough,Kill rate 0.01 is 5.0x average (0.00)
+6600381,prey_crash,Prey crashed 30% from peak 596 to 416
+6606371,hunt_breakthrough,Kill rate 0.02 is 11.4x average (0.00)
+6606970,hunt_breakthrough,Kill rate 0.02 is 3.5x average (0.00)
+6623143,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6627336,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+6627935,hunt_breakthrough,Kill rate 0.01 is 3.8x average (0.00)
+6630331,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+6635722,prey_crash,Prey crashed 30% from peak 591 to 412
+6640514,hunt_breakthrough,Kill rate 0.00 is 3.6x average (0.00)
+6641113,hunt_breakthrough,Kill rate 0.01 is 4.0x average (0.00)
+6641712,hunt_breakthrough,Kill rate 0.02 is 12.6x average (0.00)
+6642311,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+6642910,hunt_breakthrough,Kill rate 0.01 is 2.2x average (0.01)
+6645306,stable_ecosystem,"Stable ecosystem with 553 prey, 143 predators over 5+ windows"
+6665672,hunt_breakthrough,Kill rate 0.01 is 3.3x average (0.00)
+6667469,hunt_breakthrough,Kill rate 0.01 is 3.0x average (0.00)
+6667469,prey_crash,Prey crashed 30% from peak 636 to 443
+6671662,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+6674058,hunt_breakthrough,Kill rate 0.00 is 3.8x average (0.00)
+6674657,hunt_breakthrough,Kill rate 0.01 is 3.6x average (0.00)
+6677053,hunt_breakthrough,Kill rate 0.01 is 3.7x average (0.00)
+6685439,hunt_breakthrough,Kill rate 0.00 is 4.3x average (0.00)
+6686637,hunt_breakthrough,Kill rate 0.00 is 3.6x average (0.00)
+6687835,hunt_breakthrough,Kill rate 0.02 is 8.8x average (0.00)
+6688434,hunt_breakthrough,Kill rate 0.02 is 6.5x average (0.00)
+6689033,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+6689632,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+6698617,hunt_breakthrough,Kill rate 0.01 is 2.4x average (0.00)
+6706404,hunt_breakthrough,Kill rate 0.00 is 2.6x average (0.00)
+6707003,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6712394,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+6713592,hunt_breakthrough,Kill rate 0.01 is 3.4x average (0.00)
+6725572,prey_crash,Prey crashed 30% from peak 618 to 432
+6738151,hunt_breakthrough,Kill rate 0.00 is 4.1x average (0.00)
+6742344,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6744141,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6744740,hunt_breakthrough,Kill rate 0.03 is 13.9x average (0.00)
+6745339,hunt_breakthrough,Kill rate 0.01 is 2.3x average (0.01)
+6751928,stable_ecosystem,"Stable ecosystem with 535 prey, 134 predators over 5+ windows"
+6775289,hunt_breakthrough,Kill rate 0.01 is 4.6x average (0.00)
+6776487,hunt_breakthrough,Kill rate 0.00 is 3.4x average (0.00)
+6783675,hunt_breakthrough,Kill rate 0.00 is 6.9x average (0.00)
+6783675,prey_crash,Prey crashed 30% from peak 651 to 454
+6784274,hunt_breakthrough,Kill rate 0.01 is 6.3x average (0.00)
+6801046,hunt_breakthrough,Kill rate 0.00 is 3.7x average (0.00)
+6817219,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+6822610,hunt_breakthrough,Kill rate 0.02 is 14.1x average (0.00)
+6823209,hunt_breakthrough,Kill rate 0.02 is 4.2x average (0.00)
+6823808,hunt_breakthrough,Kill rate 0.01 is 2.1x average (0.01)
+6830397,stable_ecosystem,"Stable ecosystem with 567 prey, 125 predators over 5+ windows"
+6843575,hunt_breakthrough,Kill rate 0.00 is 2.4x average (0.00)
+6857951,hunt_breakthrough,Kill rate 0.00 is 3.0x average (0.00)
+6862743,hunt_breakthrough,Kill rate 0.01 is 2.9x average (0.00)
+6864540,hunt_breakthrough,Kill rate 0.00 is 2.5x average (0.00)
+6865738,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6872327,hunt_breakthrough,Kill rate 0.01 is 9.8x average (0.00)
+6880114,prey_crash,Prey crashed 30% from peak 653 to 457
+6884906,hunt_breakthrough,Kill rate 0.00 is 13.4x average (0.00)
+6897485,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6911262,hunt_breakthrough,Kill rate 0.00 is 3.5x average (0.00)
+6911861,hunt_breakthrough,Kill rate 0.01 is 4.1x average (0.00)
+6914856,hunt_breakthrough,Kill rate 0.02 is 10.7x average (0.00)
+6915455,hunt_breakthrough,Kill rate 0.02 is 4.4x average (0.00)
+6916653,hunt_breakthrough,Kill rate 0.01 is 2.0x average (0.01)
+6920846,stable_ecosystem,"Stable ecosystem with 568 prey, 122 predators over 5+ windows"
+6935821,hunt_breakthrough,Kill rate 0.00 is 2.7x average (0.00)
+6937019,hunt_breakthrough,Kill rate 0.00 is 2.2x average (0.00)
+6937618,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6950796,hunt_breakthrough,Kill rate 0.01 is 4.3x average (0.00)
+6960979,hunt_breakthrough,Kill rate 0.01 is 6.3x average (0.00)
+6964573,prey_crash,Prey crashed 30% from peak 654 to 456
+6969365,stable_ecosystem,"Stable ecosystem with 440 prey, 201 predators over 5+ windows"
+6971761,hunt_breakthrough,Kill rate 0.00 is 2.1x average (0.00)
+6977751,hunt_breakthrough,Kill rate 0.01 is 2.5x average (0.00)
+6978350,hunt_breakthrough,Kill rate 0.02 is 5.9x average (0.00)
+6978949,hunt_breakthrough,Kill rate 0.02 is 3.8x average (0.00)
+6979548,hunt_breakthrough,Kill rate 0.02 is 2.4x average (0.01)
+6988533,prey_crash,Prey crashed 30% from peak 580 to 404
+6989731,hunt_breakthrough,Kill rate 0.02 is 4.1x average (0.01)
+7000513,hunt_breakthrough,Kill rate 0.02 is 2.7x average (0.01)

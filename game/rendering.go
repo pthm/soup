@@ -14,7 +14,7 @@ func (g *Game) Draw() {
 	g.perfCollector.RecordFrame()
 
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{R: 230, G: 195, B: 150, A: 255}) // Dusty desert background
+	rl.ClearBackground(rl.Color{R: 12, G: 20, B: 40, A: 255}) // Deep dark blue
 
 	// Debug overlays (drawn before entities so entities appear on top)
 	if g.debugMode && g.debugShowResource {
@@ -268,11 +268,13 @@ func resourceToColor(val float32, alpha uint8) rl.Color {
 	return rl.Color{R: r, G: g, B: b, A: alpha}
 }
 
-// dietColor returns a color interpolated from purple (diet=0) to burnt orange (diet=1).
+// dietColor returns a color interpolated from purple (diet=0) to red (diet=1).
 func dietColor(diet float32) rl.Color {
-	r := uint8(140 + diet*60)   // 140→200
-	g := uint8(100 - diet*20)   // 100→80
-	b := uint8(200 - diet*150)  // 200→50
+	// Purple (herbivore): RGB(138, 43, 226)
+	// Red (carnivore): RGB(255, 40, 40)
+	r := uint8(138 + diet*117)  // 138→255
+	g := uint8(43 - diet*3)     // 43→40
+	b := uint8(226 - diet*186)  // 226→40
 	return rl.Color{R: r, G: g, B: b, A: 255}
 }
 

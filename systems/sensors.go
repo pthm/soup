@@ -14,6 +14,9 @@ var (
 	cachedMinEffectiveness   float32
 	cachedResourceSampleDist float32
 
+	// Physics timestep (needed to convert velocity units/tick to units/sec)
+	cachedDT float32
+
 	// Unified energy costs (base values, multiplied by metabolic_rate)
 	cachedBaseCost  float32
 	cachedMoveCost  float32
@@ -56,6 +59,7 @@ func InitSensorCache() {
 func InitSensorCacheFrom(cfg *config.Config) {
 	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
 	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
+	cachedDT = float32(cfg.Physics.DT)
 
 	// Unified energy costs
 	cachedBaseCost = float32(cfg.Energy.BaseCost)
@@ -139,6 +143,11 @@ func GetCachedBioCost() float32 {
 // GetCachedThrustDeadzone returns the cached thrust deadzone.
 func GetCachedThrustDeadzone() float32 {
 	return cachedThrustDeadzone
+}
+
+// GetCachedDT returns the cached physics timestep.
+func GetCachedDT() float32 {
+	return cachedDT
 }
 
 // GetArchetypeVisionWeights returns the vision weights for the given archetype.
@@ -320,9 +329,11 @@ func ComputeSensorsBounded(
 	var inputs SensorInputs
 
 	// Self-state
+	// Velocity is stored in units/tick, so normalize by MaxSpeed * dt
 	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
 	speed := fastSqrt(speedSq)
-	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
+	maxSpeedPerTick := selfCaps.MaxSpeed * cachedDT
+	inputs.Speed = clamp01(speed / maxSpeedPerTick)
 	// Energy input: Met / MaxMet, where MaxMet = Bio * metPerBio
 	maxMet := selfEnergy.Bio * cachedMetPerBio
 	if maxMet > 0 {
@@ -486,8 +497,10 @@ func ComputeSensors(
 	var inputs SensorInputs
 
 	// Self-state
+	// Velocity is stored in units/tick, so normalize by MaxSpeed * dt
 	speed := float32(math.Sqrt(float64(selfVel.X*selfVel.X + selfVel.Y*selfVel.Y)))
-	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
+	maxSpeedPerTick := selfCaps.MaxSpeed * cachedDT
+	inputs.Speed = clamp01(speed / maxSpeedPerTick)
 	// Energy input: Met / MaxMet, where MaxMet = Bio * metPerBio
 	maxMet := selfEnergy.Bio * cachedMetPerBio
 	if maxMet > 0 {
