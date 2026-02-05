@@ -174,7 +174,7 @@ Unspecified values use embedded defaults.
 | `population` | Initial count, max prey/pred, respawn rules |
 | `reproduction` | Energy thresholds, cooldowns, offspring energy |
 | `mutation` | Rates and sigma for neural network mutations |
-| `energy.prey` | Base cost, movement cost, accel cost, forage rate, grazing peak |
+| `energy.prey` | Base cost, movement cost, accel cost, forage rate |
 | `energy.predator` | Base cost, movement cost, accel cost, bite cost/reward, digest time |
 | `neural` | Hidden layer size, output count |
 | `sensors` | Number of sectors, resource sample distance |
@@ -182,7 +182,7 @@ Unspecified values use embedded defaults.
 | `telemetry` | Stats window, bookmark history |
 | `bookmarks` | Detection thresholds for evolutionary events |
 | `refugia` | Bite success reduction in resource-rich areas |
-| `potential` | FBM noise generation for resource hotspots (scale, octaves, contrast) |
+| `potential` | 3D OpenSimplex noise for animated resource hotspots (scale, octaves, contrast, time_speed) |
 | `resource` | Grazing radius, forage efficiency, regeneration rate |
 
 ### Accessing Config in Code
@@ -299,13 +299,13 @@ Simple static resource system with regeneration:
 
 | Layer | Description |
 |-------|-------------|
-| **Potential field P** | Static FBM generated at startup (determines hotspot distribution) |
+| **Potential field P** | Animated 3D OpenSimplex FBM (determines hotspot distribution) |
 | **Resource grid R** | Mass density that organisms consume from |
 | **Detritus grid D** | Dead biomass that decays back into resource |
 
 | Feature | Description |
 |---------|-------------|
-| **Static potential** | FBM-based hotspot distribution generated once at startup |
+| **Animated potential** | 3D OpenSimplex noise creates smoothly drifting hotspots |
 | **Regeneration** | Resource regenerates towards potential over time |
 | **True depletion** | Prey grazing removes resource from grid cells |
 | **Detritus decay** | Dead organism energy decays back to resource over time |
@@ -314,6 +314,7 @@ Key config parameters (`potential:` section):
 - `scale`: Base noise frequency (higher = smaller hotspots)
 - `octaves`: FBM detail level (more = finer features)
 - `contrast`: FBM contrast exponent (higher = sparser patches)
+- `time_speed`: Speed of hotspot drift (0 = static, 0.02 = slow drift)
 
 Key config parameters (`resource:` section):
 - `graze_radius`: Kernel size for grazing (1 = 3×3 cells)
@@ -363,12 +364,6 @@ All values configurable via `config.yaml` (defaults shown):
 3. Energy gain = actual removed amount × `forage_efficiency`
 
 This creates natural migration pressure—prey must move to find fresh patches.
-
-**Grazing efficiency curve**: `1 - 2×|speedRatio - grazingPeak|`, clamped to [0,1]. At default `grazing_peak=0.15`:
-- Stationary: 70% efficiency
-- 15% speed: 100% efficiency (optimal grazing)
-- 50% speed: 30% efficiency
-- 65%+ speed: 0% efficiency
 
 **Predator:**
 - Base cost: 0.008/sec (lower to allow survival while learning to hunt)

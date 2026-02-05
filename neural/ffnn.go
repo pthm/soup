@@ -270,24 +270,7 @@ func (nn *FFNN) Clone() *FFNN {
 	return clone
 }
 
-// leakyReLU is the fastest useful activation: no exp, no div.
-func leakyReLU(x float32) float32 {
-	if x > 0 {
-		return x
-	}
-	return 0.01 * x
-}
-
-// softsign: x / (1 + |x|), bounded to [-1, 1], smooth, no exp.
-func softsign(x float32) float32 {
-	if x >= 0 {
-		return x / (1 + x)
-	}
-	return x / (1 - x)
-}
-
 // tanh uses a fast rational approximation avoiding float64 conversion.
-// Kept for compatibility but no longer used in Forward().
 func tanh(x float32) float32 {
 	if x > 4 {
 		return 1
@@ -297,12 +280,6 @@ func tanh(x float32) float32 {
 	}
 	x2 := x * x
 	return x * (27 + x2) / (27 + 9*x2)
-}
-
-// sigmoid uses fast tanh: sigmoid(x) = 0.5 * (1 + tanh(x/2))
-// Kept for compatibility but no longer used in Forward().
-func sigmoid(x float32) float32 {
-	return 0.5 * (1 + tanh(x*0.5))
 }
 
 // BrainWeights holds flattened network weights for serialization.

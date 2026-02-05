@@ -43,14 +43,7 @@ func NewParamVector() *ParamVector {
 			// --- Kept from exp9 (refugia) ---
 			{Name: "refugia_strength", Path: "refugia.strength", Min: 0.5, Max: 1.5, Default: 1.0},
 
-			// --- Kept from exp9 (particles) ---
-			{Name: "part_spawn_rate", Path: "particles.spawn_rate", Min: 20, Max: 300, Default: 100},
-			{Name: "part_initial_mass", Path: "particles.initial_mass", Min: 0.002, Max: 0.05, Default: 0.01},
-			{Name: "part_deposit_rate", Path: "particles.deposit_rate", Min: 0.5, Max: 5.0, Default: 2.0},
-			{Name: "part_pickup_rate", Path: "particles.pickup_rate", Min: 0.1, Max: 3.0, Default: 0.5},
-			{Name: "part_cell_capacity", Path: "particles.cell_capacity", Min: 0.3, Max: 2.0, Default: 1.0},
-
-			// --- New for exp10 (detritus) ---
+			// --- Detritus ---
 			{Name: "detritus_fraction", Path: "energy.predator.detritus_fraction", Min: 0.0, Max: 0.30, Default: 0.10},
 			{Name: "carcass_fraction", Path: "detritus.carcass_fraction", Min: 0.30, Max: 0.90, Default: 0.70},
 			{Name: "detritus_decay_rate", Path: "detritus.decay_rate", Min: 0.01, Max: 0.20, Default: 0.05},
@@ -151,14 +144,7 @@ func (pv *ParamVector) ApplyToConfig(cfg *config.Config, values []float64) {
 	// --- Refugia ---
 	cfg.Refugia.Strength = clamped[i]; i++
 
-	// --- Particles ---
-	cfg.Particles.SpawnRate = clamped[i]; i++
-	cfg.Particles.InitialMass = clamped[i]; i++
-	cfg.Particles.DepositRate = clamped[i]; i++
-	cfg.Particles.PickupRate = clamped[i]; i++
-	cfg.Particles.CellCapacity = clamped[i]; i++
-
-	// --- New: Detritus ---
+	// --- Detritus ---
 	cfg.Energy.Predator.DetritusFraction = clamped[i]; i++
 	cfg.Detritus.CarcassFraction = clamped[i]; i++
 	cfg.Detritus.DecayRate = clamped[i]; i++
@@ -172,40 +158,3 @@ func (pv *ParamVector) ApplyToConfig(cfg *config.Config, values []float64) {
 	cfg.Reproduction.PreyDensityK = clamped[i]
 }
 
-// ExtractFromConfig extracts current parameter values from a Config struct.
-func (pv *ParamVector) ExtractFromConfig(cfg *config.Config) []float64 {
-	return []float64{
-		// Energy
-		cfg.Energy.Prey.MoveCost,
-		cfg.Energy.Predator.MoveCost,
-		cfg.Energy.Predator.BiteReward,
-		cfg.Energy.Predator.DigestTime,
-		// Reproduction
-		cfg.Reproduction.PredThreshold,
-		cfg.Reproduction.PreyCooldown,
-		cfg.Reproduction.PredCooldown,
-		cfg.Reproduction.ParentEnergySplit,
-		cfg.Reproduction.SpawnOffset,
-		cfg.Reproduction.HeadingJitter,
-		cfg.Reproduction.PredDensityK,
-		cfg.Reproduction.NewbornHuntCooldown,
-		// Refugia
-		cfg.Refugia.Strength,
-		// Particles
-		cfg.Particles.SpawnRate,
-		cfg.Particles.InitialMass,
-		cfg.Particles.DepositRate,
-		cfg.Particles.PickupRate,
-		cfg.Particles.CellCapacity,
-		// Detritus
-		cfg.Energy.Predator.DetritusFraction,
-		cfg.Detritus.CarcassFraction,
-		cfg.Detritus.DecayRate,
-		cfg.Detritus.DecayEfficiency,
-		// Diet thresholds
-		cfg.Energy.Interpolation.GrazingDietCap,
-		cfg.Energy.Interpolation.HuntingDietFloor,
-		// Prey soft cap
-		cfg.Reproduction.PreyDensityK,
-	}
-}

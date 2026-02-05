@@ -218,26 +218,6 @@ func (s PerfStats) LogStats() {
 	slog.Info("perf", attrs...)
 }
 
-// LogValue implements slog.LogValuer for structured logging.
-func (s PerfStats) LogValue() slog.Value {
-	attrs := []slog.Attr{
-		slog.Int64("avg_tick_us", s.AvgTickDuration.Microseconds()),
-		slog.Int64("min_tick_us", s.MinTickDuration.Microseconds()),
-		slog.Int64("max_tick_us", s.MaxTickDuration.Microseconds()),
-		slog.Float64("ticks_per_sec", s.TicksPerSecond),
-	}
-
-	if s.FPS > 0 {
-		attrs = append(attrs, slog.Float64("fps", s.FPS))
-	}
-
-	for phase, pct := range s.PhasePct {
-		attrs = append(attrs, slog.Float64(phase+"_pct", pct))
-	}
-
-	return slog.GroupValue(attrs...)
-}
-
 // PerfStatsCSV is a flat struct for CSV export of performance stats.
 type PerfStatsCSV struct {
 	WindowEnd          int32   `csv:"window_end"`

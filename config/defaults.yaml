@@ -133,8 +133,7 @@ energy:
     base_cost: 0.015         # Energy drain per second just for existing (metabolism)
     move_cost: 0.120         # Additional cost multiplier for movement (4x increase)
                              # Actual cost = move_cost * (speed/max_speed)^2 * dt
-    forage_rate: 0.045       # Energy gain per second at resource=1.0 at grazing speed
-    grazing_peak: 0.15       # Speed ratio for optimal foraging (~15% max speed)
+    forage_rate: 0.045       # Energy gain per second at resource=1.0
     accel_cost: 0.03         # Energy cost multiplier for thrust (acceleration penalty)
   predator:
     base_cost: 0.008         # Low base metabolism allows survival while learning to hunt
@@ -161,13 +160,13 @@ resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   forage_efficiency: 0.80    # Fraction of removed resource that becomes energy (eta_graze)
                              # Remainder is lost to heat (digestion inefficiency)
-  regen_rate: 0.05           # Regeneration rate towards potential per second
+  regen_rate: 0.01           # Regeneration rate towards potential per second
                              # Higher = faster recovery after grazing
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation
-# Controls the underlying FBM that determines resource hotspot distribution.
-# Generated once at startup; resource regenerates towards this baseline.
+# Controls the 3D OpenSimplex noise that determines resource hotspot distribution.
+# Hotspots drift smoothly over time via the time dimension of the noise.
 # -----------------------------------------------------------------------------
 potential:
   scale: 2.0                 # Base noise frequency (lower = larger hotspots)
@@ -176,6 +175,7 @@ potential:
   gain: 0.63                 # Amplitude multiplier per octave (higher = brighter peaks)
   contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
+  time_speed: 0.02           # Speed of hotspot drift (0 = static, 0.02 = slow drift)
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics
@@ -214,10 +214,6 @@ sensors:
 # GPU Rendering
 # -----------------------------------------------------------------------------
 gpu:
-  flow_texture_size: 128     # Resolution of flow field texture (pixels)
-                             # Higher = smoother visuals but more GPU memory
-  flow_update_interval: 30   # Ticks between flow field regeneration
-                             # Lower = smoother animation but higher GPU load
   resource_texture_size: 128 # Resolution of resource field texture (pixels)
 
 # -----------------------------------------------------------------------------

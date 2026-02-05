@@ -101,23 +101,6 @@ func (lt *LifetimeTracker) UpdateEnergy(entityID uint32, energy float32) {
 	}
 }
 
-// UpdateSurvivalTime updates the survival time based on current tick.
-func (lt *LifetimeTracker) UpdateSurvivalTime(entityID uint32, currentTick int32, dt float32) {
-	if s := lt.stats[entityID]; s != nil {
-		s.SurvivalTimeSec = float32(currentTick-s.BirthTick) * dt
-	}
-}
-
-// All returns all tracked stats (for snapshots).
-func (lt *LifetimeTracker) All() map[uint32]*LifetimeStats {
-	return lt.stats
-}
-
-// Count returns the number of tracked entities.
-func (lt *LifetimeTracker) Count() int {
-	return len(lt.stats)
-}
-
 // ActiveCladeCount returns the number of unique clades among living entities.
 func (lt *LifetimeTracker) ActiveCladeCount() int {
 	seen := make(map[uint64]struct{})

@@ -242,7 +242,6 @@ func (fe *FitnessEvaluator) copyConfig() *config.Config {
 	cfg.Bookmarks = fe.baseConfig.Bookmarks
 	cfg.Refugia = fe.baseConfig.Refugia
 	cfg.HallOfFame = fe.baseConfig.HallOfFame
-	cfg.Particles = fe.baseConfig.Particles
 	cfg.Archetypes = fe.baseConfig.Archetypes
 	cfg.Clades = fe.baseConfig.Clades
 	cfg.Detritus = fe.baseConfig.Detritus

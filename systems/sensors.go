@@ -358,7 +358,6 @@ func ComputeSensorsBounded(
 }
 
 // ComputeSensorsFromNeighbors calculates sensor inputs using precomputed neighbor data.
-// Deprecated: Use ComputeSensorsBounded for bounded work per entity.
 func ComputeSensorsFromNeighbors(
 	selfVel components.Velocity,
 	selfRot components.Rotation,
@@ -527,11 +526,6 @@ func computeResourceSensors(pos components.Position, heading float32, caps compo
 	return res
 }
 
-// wrapMod returns positive modulo for toroidal wrapping.
-func wrapMod(a, b float32) float32 {
-	return float32(math.Mod(float64(a)+float64(b), float64(b)))
-}
-
 // normalizeAngle brings angle to [-π, π] with single-step correction.
 // Works correctly when angle drift is bounded (e.g., heading += small_delta).
 // For unbounded angles, use normalizeAngleFull.
@@ -585,13 +579,6 @@ func smoothSaturate(x float32) float32 {
 
 func minf(a, b float32) float32 {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxf(a, b float32) float32 {
-	if a > b {
 		return a
 	}
 	return b

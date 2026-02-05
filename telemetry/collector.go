@@ -193,7 +193,3 @@ func (c *Collector) Flush(
 	return stats
 }
 
-// WindowDurationTicks returns the number of ticks per window.
-func (c *Collector) WindowDurationTicks() int32 {
-	return c.windowDurationTicks
-}

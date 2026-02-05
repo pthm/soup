@@ -220,17 +220,6 @@ func (hof *HallOfFame) Stats() (sizes []int, topFitnesses []float32) {
 	return
 }
 
-// LogHallEntry logs when an entry is added to the hall.
-func LogHallEntry(archetypeID uint8, diet float32, entityID uint32, fitness float32, hallSize int) {
-	slog.Debug("hall_of_fame_entry",
-		"archetype_id", archetypeID,
-		"diet", diet,
-		"entity_id", entityID,
-		"fitness", fitness,
-		"hall_size", hallSize,
-	)
-}
-
 // hallEntryJSON is the JSON-serializable representation of a hall entry.
 type hallEntryJSON struct {
 	EntityID         uint32              `json:"entity_id"`

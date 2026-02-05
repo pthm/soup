@@ -97,33 +97,6 @@ func HuntingEfficiency(diet float32) float32 {
 	return (diet - cachedHuntingDietFloor) / range_
 }
 
-// UpdatePreyForage adds energy gain from the resource field.
-// Call this before UpdateEnergy for prey entities.
-func UpdatePreyForage(
-	energy *components.Energy,
-	vel components.Velocity,
-	caps components.Capabilities,
-	resourceHere float32,
-	dt float32,
-) {
-	if !energy.Alive {
-		return
-	}
-
-	// Grazing efficiency is constant - organisms can graze while moving
-	// (required for static depleting resources)
-	_ = vel  // unused, kept for API stability
-	_ = caps // unused, kept for API stability
-	forageRate := cachedForageRate
-	gain := resourceHere * forageRate * dt
-	energy.Value += gain
-
-	// Clamp to max
-	if energy.Value > energy.Max {
-		energy.Value = energy.Max
-	}
-}
-
 // EnergyTransfer holds the full accounting for an energy transfer event.
 // The caller is responsible for depositing ToDet and tracking ToHeat.
 type EnergyTransfer struct {

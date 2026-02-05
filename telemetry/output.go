@@ -163,14 +163,6 @@ func (om *OutputManager) WriteHallOfFame(hof *HallOfFame) error {
 	return nil
 }
 
-// Dir returns the output directory path.
-func (om *OutputManager) Dir() string {
-	if om == nil {
-		return ""
-	}
-	return om.dir
-}
-
 // Close flushes and closes all output files.
 func (om *OutputManager) Close() error {
 	if om == nil {

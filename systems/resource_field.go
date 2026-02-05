@@ -3,16 +3,16 @@ package systems
 import (
 	"math"
 
+	opensimplex "github.com/ojrac/opensimplex-go"
 	"github.com/pthm-cable/soup/config"
 )
 
-// ResourceField implements a resource grid with sparse updates.
-// - Cap: immutable cell capacity (FBM-generated at startup)
-// - Res: current resource (starts as copy of Cap)
+// ResourceField implements a resource grid with animated potential.
+// - Cap: cell capacity (updated each tick from 3D OpenSimplex noise)
+// - Res: current resource (regenerates towards Cap)
 // - Det: detritus from dead organisms
-// - Only cells that have been disturbed are updated each tick
 type ResourceField struct {
-	// Cell capacity (immutable after init)
+	// Cell capacity (animated via 3D noise)
 	Cap  []float32
 	W, H int
 
@@ -22,17 +22,22 @@ type ResourceField struct {
 	// Detritus grid (dead biomass decaying back to resource)
 	Det []float32
 
-
 	// World dimensions
 	worldW, worldH float32
 
-	// Noise parameters (for FBM generation)
-	Seed       uint32
-	Scale      float32
+	// OpenSimplex noise generator
+	noise opensimplex.Noise
+
+	// Animation time (advances each tick)
+	time float64
+
+	// Noise parameters
+	Scale      float64
 	Octaves    int
-	Lacunarity float32
-	Gain       float32
-	Contrast   float32
+	Lacunarity float64
+	Gain       float64
+	Contrast   float64
+	TimeSpeed  float64
 
 	// Regeneration rate (fraction per second towards capacity)
 	RegenRate float32
@@ -40,12 +45,9 @@ type ResourceField struct {
 	// Detritus parameters
 	DetDecayRate float32
 	DetDecayEff  float32
-
-	// Epsilon for equilibrium check
-	epsilon float32
 }
 
-// NewResourceField creates a new resource field with sparse updates.
+// NewResourceField creates a new resource field with animated potential.
 func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg *config.Config) *ResourceField {
 	potCfg := cfg.Potential
 	detCfg := cfg.Detritus
@@ -63,22 +65,23 @@ func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg 
 		worldW: worldW,
 		worldH: worldH,
 
-		Seed:       uint32(seed),
-		Scale:      float32(potCfg.Scale),
+		noise: opensimplex.New(seed),
+		time:  0,
+
+		Scale:      potCfg.Scale,
 		Octaves:    potCfg.Octaves,
-		Lacunarity: float32(potCfg.Lacunarity),
-		Gain:       float32(potCfg.Gain),
-		Contrast:   float32(potCfg.Contrast),
+		Lacunarity: potCfg.Lacunarity,
+		Gain:       potCfg.Gain,
+		Contrast:   potCfg.Contrast,
+		TimeSpeed:  potCfg.TimeSpeed,
 
 		RegenRate:    float32(resCfg.RegenRate),
 		DetDecayRate: float32(detCfg.DecayRate),
 		DetDecayEff:  float32(detCfg.DecayEfficiency),
-
-		epsilon: 1e-4, // Loose enough for float32 convergence
 	}
 
-	// Generate cell capacity using FBM
-	rf.generateCapacity()
+	// Generate initial capacity using 3D FBM at time=0
+	rf.updateCapacity()
 
 	// Initialize resource grid from capacity
 	copy(rf.Res, rf.Cap)
@@ -100,6 +103,12 @@ func (rf *ResourceField) Graze(x, y float32, rate, dt float32, radiusCells int) 
 }
 
 func (rf *ResourceField) Step(dt float32, _ bool) {
+	// Advance time and update capacity field
+	if rf.TimeSpeed > 0 {
+		rf.time += float64(dt) * rf.TimeSpeed
+		rf.updateCapacity()
+	}
+
 	regenRate := rf.RegenRate * dt
 	if regenRate > 1 {
 		regenRate = 1
@@ -107,24 +116,12 @@ func (rf *ResourceField) Step(dt float32, _ bool) {
 
 	detRate := rf.DetDecayRate * dt
 	detEff := rf.DetDecayEff
-	eps := rf.epsilon
 
-	// Simple iteration with inline equilibrium skip
+	// Update all cells: regenerate towards capacity, decay detritus
 	for i := range rf.Res {
 		cap := rf.Cap[i]
 		res := rf.Res[i]
 		det := rf.Det[i]
-
-		// Skip cells at equilibrium (no detritus, resource at capacity)
-		if det <= eps {
-			diff := res - cap
-			if diff < 0 {
-				diff = -diff
-			}
-			if diff < eps {
-				continue
-			}
-		}
 
 		// Decay detritus
 		if det > 0 {
@@ -138,7 +135,7 @@ func (rf *ResourceField) Step(dt float32, _ bool) {
 			res = res + (cap-res)*regenRate
 		}
 
-		// Cap resource to capacity
+		// Clamp resource to capacity
 		if res > cap {
 			res = cap
 		}
@@ -210,12 +207,15 @@ func (rf *ResourceField) splatToDetGrid(x, y, mass float32) float32 {
 
 // --- Capacity Generation ---
 
-func (rf *ResourceField) generateCapacity() {
+// updateCapacity regenerates the capacity field using 3D OpenSimplex FBM.
+// The time dimension creates smooth animation of hotspots.
+func (rf *ResourceField) updateCapacity() {
+	t := rf.time
 	for y := 0; y < rf.H; y++ {
-		v := (float32(y) + 0.5) / float32(rf.H)
+		v := (float64(y) + 0.5) / float64(rf.H)
 		for x := 0; x < rf.W; x++ {
-			u := (float32(x) + 0.5) / float32(rf.W)
-			rf.Cap[y*rf.W+x] = rf.fbm2D(u, v)
+			u := (float64(x) + 0.5) / float64(rf.W)
+			rf.Cap[y*rf.W+x] = rf.fbm3D(u, v, t)
 		}
 	}
 }
@@ -320,60 +320,22 @@ func (rf *ResourceField) sampleGrid(grid []float32, x, y float32) float32 {
 
 // --- Noise Functions ---
 
-func (rf *ResourceField) fbm2D(u, v float32) float32 {
-	sum := float32(0)
-	amp := float32(0.5)
+// fbm3D generates fractal Brownian motion using 3D OpenSimplex noise.
+// The time parameter allows smooth animation of the noise field.
+func (rf *ResourceField) fbm3D(u, v, t float64) float32 {
+	sum := 0.0
+	amp := 0.5
 	freq := rf.Scale
 
 	for o := 0; o < rf.Octaves; o++ {
-		sum += amp * rf.valueNoise2D(u, v, freq)
+		// OpenSimplex returns [-1, 1], shift to [0, 1]
+		n := (rf.noise.Eval3(u*freq, v*freq, t) + 1) * 0.5
+		sum += amp * n
 		freq *= rf.Lacunarity
 		amp *= rf.Gain
 	}
 
-	return rfClamp01(float32(math.Pow(float64(sum), float64(rf.Contrast))))
-}
-
-func (rf *ResourceField) valueNoise2D(u, v float32, freq float32) float32 {
-	x := u * freq
-	y := v * freq
-
-	ix := int(math.Floor(float64(x)))
-	iy := int(math.Floor(float64(y)))
-
-	fx := x - float32(ix)
-	fy := y - float32(iy)
-
-	f := int(freq)
-	if f < 1 {
-		f = 1
-	}
-
-	i00x := rfModInt(ix, f)
-	i10x := rfModInt(ix+1, f)
-	i00y := rfModInt(iy, f)
-	i01y := rfModInt(iy+1, f)
-
-	a := rf.hash2D(i00x, i00y)
-	b := rf.hash2D(i10x, i00y)
-	c := rf.hash2D(i00x, i01y)
-	d := rf.hash2D(i10x, i01y)
-
-	ux := rfSmoothstep(fx)
-	uy := rfSmoothstep(fy)
-
-	ab := a + (b-a)*ux
-	cd := c + (d-c)*ux
-	return ab + (cd-ab)*uy
-}
-
-func (rf *ResourceField) hash2D(ix, iy int) float32 {
-	x := uint32(ix)
-	y := uint32(iy)
-	h := x*374761393 + y*668265263 + rf.Seed*1442695041
-	h = (h ^ (h >> 13)) * 1274126177
-	h ^= (h >> 16)
-	return float32(h&0x00FFFFFF) / float32(0x01000000)
+	return rfClamp01(float32(math.Pow(sum, rf.Contrast)))
 }
 
 // --- Telemetry Helpers ---
@@ -474,10 +436,6 @@ func rfClamp01(x float32) float32 {
 		return 1
 	}
 	return x
-}
-
-func rfSmoothstep(t float32) float32 {
-	return t * t * (3 - 2*t)
 }
 
 // Ensure ResourceField implements ResourceSampler at compile time

@@ -14,12 +14,6 @@ import (
 	"github.com/pthm-cable/soup/telemetry"
 )
 
-// ScreenWidth returns the configured screen width.
-func ScreenWidth() int { return config.Cfg().Screen.Width }
-
-// ScreenHeight returns the configured screen height.
-func ScreenHeight() int { return config.Cfg().Screen.Height }
-
 // Game holds the complete game state.
 type Game struct {
 	world *ecs.World
@@ -138,16 +132,6 @@ type Options struct {
 	StatsCallback      func(telemetry.WindowStats)    // called after each window flush
 	Config             *config.Config                 // optional per-game config (nil = use global)
 	SeedHallOfFamePath string                         // path to hall_of_fame.json for seeding initial brains
-}
-
-// NewGame creates a new game instance with default options.
-func NewGame() *Game {
-	return NewGameWithOptions(Options{
-		Seed:           42,
-		LogStats:       false,
-		StatsWindowSec: 10.0,
-		SnapshotDir:    "",
-	})
 }
 
 // NewGameWithOptions creates a new game instance with the given options.
@@ -412,8 +396,3 @@ func (g *Game) HeatLossAccum() float32 {
 	return g.heatLossAccum
 }
 
-// ParticleInputAccum returns the cumulative energy injected by particle spawning.
-// Returns 0 since the simplified resource system doesn't use particles.
-func (g *Game) ParticleInputAccum() float32 {
-	return 0
-}

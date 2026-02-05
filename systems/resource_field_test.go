@@ -190,6 +190,7 @@ func TestDetritusZeroDoesNothing(t *testing.T) {
 func TestEquilibriumSkip(t *testing.T) {
 	rf := NewResourceField(64, 64, 1280, 720, 42, config.Cfg())
 	rf.RegenRate = 1.0 // Fast regen for testing
+	rf.TimeSpeed = 0   // Disable animation for this test
 
 	// Graze to disturb a cell
 	dt := float32(1.0 / 60.0)

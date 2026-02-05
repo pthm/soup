@@ -142,26 +142,6 @@ func (g *SpatialGrid) cellIndex(x, y float32) int {
 	return row*g.cols + col
 }
 
-// toroidalDistanceSq computes squared distance with toroidal wrapping.
-func toroidalDistanceSq(x1, y1, x2, y2, w, h float32) float32 {
-	dx := x2 - x1
-	dy := y2 - y1
-
-	// Wrap to shortest path
-	if dx > w/2 {
-		dx -= w
-	} else if dx < -w/2 {
-		dx += w
-	}
-	if dy > h/2 {
-		dy -= h
-	} else if dy < -h/2 {
-		dy += h
-	}
-
-	return dx*dx + dy*dy
-}
-
 // ToroidalDelta returns the shortest path delta from (x1,y1) to (x2,y2).
 func ToroidalDelta(x1, y1, x2, y2, w, h float32) (dx, dy float32) {
 	dx = x2 - x1
