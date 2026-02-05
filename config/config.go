@@ -149,17 +149,19 @@ type MutationConfig struct {
 type ResourceConfig struct {
 	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
-	RegenRate        float64 `yaml:"regen_rate"`        // Regeneration rate towards potential per second
+	RegenRate        float64 `yaml:"regen_rate"`        // Regeneration rate when below capacity (per second)
+	DecayRate        float64 `yaml:"decay_rate"`        // Decay rate when above capacity (per second)
 }
 
 // PotentialConfig holds potential field generation parameters.
 type PotentialConfig struct {
-	Scale      float64 `yaml:"scale"`      // Base noise frequency
-	Octaves    int     `yaml:"octaves"`    // FBM octaves (detail level)
-	Lacunarity float64 `yaml:"lacunarity"` // Frequency multiplier per octave
-	Gain       float64 `yaml:"gain"`       // Amplitude multiplier per octave
-	Contrast   float64 `yaml:"contrast"`   // FBM contrast exponent (higher = sparser patches)
-	TimeSpeed  float64 `yaml:"time_speed"` // Speed of 3D noise animation (0 = static)
+	Scale          float64 `yaml:"scale"`           // Base noise frequency
+	Octaves        int     `yaml:"octaves"`         // FBM octaves (detail level)
+	Lacunarity     float64 `yaml:"lacunarity"`      // Frequency multiplier per octave
+	Gain           float64 `yaml:"gain"`            // Amplitude multiplier per octave
+	Contrast       float64 `yaml:"contrast"`        // FBM contrast exponent (higher = sparser patches)
+	TimeSpeed      float64 `yaml:"time_speed"`      // Speed of noise animation (0 = static)
+	UpdateInterval float64 `yaml:"update_interval"` // Seconds between capacity field updates
 }
 
 // EnergyConfig holds energy economics parameters.

@@ -160,8 +160,10 @@ resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   forage_efficiency: 0.80    # Fraction of removed resource that becomes energy (eta_graze)
                              # Remainder is lost to heat (digestion inefficiency)
-  regen_rate: 0.01           # Regeneration rate towards potential per second
+  regen_rate: 0.430          # Regeneration rate when below capacity (per second)
                              # Higher = faster recovery after grazing
+  decay_rate: 0.169          # Decay rate when above capacity (per second)
+                             # Lower = resources linger after hotspot moves away
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation
@@ -169,13 +171,14 @@ resource:
 # Hotspots drift smoothly over time via the time dimension of the noise.
 # -----------------------------------------------------------------------------
 potential:
-  scale: 2.0                 # Base noise frequency (lower = larger hotspots)
+  scale: 0.70                # Base noise frequency (lower = larger hotspots)
   octaves: 6                 # FBM octaves (fewer = smoother, less noisy)
-  lacunarity: 3.3            # Frequency multiplier per octave
-  gain: 0.63                 # Amplitude multiplier per octave (higher = brighter peaks)
-  contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
+  lacunarity: 3.0            # Frequency multiplier per octave
+  gain: 0.77                 # Amplitude multiplier per octave (higher = brighter peaks)
+  contrast: 8.0              # FBM contrast exponent (higher = sharper edges, sparser hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
-  time_speed: 0.02           # Speed of hotspot drift (0 = static, 0.02 = slow drift)
+  time_speed: 0.02          # Speed of hotspot drift (0 = static, 0.02 = slow drift)
+  update_interval: 0.25      # Seconds between capacity updates (lower = smoother drift, higher = faster)
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics

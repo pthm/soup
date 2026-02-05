@@ -8,11 +8,11 @@ import (
 )
 
 // ResourceField implements a resource grid with animated potential.
-// - Cap: cell capacity (updated each tick from 3D OpenSimplex noise)
+// - Cap: cell capacity (updated periodically from 4D OpenSimplex noise on a torus)
 // - Res: current resource (regenerates towards Cap)
 // - Det: detritus from dead organisms
 type ResourceField struct {
-	// Cell capacity (animated via 3D noise)
+	// Cell capacity (animated via 4D tiled noise)
 	Cap  []float32
 	W, H int
 
@@ -31,6 +31,10 @@ type ResourceField struct {
 	// Animation time (advances each tick)
 	time float64
 
+	// Capacity update tracking
+	lastCapUpdateTime float64
+	capUpdateInterval float64 // seconds between capacity updates
+
 	// Noise parameters
 	Scale      float64
 	Octaves    int
@@ -39,8 +43,10 @@ type ResourceField struct {
 	Contrast   float64
 	TimeSpeed  float64
 
-	// Regeneration rate (fraction per second towards capacity)
+	// Regeneration rate (fraction per second when below capacity)
 	RegenRate float32
+	// Decay rate (fraction per second when above capacity)
+	DecayRate float32
 
 	// Detritus parameters
 	DetDecayRate float32
@@ -68,6 +74,9 @@ func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg 
 		noise: opensimplex.New(seed),
 		time:  0,
 
+		lastCapUpdateTime: 0,
+		capUpdateInterval: potCfg.UpdateInterval, // Seconds between capacity updates
+
 		Scale:      potCfg.Scale,
 		Octaves:    potCfg.Octaves,
 		Lacunarity: potCfg.Lacunarity,
@@ -76,6 +85,7 @@ func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg 
 		TimeSpeed:  potCfg.TimeSpeed,
 
 		RegenRate:    float32(resCfg.RegenRate),
+		DecayRate:    float32(resCfg.DecayRate),
 		DetDecayRate: float32(detCfg.DecayRate),
 		DetDecayEff:  float32(detCfg.DecayEfficiency),
 	}
@@ -103,15 +113,24 @@ func (rf *ResourceField) Graze(x, y float32, rate, dt float32, radiusCells int) 
 }
 
 func (rf *ResourceField) Step(dt float32, _ bool) {
-	// Advance time and update capacity field
+	// Advance time
 	if rf.TimeSpeed > 0 {
 		rf.time += float64(dt) * rf.TimeSpeed
-		rf.updateCapacity()
+
+		// Only update capacity periodically (expensive noise calculation)
+		if rf.time-rf.lastCapUpdateTime >= rf.capUpdateInterval*rf.TimeSpeed {
+			rf.updateCapacity()
+			rf.lastCapUpdateTime = rf.time
+		}
 	}
 
 	regenRate := rf.RegenRate * dt
 	if regenRate > 1 {
 		regenRate = 1
+	}
+	decayRate := rf.DecayRate * dt
+	if decayRate > 1 {
+		decayRate = 1
 	}
 
 	detRate := rf.DetDecayRate * dt
@@ -130,14 +149,13 @@ func (rf *ResourceField) Step(dt float32, _ bool) {
 			res += detEff * decayed
 		}
 
-		// Regenerate towards capacity
-		if regenRate > 0 {
+		// Regenerate or decay towards capacity (different rates)
+		if res < cap {
+			// Below capacity: regenerate
 			res = res + (cap-res)*regenRate
-		}
-
-		// Clamp resource to capacity
-		if res > cap {
-			res = cap
+		} else if res > cap {
+			// Above capacity: decay (when hotspot moves away)
+			res = res + (cap-res)*decayRate
 		}
 
 		rf.Res[i] = res
@@ -207,15 +225,15 @@ func (rf *ResourceField) splatToDetGrid(x, y, mass float32) float32 {
 
 // --- Capacity Generation ---
 
-// updateCapacity regenerates the capacity field using 3D OpenSimplex FBM.
-// The time dimension creates smooth animation of hotspots.
+// updateCapacity regenerates the capacity field using 4D tiled OpenSimplex FBM.
+// The time offset to the torus angles creates smooth drift of hotspots.
 func (rf *ResourceField) updateCapacity() {
 	t := rf.time
 	for y := 0; y < rf.H; y++ {
 		v := (float64(y) + 0.5) / float64(rf.H)
 		for x := 0; x < rf.W; x++ {
 			u := (float64(x) + 0.5) / float64(rf.W)
-			rf.Cap[y*rf.W+x] = rf.fbm3D(u, v, t)
+			rf.Cap[y*rf.W+x] = rf.fbmTiled(u, v, t)
 		}
 	}
 }
@@ -320,16 +338,48 @@ func (rf *ResourceField) sampleGrid(grid []float32, x, y float32) float32 {
 
 // --- Noise Functions ---
 
-// fbm3D generates fractal Brownian motion using 3D OpenSimplex noise.
-// The time parameter allows smooth animation of the noise field.
-func (rf *ResourceField) fbm3D(u, v, t float64) float32 {
+// fbmTiled generates fractal Brownian motion using 4D OpenSimplex noise
+// mapped to a 2-torus for seamless tiling at world boundaries.
+// Time evolution is achieved by rotating the 4D sampling plane, which
+// causes hotspots to morph and evolve rather than just translate.
+func (rf *ResourceField) fbmTiled(u, v, t float64) float32 {
 	sum := 0.0
 	amp := 0.5
 	freq := rf.Scale
 
+	// Map 2D coordinates (u, v) to a 2-torus in 4D for seamless tiling.
+	twoPi := 2.0 * math.Pi
+	angleU := u * twoPi
+	angleV := v * twoPi
+
+	// Base torus coordinates (unit circle in each plane)
+	baseX := math.Cos(angleU)
+	baseY := math.Sin(angleU)
+	baseZ := math.Cos(angleV)
+	baseW := math.Sin(angleV)
+
+	// Rotate the 4D sampling plane over time to create evolution.
+	// Rotations in the xw and yz planes sample different "slices"
+	// of the 4D noise, causing patterns to morph rather than translate.
+	rotXW := t * 0.7  // rotation speed in xw plane
+	rotYZ := t * 0.53 // different speed in yz plane for richer motion
+
+	cosXW := math.Cos(rotXW)
+	sinXW := math.Sin(rotXW)
+	cosYZ := math.Cos(rotYZ)
+	sinYZ := math.Sin(rotYZ)
+
+	// Apply 4D rotations
+	// xw plane: x' = x*cos - w*sin, w' = x*sin + w*cos
+	nx := baseX*cosXW - baseW*sinXW
+	nw := baseX*sinXW + baseW*cosXW
+	// yz plane: y' = y*cos - z*sin, z' = y*sin + z*cos
+	ny := baseY*cosYZ - baseZ*sinYZ
+	nz := baseY*sinYZ + baseZ*cosYZ
+
 	for o := 0; o < rf.Octaves; o++ {
 		// OpenSimplex returns [-1, 1], shift to [0, 1]
-		n := (rf.noise.Eval3(u*freq, v*freq, t) + 1) * 0.5
+		n := (rf.noise.Eval4(nx*freq, ny*freq, nz*freq, nw*freq) + 1) * 0.5
 		sum += amp * n
 		freq *= rf.Lacunarity
 		amp *= rf.Gain
