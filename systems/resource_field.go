@@ -2,6 +2,8 @@ package systems
 
 import (
 	"math"
+	"runtime"
+	"sync"
 
 	opensimplex "github.com/ojrac/opensimplex-go"
 	"github.com/pthm-cable/soup/config"
@@ -59,6 +61,15 @@ func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg 
 	detCfg := cfg.Detritus
 	resCfg := cfg.Resource
 
+	// Scale TimeSpeed inversely with world size so hotspots drift at consistent
+	// physical speed regardless of world dimensions. Reference size is 1024 units.
+	const referenceWorldSize = 1024.0
+	worldSize := float64(worldW)
+	if float64(worldH) > worldSize {
+		worldSize = float64(worldH)
+	}
+	scaledTimeSpeed := potCfg.TimeSpeed * (referenceWorldSize / worldSize)
+
 	size := gridW * gridH
 	rf := &ResourceField{
 		Cap: make([]float32, size),
@@ -82,7 +93,7 @@ func NewResourceField(gridW, gridH int, worldW, worldH float32, seed int64, cfg 
 		Lacunarity: potCfg.Lacunarity,
 		Gain:       potCfg.Gain,
 		Contrast:   potCfg.Contrast,
-		TimeSpeed:  potCfg.TimeSpeed,
+		TimeSpeed:  scaledTimeSpeed,
 
 		RegenRate:    float32(resCfg.RegenRate),
 		DecayRate:    float32(resCfg.DecayRate),
@@ -244,15 +255,36 @@ func (rf *ResourceField) splatToDetGrid(x, y, mass float32) float32 {
 
 // updateCapacity regenerates the capacity field using 4D tiled OpenSimplex FBM.
 // The time offset to the torus angles creates smooth drift of hotspots.
+// Parallelized across CPU cores for performance.
 func (rf *ResourceField) updateCapacity() {
 	t := rf.time
-	for y := 0; y < rf.H; y++ {
-		v := (float64(y) + 0.5) / float64(rf.H)
-		for x := 0; x < rf.W; x++ {
-			u := (float64(x) + 0.5) / float64(rf.W)
-			rf.Cap[y*rf.W+x] = rf.fbmTiled(u, v, t)
+	numWorkers := runtime.NumCPU()
+	rowsPerWorker := (rf.H + numWorkers - 1) / numWorkers
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		startY := w * rowsPerWorker
+		endY := startY + rowsPerWorker
+		if endY > rf.H {
+			endY = rf.H
 		}
+		if startY >= rf.H {
+			break
+		}
+
+		wg.Add(1)
+		go func(yStart, yEnd int) {
+			defer wg.Done()
+			for y := yStart; y < yEnd; y++ {
+				v := (float64(y) + 0.5) / float64(rf.H)
+				for x := 0; x < rf.W; x++ {
+					u := (float64(x) + 0.5) / float64(rf.W)
+					rf.Cap[y*rf.W+x] = rf.fbmTiled(u, v, t)
+				}
+			}
+		}(startY, endY)
 	}
+	wg.Wait()
 }
 
 // --- Grazing ---
