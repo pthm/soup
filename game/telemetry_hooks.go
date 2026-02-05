@@ -25,6 +25,18 @@ func (g *Game) flushTelemetry() {
 	stats := g.collector.Flush(g.tick, g.numHerb, g.numCarn, preyEnergies, predEnergies, diets, meanResource, activeClades, pools)
 	perfStats := g.perfCollector.Stats()
 
+	// Update energy panel if in graphical mode
+	if g.energyPanel != nil {
+		g.energyPanel.Update(
+			stats.TotalRes,
+			stats.TotalDet,
+			stats.TotalOrganisms,
+			stats.HeatLossAccum,
+			stats.EnergyInput,
+			g.collector.WindowDurationSec(),
+		)
+	}
+
 	// Call stats callback if provided
 	if g.statsCallback != nil {
 		g.statsCallback(stats)

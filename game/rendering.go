@@ -45,6 +45,11 @@ func (g *Game) Draw() {
 		g.drawDebugMenu()
 	}
 
+	// Draw energy panel (bottom-left)
+	if g.energyPanel != nil {
+		g.energyPanel.Draw()
+	}
+
 	// Draw inspector panel
 	g.inspector.Draw(g.posMap, g.velMap, g.rotMap, g.bodyMap, g.energyMap, g.capsMap, g.orgMap, g.brains)
 

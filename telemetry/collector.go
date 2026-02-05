@@ -86,6 +86,11 @@ func (c *Collector) ShouldFlush(currentTick int32) bool {
 	return currentTick-c.windowStartTick >= c.windowDurationTicks
 }
 
+// WindowDurationSec returns the window duration in simulation seconds.
+func (c *Collector) WindowDurationSec() float64 {
+	return c.windowDurationSec
+}
+
 // EnergyPools holds energy pool totals for conservation tracking.
 type EnergyPools struct {
 	TotalRes       float64 // Total resource grid energy

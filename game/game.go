@@ -65,7 +65,8 @@ type Game struct {
 	parallel *parallelState
 
 	// Rendering
-	inspector *inspector.Inspector
+	inspector   *inspector.Inspector
+	energyPanel *inspector.EnergyPanel
 
 	// State
 	tick           int32
@@ -241,6 +242,9 @@ func NewGameWithOptions(opts Options) *Game {
 	if !opts.Headless {
 		// Inspector
 		g.inspector = inspector.NewInspector(int32(g.screenWidth), int32(g.screenHeight))
+
+		// Energy panel
+		g.energyPanel = inspector.NewEnergyPanel(int32(g.screenWidth), int32(g.screenHeight))
 
 		// Camera (centered on world with 1:1 zoom)
 		g.camera = camera.New(g.screenWidth, g.screenHeight, g.worldWidth, g.worldHeight)
