@@ -12,29 +12,37 @@ import (
 // Cached config values for hot path (initialized by InitSensorCache)
 var (
 	cachedMinEffectiveness   float32
-	cachedPreyVisionWeights  [NumSectors]float32
-	cachedPredVisionWeights  [NumSectors]float32
 	cachedResourceSampleDist float32
-	cachedForageRate         float32
-	cachedTransferEfficiency float32
-	cachedDetritusFraction   float32
-	cachedPreyAccelCost      float32
-	cachedPredAccelCost      float32
-	// Diet interpolation config
-	cachedGrazingDietCap   float32
-	cachedHuntingDietFloor float32
-	// Pre-computed interpolation values
-	cachedPreyBaseCost float32
-	cachedPredBaseCost float32
-	cachedPreyMoveCost float32
-	cachedPredMoveCost float32
-	// Bite cost and thrust deadzone for energy calculations
-	cachedBiteCost        float32
-	cachedThrustDeadzone  float32
+
+	// Unified energy costs (base values, multiplied by metabolic_rate)
+	cachedBaseCost  float32
+	cachedMoveCost  float32
+	cachedAccelCost float32
+
+	// Unified feeding
+	cachedFeedingRate       float32
+	cachedFeedingEfficiency float32
+	cachedCooldownFactor    float32
+
+	// Movement
+	cachedThrustDeadzone float32
+
 	// Diet-relative sensor thresholds
 	cachedDietThreshold float32
 	cachedKinRange      float32
-	cacheInitialized    bool
+
+	// Biomass model
+	cachedMetPerBio       float32
+	cachedGrowthRate      float32
+	cachedGrowthThreshold float32
+	cachedMinBio          float32
+	cachedBirthEfficiency float32
+	cachedBioCost         float32
+
+	// Archetype vision weights (indexed by archetype ID)
+	cachedArchetypeVisionWeights [][NumSectors]float32
+
+	cacheInitialized bool
 )
 
 // InitSensorCache caches config values for hot-path access.
@@ -47,36 +55,106 @@ func InitSensorCache() {
 // Use this when running with a per-game config (e.g., optimizer).
 func InitSensorCacheFrom(cfg *config.Config) {
 	cachedMinEffectiveness = float32(cfg.Capabilities.MinEffectiveness)
-	cachedPreyVisionWeights = loadVisionWeights(cfg.Capabilities.Prey.VisionWeights)
-	cachedPredVisionWeights = loadVisionWeights(cfg.Capabilities.Predator.VisionWeights)
 	cachedResourceSampleDist = float32(cfg.Sensors.ResourceSampleDistance)
-	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
-	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)
-	cachedDetritusFraction = float32(cfg.Energy.Predator.DetritusFraction)
-	cachedPreyAccelCost = float32(cfg.Energy.Prey.AccelCost)
-	cachedPredAccelCost = float32(cfg.Energy.Predator.AccelCost)
-	// Diet interpolation
-	cachedGrazingDietCap = float32(cfg.Energy.Interpolation.GrazingDietCap)
-	cachedHuntingDietFloor = float32(cfg.Energy.Interpolation.HuntingDietFloor)
-	cachedPreyBaseCost = float32(cfg.Energy.Prey.BaseCost)
-	cachedPredBaseCost = float32(cfg.Energy.Predator.BaseCost)
-	cachedPreyMoveCost = float32(cfg.Energy.Prey.MoveCost)
-	cachedPredMoveCost = float32(cfg.Energy.Predator.MoveCost)
-	// Bite cost and thrust deadzone
-	cachedBiteCost = float32(cfg.Energy.Predator.BiteCost)
+
+	// Unified energy costs
+	cachedBaseCost = float32(cfg.Energy.BaseCost)
+	cachedMoveCost = float32(cfg.Energy.MoveCost)
+	cachedAccelCost = float32(cfg.Energy.AccelCost)
+
+	// Unified feeding
+	cachedFeedingRate = float32(cfg.Energy.FeedingRate)
+	cachedFeedingEfficiency = float32(cfg.Energy.FeedingEfficiency)
+	cachedCooldownFactor = float32(cfg.Energy.CooldownFactor)
+
+	// Movement
 	cachedThrustDeadzone = float32(cfg.Capabilities.ThrustDeadzone)
+
 	// Diet-relative sensor thresholds
 	cachedDietThreshold = float32(cfg.Sensors.DietThreshold)
 	cachedKinRange = float32(cfg.Sensors.KinRange)
+
+	// Biomass model
+	cachedMetPerBio = float32(cfg.Biomass.MetPerBio)
+	cachedGrowthRate = float32(cfg.Biomass.GrowthRate)
+	cachedGrowthThreshold = float32(cfg.Biomass.GrowthThreshold)
+	cachedMinBio = float32(cfg.Biomass.MinBio)
+	cachedBirthEfficiency = float32(cfg.Biomass.BirthEfficiency)
+	cachedBioCost = float32(cfg.Biomass.BioCost)
+
+	// Cache vision weights per archetype
+	cachedArchetypeVisionWeights = make([][NumSectors]float32, len(cfg.Archetypes))
+	for i, arch := range cfg.Archetypes {
+		cachedArchetypeVisionWeights[i] = loadVisionWeights(arch.VisionWeights)
+	}
+
 	cacheInitialized = true
+}
+
+// GetCachedFeedingRate returns the cached feeding rate.
+func GetCachedFeedingRate() float32 {
+	return cachedFeedingRate
+}
+
+// GetCachedFeedingEfficiency returns the cached feeding efficiency.
+func GetCachedFeedingEfficiency() float32 {
+	return cachedFeedingEfficiency
+}
+
+// GetCachedCooldownFactor returns the cached cooldown factor.
+func GetCachedCooldownFactor() float32 {
+	return cachedCooldownFactor
+}
+
+// GetCachedMetPerBio returns the cached metabolic capacity per biomass.
+func GetCachedMetPerBio() float32 {
+	return cachedMetPerBio
+}
+
+// GetCachedGrowthRate returns the cached biomass growth rate.
+func GetCachedGrowthRate() float32 {
+	return cachedGrowthRate
+}
+
+// GetCachedGrowthThreshold returns the cached growth threshold.
+func GetCachedGrowthThreshold() float32 {
+	return cachedGrowthThreshold
+}
+
+// GetCachedMinBio returns the cached minimum biomass for children.
+func GetCachedMinBio() float32 {
+	return cachedMinBio
+}
+
+// GetCachedBirthEfficiency returns the cached birth efficiency.
+func GetCachedBirthEfficiency() float32 {
+	return cachedBirthEfficiency
+}
+
+// GetCachedBioCost returns the cached biomass maintenance cost.
+func GetCachedBioCost() float32 {
+	return cachedBioCost
+}
+
+// GetCachedThrustDeadzone returns the cached thrust deadzone.
+func GetCachedThrustDeadzone() float32 {
+	return cachedThrustDeadzone
+}
+
+// GetArchetypeVisionWeights returns the vision weights for the given archetype.
+func GetArchetypeVisionWeights(archetypeID uint8) *[NumSectors]float32 {
+	if int(archetypeID) < len(cachedArchetypeVisionWeights) {
+		return &cachedArchetypeVisionWeights[archetypeID]
+	}
+	return nil
 }
 
 // NumSectors is the number of vision sectors (compile-time constant for array sizing).
 // This value must match config.yaml sensors.num_sectors.
 const NumSectors = 8
 
-// NumInputs is the total number of neural network inputs: NumSectors*3 + 3.
-const NumInputs = NumSectors*3 + 3 // 27 for K=8 (food, threat, kin, energy, speed, diet)
+// NumInputs is the total number of neural network inputs: NumSectors*3 + 4.
+const NumInputs = NumSectors*3 + 4 // 28 for K=8 (food, threat, kin, energy, speed, diet, metabolic_rate)
 
 // TopKPerSector is the max neighbors kept per (sector, kind) for bounded sensing.
 // Total max neighbors processed = NumSectors * 2 * TopKPerSector = 32 for k=2.
@@ -156,7 +234,7 @@ func (s *SectorBins) Clear() {
 }
 
 // SensorInputs holds the computed sensor values for one entity.
-// Total: K*3 + 3 = 27 floats for K=8 sectors.
+// Total: K*3 + 4 = 28 floats for K=8 sectors.
 // Channels are diet-relative: food (can eat), threat (can eat me), kin (similar diet).
 type SensorInputs struct {
 	Food   [NumSectors]float32 // organisms with much lower diet (edible)
@@ -165,14 +243,15 @@ type SensorInputs struct {
 	// Nearest distances for inspector (not fed to neural network)
 	NearestFood   [NumSectors]float32 // nearest food distance per sector (0 = none)
 	NearestThreat [NumSectors]float32 // nearest threat distance per sector (0 = none)
-	Energy        float32             // self energy [0,1]
+	Energy        float32             // self energy ratio [0,1] (current/capacity)
 	Speed         float32             // self speed normalized [0,1]
 	Diet          float32             // self diet [0,1] (0=herbivore, 1=carnivore)
+	MetabolicRate float32             // self metabolic rate (typically 0.5-2.0, normalized to ~0-1)
 }
 
 // FillSlice writes sensor inputs into dst (must be len >= NumInputs).
 // Returns dst for convenience. Use this to avoid allocations.
-// Order: Food[K], Threat[K], Kin[K], Energy, Speed, Diet
+// Order: Food[K], Threat[K], Kin[K], Energy, Speed, Diet, MetabolicRate
 func (s *SensorInputs) FillSlice(dst []float32) []float32 {
 	idx := 0
 	for i := 0; i < NumSectors; i++ {
@@ -192,6 +271,8 @@ func (s *SensorInputs) FillSlice(dst []float32) []float32 {
 	dst[idx] = s.Speed
 	idx++
 	dst[idx] = s.Diet
+	idx++
+	dst[idx] = s.MetabolicRate
 	return dst[:NumInputs]
 }
 
@@ -227,6 +308,7 @@ func ComputeSensorsBounded(
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
 	selfDiet float32,
+	selfMetabolicRate float32,
 	selfCladeID uint64,
 	selfArchetypeID uint8,
 	neighbors []Neighbor,
@@ -241,8 +323,15 @@ func ComputeSensorsBounded(
 	speedSq := selfVel.X*selfVel.X + selfVel.Y*selfVel.Y
 	speed := fastSqrt(speedSq)
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
-	inputs.Energy = clamp01(selfEnergy.Value / selfEnergy.Max)
+	// Energy input: Met / MaxMet, where MaxMet = Bio * metPerBio
+	maxMet := selfEnergy.Bio * cachedMetPerBio
+	if maxMet > 0 {
+		inputs.Energy = clamp01(selfEnergy.Met / maxMet)
+	}
 	inputs.Diet = selfDiet
+	// Normalize metabolic rate: typical range 0.5-2.0 mapped to ~0-1
+	// Using (rate - 0.5) / 1.5 maps 0.5 to 0, 2.0 to 1.0
+	inputs.MetabolicRate = clamp01((selfMetabolicRate - 0.5) / 1.5)
 
 	visionRangeSq := selfCaps.VisionRange * selfCaps.VisionRange
 	invVisionRange := 1.0 / selfCaps.VisionRange
@@ -364,6 +453,7 @@ func ComputeSensorsFromNeighbors(
 	selfEnergy components.Energy,
 	selfCaps components.Capabilities,
 	selfDiet float32,
+	selfMetabolicRate float32,
 	selfCladeID uint64,
 	selfArchetypeID uint8,
 	neighbors []Neighbor,
@@ -373,7 +463,7 @@ func ComputeSensorsFromNeighbors(
 ) SensorInputs {
 	var bins SectorBins
 	return ComputeSensorsBounded(
-		selfVel, selfRot, selfEnergy, selfCaps, selfDiet,
+		selfVel, selfRot, selfEnergy, selfCaps, selfDiet, selfMetabolicRate,
 		selfCladeID, selfArchetypeID,
 		neighbors, orgMap, resourceField, selfPos, &bins,
 	)
@@ -398,7 +488,11 @@ func ComputeSensors(
 	// Self-state
 	speed := float32(math.Sqrt(float64(selfVel.X*selfVel.X + selfVel.Y*selfVel.Y)))
 	inputs.Speed = clamp01(speed / selfCaps.MaxSpeed)
-	inputs.Energy = clamp01(selfEnergy.Value / selfEnergy.Max)
+	// Energy input: Met / MaxMet, where MaxMet = Bio * metPerBio
+	maxMet := selfEnergy.Bio * cachedMetPerBio
+	if maxMet > 0 {
+		inputs.Energy = clamp01(selfEnergy.Met / maxMet)
+	}
 	inputs.Diet = selfDiet
 
 	// Diet thresholds

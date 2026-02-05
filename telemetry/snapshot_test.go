@@ -35,7 +35,9 @@ func TestSnapshotSaveLoad(t *testing.T) {
 				VelX:          0.5,
 				VelY:          -0.3,
 				Heading:       1.2,
-				Energy:        0.75,
+				Met:           0.75,
+				Bio:           1.0,
+				BioCap:        1.5,
 				Age:           30.5,
 				ReproCooldown: 2.0,
 				Brain: neural.BrainWeights{

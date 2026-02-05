@@ -5,6 +5,8 @@ import (
 	"math"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
+
+	"github.com/pthm-cable/soup/systems"
 )
 
 // Draw renders the game.
@@ -69,8 +71,13 @@ func (g *Game) drawEntities() {
 		// Color by diet: lerp purple (diet=0) → orange (diet=1)
 		color := dietColor(org.Diet)
 
-		// Dim based on energy ratio (E/Max)
-		energyRatio := energy.Value / energy.Max
+		// Dim based on energy ratio (Met / MaxMet)
+		metPerBio := systems.GetCachedMetPerBio()
+		maxMet := energy.Bio * metPerBio
+		var energyRatio float32
+		if maxMet > 0 {
+			energyRatio = energy.Met / maxMet
+		}
 		alpha := uint8(100 + int(energyRatio*155))
 		color.A = alpha
 

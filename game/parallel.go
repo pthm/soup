@@ -17,17 +17,18 @@ const parallelThreshold = 64
 
 // entitySnapshot captures read-only state for parallel processing.
 type entitySnapshot struct {
-	Entity      ecs.Entity
-	ID          uint32
-	Diet        float32
-	CladeID     uint64
-	ArchetypeID uint8
-	Pos         components.Position
-	Vel         components.Velocity
-	Rot         components.Rotation
-	Energy      components.Energy
-	Caps        components.Capabilities
-	Brain       *neural.FFNN
+	Entity        ecs.Entity
+	ID            uint32
+	Diet          float32
+	MetabolicRate float32
+	CladeID       uint64
+	ArchetypeID   uint8
+	Pos           components.Position
+	Vel           components.Velocity
+	Rot           components.Rotation
+	Energy        components.Energy
+	Caps          components.Capabilities
+	Brain         *neural.FFNN
 }
 
 // intent captures computed outputs to apply after parallel phase.
@@ -155,17 +156,18 @@ func (g *Game) updateBehaviorAndPhysicsParallel() {
 		}
 
 		g.parallel.snapshots = append(g.parallel.snapshots, entitySnapshot{
-			Entity:      entity,
-			ID:          org.ID,
-			Diet:        org.Diet,
-			CladeID:     org.CladeID,
-			ArchetypeID: org.FounderArchetypeID,
-			Pos:         *pos,
-			Vel:         *vel,
-			Rot:         *rot,
-			Energy:      *energy,
-			Caps:        *caps,
-			Brain:       brain,
+			Entity:        entity,
+			ID:            org.ID,
+			Diet:          org.Diet,
+			MetabolicRate: org.MetabolicRate,
+			CladeID:       org.CladeID,
+			ArchetypeID:   org.FounderArchetypeID,
+			Pos:           *pos,
+			Vel:           *vel,
+			Rot:           *rot,
+			Energy:        *energy,
+			Caps:          *caps,
+			Brain:         brain,
 		})
 	}
 
@@ -269,7 +271,7 @@ func (g *Game) applyIntents() {
 				snap.Entity, g.posMap,
 			)
 			sensorInputs := systems.ComputeSensorsBounded(
-				snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet,
+				snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet, snap.MetabolicRate,
 				snap.CladeID, snap.ArchetypeID,
 				scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
 				&scratch.SectorBins,
@@ -299,7 +301,7 @@ func (g *Game) computeChunk(i0, i1 int, scratch *workerScratch, dt float32) {
 
 		// Compute sensors (bounded to top-k per sector)
 		sensorInputs := systems.ComputeSensorsBounded(
-			snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet,
+			snap.Vel, snap.Rot, snap.Energy, snap.Caps, snap.Diet, snap.MetabolicRate,
 			snap.CladeID, snap.ArchetypeID,
 			scratch.Neighbors, g.orgMap, g.resourceField, snap.Pos,
 			&scratch.SectorBins,

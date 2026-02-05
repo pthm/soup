@@ -21,13 +21,16 @@ func (g *Game) updateSpatialGrid() {
 	}
 }
 
-// updateFeeding handles predator attacks (diet-scaled hunting).
+// updateFeeding handles organism attacks (diet-scaled hunting).
+// Hunting ability scales linearly with diet: diet=0 can't hunt, diet=1 full hunting.
+// Bite damage = feeding_rate × metabolic_rate × diet
+// Cooldown = energy_gained × cooldown_factor / metabolic_rate
 func (g *Game) updateFeeding() {
 	cfg := g.config()
-	digestTime := float32(cfg.Energy.Predator.DigestTime)
 	refugiaStrength := float32(cfg.Refugia.Strength)
-	baseBiteReward := float32(cfg.Energy.Predator.BiteReward)
-	thrustDeadzone := float32(cfg.Capabilities.ThrustDeadzone)
+	feedingRate := systems.GetCachedFeedingRate()
+	cooldownFactor := systems.GetCachedCooldownFactor()
+	thrustDeadzone := systems.GetCachedThrustDeadzone()
 
 	query := g.entityFilter.Query()
 	for query.Next() {
@@ -43,19 +46,18 @@ func (g *Game) updateFeeding() {
 			continue
 		}
 
-		// Hunting efficiency based on diet (0 for diet < hunting_floor)
-		huntEff := systems.HuntingEfficiency(org.Diet)
-		if huntEff <= 0 {
-			continue // Can't hunt with this diet
+		// Hunting ability scales with diet: diet=0 can't hunt, diet=1 full hunting
+		if org.Diet <= 0.05 {
+			continue // Pure herbivores can't hunt
 		}
 
-		// Skip if still digesting from a previous kill
+		// Skip if still digesting
 		if org.DigestCooldown > 0 {
 			g.collector.RecordBiteBlockedByDigest()
 			continue
 		}
 
-		// Skip if newborn predator still in hunt cooldown
+		// Skip if newborn still in hunt cooldown
 		if org.HuntCooldown > 0 {
 			continue
 		}
@@ -76,10 +78,9 @@ func (g *Game) updateFeeding() {
 				continue
 			}
 
-			// Can only eat targets with lower diet (prey-like behavior)
-			// Diet threshold: attacker must have significantly higher diet
+			// Can only eat targets with lower diet
 			if nOrg.Diet >= org.Diet-0.2 {
-				continue // Target has similar or higher diet, can't eat
+				continue // Target has similar or higher diet
 			}
 
 			// Get target position for refugia check
@@ -99,18 +100,15 @@ func (g *Game) updateFeeding() {
 				resourceHere := g.resourceField.Sample(nPos.X, nPos.Y)
 				successProb := 1.0 - refugiaStrength*resourceHere
 				if g.rng.Float32() > successProb {
-					// Bite missed due to refugia protection
 					g.collector.RecordBiteMissedRefugia()
 					break // one attempt per tick
 				}
 
-				targetWasAlive := nEnergy.Alive
+				// Bite damage = feeding_rate × metabolic_rate × diet
+				biteDamage := feedingRate * org.MetabolicRate * org.Diet
+				xfer := systems.TransferEnergy(energy, nEnergy, biteDamage)
 
-				// Bite reward scaled by hunting efficiency
-				biteReward := baseBiteReward * huntEff
-				xfer := systems.TransferEnergy(energy, nEnergy, biteReward)
-
-				// Conservation accounting: detritus and heat
+				// Conservation accounting
 				if xfer.ToDet > 0 {
 					g.resourceField.DepositDetritus(nPos.X, nPos.Y, xfer.ToDet)
 				}
@@ -120,16 +118,18 @@ func (g *Game) updateFeeding() {
 				g.heatLossAccum += xfer.ToHeat
 
 				if xfer.Removed > 0 {
-					// Record successful bite
 					g.collector.RecordBiteHit()
 					g.lifetimeTracker.RecordBiteHit(org.ID)
 
-					// Check for kill
-					if targetWasAlive && !nEnergy.Alive {
+					// Cooldown = energy_gained × cooldown_factor / metabolic_rate
+					digestTime := xfer.ToGainer * cooldownFactor / org.MetabolicRate
+					if digestTime > org.DigestCooldown {
+						org.DigestCooldown = digestTime
+					}
+
+					if xfer.Killed {
 						g.collector.RecordKill()
 						g.lifetimeTracker.RecordKill(org.ID)
-						// Start digestion cooldown after a kill
-						org.DigestCooldown = digestTime
 					}
 				}
 
@@ -139,13 +139,16 @@ func (g *Game) updateFeeding() {
 	}
 }
 
-// updateEnergy applies metabolic costs and prey foraging with true depletion.
+// updateEnergy applies metabolic costs, foraging, and biomass growth.
+// Grazing ability scales linearly with (1 - diet): diet=0 full grazing, diet=1 no grazing.
+// Graze rate = resource × feeding_rate × metabolic_rate × (1-diet)
 func (g *Game) updateEnergy() {
 	cfg := g.config()
 	dt := cfg.Derived.DT32
 	grazeRadius := cfg.Resource.GrazeRadius
-	forageEfficiency := float32(cfg.Resource.ForageEfficiency)
-	forageRate := float32(cfg.Energy.Prey.ForageRate)
+	feedingRate := systems.GetCachedFeedingRate()
+	feedingEfficiency := systems.GetCachedFeedingEfficiency()
+	metPerBio := systems.GetCachedMetPerBio()
 
 	query := g.entityFilter.Query()
 	for query.Next() {
@@ -155,29 +158,28 @@ func (g *Game) updateEnergy() {
 			continue
 		}
 
-		// Grazing: diet determines grazing ability (diet=0 full grazer, diet>=cap no grazing)
-		dietGrazeEff := systems.GrazingEfficiency(org.Diet)
-		if dietGrazeEff > 0 {
-			// Get resource level at position for grazing rate scaling
-			// No speed penalty - organisms can graze while moving (required for static resources)
+		// Grazing ability scales with (1 - diet): diet=0 full grazing, diet=1 no grazing
+		grazeAbility := 1.0 - org.Diet
+		if grazeAbility > 0.05 {
+			// Graze rate = resource × feeding_rate × metabolic_rate × (1-diet)
 			resourceHere := g.resourceField.Sample(pos.X, pos.Y)
-			grazeRate := resourceHere * forageRate * dietGrazeEff
+			grazeRate := resourceHere * feedingRate * org.MetabolicRate * grazeAbility
 
-			// Graze: remove resource and get actual removed amount
+			// Remove resource and get actual removed amount
 			removed := g.resourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)
 
-			// Energy gain = removed * eta_graze * diet grazing efficiency
-			// Remainder is digestion heat loss
-			gain := removed * forageEfficiency * dietGrazeEff
+			// Energy gain = removed × feeding_efficiency → Met
+			gain := removed * feedingEfficiency
 			grazingHeat := removed - gain
 			g.heatLossAccum += grazingHeat
 
-			energy.Value += gain
+			energy.Met += gain
 
-			// Route overflow to detritus (waste, not heat)
-			if energy.Value > energy.Max {
-				overflow := energy.Value - energy.Max
-				energy.Value = energy.Max
+			// Route Met overflow to detritus (MaxMet = Bio * metPerBio)
+			maxMet := energy.Bio * metPerBio
+			if energy.Met > maxMet {
+				overflow := energy.Met - maxMet
+				energy.Met = maxMet
 				g.resourceField.DepositDetritus(pos.X, pos.Y, overflow)
 			}
 
@@ -185,8 +187,11 @@ func (g *Game) updateEnergy() {
 			g.lifetimeTracker.RecordForage(org.ID, gain)
 		}
 
-		// Apply metabolic costs (diet-interpolated); track heat for conservation
-		metabolicCost := systems.UpdateEnergy(energy, *vel, *caps, org.Diet, dt)
+		// Grow biomass from surplus Met (no heat loss, just pool transfer)
+		systems.GrowBiomass(energy, dt)
+
+		// Apply metabolic costs (scaled by metabolic_rate); track heat for conservation
+		metabolicCost := systems.UpdateEnergy(energy, *vel, *caps, org.MetabolicRate, dt)
 		g.heatLossAccum += metabolicCost
 	}
 }
@@ -226,11 +231,23 @@ func (g *Game) updateCooldowns() {
 }
 
 // updateReproduction handles asexual reproduction with mutation and clade tracking.
+// Parent pays (childBio + childMet) / birthEfficiency from their Met pool.
+// Child starts with minBio and minimal Met, must grow to reach full size.
 func (g *Game) updateReproduction() {
 	cfg := g.config()
 	repro := &cfg.Reproduction
 	mutation := &cfg.Mutation
 	cladeCfg := &cfg.Clades
+
+	// Biomass config
+	minBio := systems.GetCachedMinBio()
+	birthEfficiency := systems.GetCachedBirthEfficiency()
+	metPerBio := systems.GetCachedMetPerBio()
+
+	// Child starts with minBio and minimal Met (enough to survive briefly)
+	childBio := minBio
+	childMet := minBio * metPerBio * 0.5 // Start at 50% Met capacity
+	birthPrice := (childBio + childMet) / birthEfficiency
 
 	// Collect births to spawn after iteration
 	type birthInfo struct {
@@ -240,7 +257,8 @@ func (g *Game) updateReproduction() {
 		parentDiet         float32
 		parentCladeID      uint64
 		founderArchetypeID uint8
-		childEnergy        float32
+		childBio           float32
+		childMet           float32
 	}
 	var births []birthInfo
 
@@ -260,7 +278,7 @@ func (g *Game) updateReproduction() {
 			continue
 		}
 
-		// Check reproduction thresholds
+		// Check reproduction thresholds (using Met/MaxMet ratio)
 		var threshold, cooldown float32
 		if org.Diet >= 0.5 {
 			threshold = float32(repro.PredThreshold)
@@ -271,7 +289,17 @@ func (g *Game) updateReproduction() {
 		}
 
 		maturityAge := float32(repro.MaturityAge)
-		if energy.Value < threshold || energy.Age < maturityAge || org.ReproCooldown > 0 {
+		maxMet := energy.Bio * metPerBio
+		var energyRatio float32
+		if maxMet > 0 {
+			energyRatio = energy.Met / maxMet
+		}
+		if energyRatio < threshold || energy.Age < maturityAge || org.ReproCooldown > 0 {
+			continue
+		}
+
+		// Check if parent can afford the birth price
+		if energy.Met < birthPrice {
 			continue
 		}
 
@@ -297,16 +325,16 @@ func (g *Game) updateReproduction() {
 			}
 		}
 
-		// Reproduction: parent pays energy, child spawns nearby
+		// Reproduction: parent pays from Met pool
 		parentBrain, ok := g.brains[org.ID]
 		if !ok {
 			continue
 		}
 
-		// Energy split: child gets what the parent loses (conservation)
-		parentEnergyBefore := energy.Value
-		energy.Value *= float32(repro.ParentEnergySplit)
-		childEnergyValue := parentEnergyBefore - energy.Value
+		// Parent pays birth price (conservation: parent loses, child gains + heat)
+		energy.Met -= birthPrice
+		birthHeat := birthPrice - (childBio + childMet) // inefficiency goes to heat
+		g.heatLossAccum += birthHeat
 
 		// Set cooldown
 		org.ReproCooldown = cooldown
@@ -328,7 +356,8 @@ func (g *Game) updateReproduction() {
 			parentDiet:         org.Diet,
 			parentCladeID:      org.CladeID,
 			founderArchetypeID: org.FounderArchetypeID,
-			childEnergy:        childEnergyValue,
+			childBio:           childBio,
+			childMet:           childMet,
 		})
 	}
 
@@ -373,14 +402,23 @@ func (g *Game) updateReproduction() {
 		childID := g.nextID
 		g.nextID++
 
+		// Get archetype for capabilities
+		arch := &cfg.Archetypes[b.founderArchetypeID]
+
 		pos := components.Position{X: b.x, Y: b.y}
 		vel := components.Velocity{X: 0, Y: 0}
 		rot := components.Rotation{Heading: b.heading, AngVel: 0}
 		body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
-		childEnergy := components.Energy{Value: b.childEnergy, Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
-		caps := components.DefaultCapabilities(childDiet)
+		childEnergy := components.Energy{
+			Met:    b.childMet,
+			Bio:    b.childBio,
+			BioCap: float32(arch.EnergyCapacity), // BioCap from archetype
+			Age:    0,
+			Alive:  true,
+		}
+		caps := components.CapabilitiesFromArchetype(arch)
 		cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
-		// Carnivores can't hunt immediately at birth
+		// High-diet organisms can't hunt immediately at birth
 		huntCooldown := float32(0)
 		if childDiet >= 0.5 {
 			huntCooldown = float32(repro.NewbornHuntCooldown)
@@ -389,6 +427,7 @@ func (g *Game) updateReproduction() {
 			ID:                 childID,
 			FounderArchetypeID: b.founderArchetypeID,
 			Diet:               childDiet,
+			MetabolicRate:      float32(arch.MetabolicRate),
 			CladeID:            childCladeID,
 			ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
 			HuntCooldown:       huntCooldown,

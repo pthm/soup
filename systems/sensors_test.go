@@ -14,18 +14,20 @@ func init() {
 
 func TestSensorInputsAsSlice(t *testing.T) {
 	inputs := SensorInputs{
-		Food:   [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
-		Threat: [NumSectors]float32{0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1},
-		Kin:    [NumSectors]float32{},
-		Energy: 0.8,
-		Speed:  0.5,
-		Diet:   0.3,
+		Food:          [NumSectors]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
+		Threat:        [NumSectors]float32{0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1},
+		Kin:           [NumSectors]float32{},
+		Energy:        0.8,
+		Speed:         0.5,
+		Diet:          0.3,
+		MetabolicRate: 0.75,
 	}
 
 	slice := inputs.AsSlice()
 
-	if len(slice) != NumSectors*3+3 {
-		t.Errorf("AsSlice wrong length: got %d, want %d", len(slice), NumSectors*3+3)
+	// K*3 sectors + 4 self-state (energy, speed, diet, metabolic_rate)
+	if len(slice) != NumSectors*3+4 {
+		t.Errorf("AsSlice wrong length: got %d, want %d", len(slice), NumSectors*3+4)
 	}
 
 	// Check food values
@@ -35,7 +37,7 @@ func TestSensorInputsAsSlice(t *testing.T) {
 		}
 	}
 
-	// Check energy, speed, and diet
+	// Check energy, speed, diet, and metabolic_rate
 	if slice[NumSectors*3] != inputs.Energy {
 		t.Errorf("Energy mismatch: got %f, want %f", slice[NumSectors*3], inputs.Energy)
 	}
@@ -45,14 +47,17 @@ func TestSensorInputsAsSlice(t *testing.T) {
 	if slice[NumSectors*3+2] != inputs.Diet {
 		t.Errorf("Diet mismatch: got %f, want %f", slice[NumSectors*3+2], inputs.Diet)
 	}
+	if slice[NumSectors*3+3] != inputs.MetabolicRate {
+		t.Errorf("MetabolicRate mismatch: got %f, want %f", slice[NumSectors*3+3], inputs.MetabolicRate)
+	}
 }
 
 func TestComputeSensorsNoNeighbors(t *testing.T) {
 	pos := components.Position{X: 100, Y: 100}
 	vel := components.Velocity{X: 1, Y: 0}
 	rot := components.Rotation{Heading: 0}
-	energy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	caps := components.DefaultCapabilities(0.0) // diet=0 (prey)
+	energy := components.Energy{Met: 0.8, Bio: 1.0, BioCap: 1.5, Alive: true}
+	caps := testCapabilities() // diet=0 (prey)
 
 	inputs := ComputeSensors(
 		pos, vel, rot, energy, caps,
@@ -140,8 +145,8 @@ func TestThreatDetection(t *testing.T) {
 	// Set up prey (herbivore) looking forward (heading=0)
 	selfVel := components.Velocity{X: 0, Y: 0}
 	selfRot := components.Rotation{Heading: 0}
-	selfEnergy := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	selfCaps := components.DefaultCapabilities(0.0) // diet=0 (prey)
+	selfEnergy := components.Energy{Met: 0.8, Bio: 1.0, BioCap: 1.5, Alive: true}
+	selfCaps := testCapabilities() // diet=0 (prey)
 	selfDiet := float32(0.0) // Pure herbivore
 	selfCladeID := uint64(1)
 	selfArchetypeID := uint8(0) // Grazer archetype

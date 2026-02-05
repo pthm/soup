@@ -79,7 +79,8 @@ type Game struct {
 	stepsPerUpdate int // simulation ticks per update call
 
 	// Energy accounting
-	heatLossAccum float32 // cumulative energy lost to heat (metabolism, inefficiency, decay)
+	heatLossAccum    float32 // cumulative energy lost to heat (metabolism, inefficiency, decay)
+	energyInputAccum float32 // cumulative energy input from resource regeneration
 
 	// Debug state
 	debugMode          bool
@@ -289,7 +290,9 @@ func (g *Game) simulationStep() {
 
 	// 0. Update resource field (regeneration, detritus decay)
 	g.perfCollector.StartPhase(telemetry.PhaseResourceField)
-	g.resourceField.Step(cfg.Derived.DT32, true)
+	stepResult := g.resourceField.Step(cfg.Derived.DT32, true)
+	g.heatLossAccum += stepResult.HeatLoss
+	g.energyInputAccum += stepResult.EnergyInput
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)

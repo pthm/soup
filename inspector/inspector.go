@@ -263,10 +263,22 @@ func (ins *Inspector) Draw(
 	// Diet bar
 	y += DrawBar(x, y, "Diet", org.Diet, nil)
 
-	// Energy bar (normalized to max)
+	// Metabolic energy bar (normalized to MaxMet)
 	if energy != nil {
-		energyRatio := energy.Value / energy.Max
-		y += DrawBar(x, y, "Energy", energyRatio, nil)
+		metPerBio := systems.GetCachedMetPerBio()
+		maxMet := energy.Bio * metPerBio
+		var metRatio float32
+		if maxMet > 0 {
+			metRatio = energy.Met / maxMet
+		}
+		y += DrawBar(x, y, "Met", metRatio, nil)
+
+		// Biomass bar (normalized to BioCap)
+		var bioRatio float32
+		if energy.BioCap > 0 {
+			bioRatio = energy.Bio / energy.BioCap
+		}
+		y += DrawBar(x, y, "Bio", bioRatio, nil)
 	}
 
 	// Age

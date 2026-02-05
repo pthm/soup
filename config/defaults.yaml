@@ -36,35 +36,20 @@ physics:
 # -----------------------------------------------------------------------------
 entity:
   body_radius: 10.0          # Collision/visual radius of entities in world units
-  initial_energy: 0.8        # Starting energy for newly spawned entities (absolute units)
-  max_energy: 1.0            # Maximum energy capacity per organism (absolute units)
+  initial_energy: 1.0        # Starting energy for newly spawned entities (absolute units)
+  max_energy: 1.5            # Maximum energy capacity per organism (absolute units)
 
 # -----------------------------------------------------------------------------
-# Entity Capabilities
-# All entities have 360° vision divided into fixed sectors.
-# Effectiveness varies by angle using configurable vision zones.
+# Entity Capabilities (Shared)
+# Vision range and weights are now per-archetype (see archetypes section).
 # -----------------------------------------------------------------------------
 capabilities:
-  prey:
-    vision_range: 100.0      # Slightly shorter range than predators
-    # Vision weights: per-sector effectiveness (0..1)
-    # Sector order: back, back-right, right, front-right, front, front-left, left, back-left
-    # Prey have enhanced peripheral vision on both sides for threat detection
-    vision_weights: [0.05, 0.6, 1.0, 0.6, 0.15, 0.6, 1.0, 0.6]
-  predator:
-    vision_range: 140.0      # Longer range for hunting
-    # Predators have focused forward vision for tracking prey
-    vision_weights: [0.0, 0.0, 0.0, 0.6, 1.0, 0.6, 0.0, 0.0]
-  # Minimum signal effectiveness at worst angles (0-1)
-  # Higher = more omnidirectional awareness, lower = stronger specialization
-  min_effectiveness: 0.05
-  # Shared movement capabilities
+  min_effectiveness: 0.05    # Minimum vision weight floor (0-1)
   max_speed: 80.0            # Maximum velocity magnitude (world units/sec)
   max_accel: 180.0           # Maximum acceleration for velocity smoothing
   max_turn_rate: 3.5         # Maximum rotation speed (radians/sec)
   drag: 1.2                  # Velocity damping factor; higher = slower stopping
-  bite_range: 10.0           # Distance at which predators can bite prey (world units)
-  bite_cost: 0.02            # Energy cost per bite attempt (see energy.predator.bite_cost for rate)
+  bite_range: 10.0           # Distance at which organisms can bite (world units)
   thrust_deadzone: 0.1       # Thrust below this value is treated as 0 (encourages dwelling)
 
 # -----------------------------------------------------------------------------
@@ -87,9 +72,9 @@ population:
 # Asexual reproduction occurs when energy exceeds threshold and cooldown expires
 # -----------------------------------------------------------------------------
 reproduction:
-  prey_threshold: 0.85       # Minimum energy for prey to reproduce (0-1)
-  pred_threshold: 0.85       # Minimum energy for predators to reproduce (0-1)
-                             # Higher threshold = predators must be well-fed to breed
+  prey_threshold: 0.85       # Minimum energy ratio (value/max) for prey to reproduce
+  pred_threshold: 0.85       # Minimum energy ratio (value/max) for predators to reproduce
+                             # Higher threshold = must be well-fed to breed
   maturity_age: 8.0          # Minimum age in seconds before entity can reproduce
                              # Prevents immediate reproduction after birth
   prey_cooldown: 8.0         # Seconds between prey reproductions
@@ -98,7 +83,7 @@ reproduction:
   cooldown_jitter: 1.0       # Random +/- variation in initial cooldown (seconds)
                              # Prevents synchronized reproduction waves
   parent_energy_split: 0.55  # Fraction of energy parent keeps after reproduction
-  child_energy: 0.35         # Energy child starts with (independent of parent's energy)
+                             # Child receives the remainder (conservation-based transfer)
   spawn_offset: 15.0         # Base distance child spawns from parent (world units)
   heading_jitter: 0.25       # Random heading variation for child (radians)
   pred_density_k: 0          # Density-dependent predator reproduction: p = prey/(prey+K)
@@ -125,45 +110,29 @@ mutation:
                              # Lower = more stable baseline behaviors
 
 # -----------------------------------------------------------------------------
-# Energy Economics
-# The balance between these values determines predator-prey dynamics
+# Energy Economics (Unified)
+# All costs are base values multiplied by the organism's metabolic_rate.
+# Diet determines food source access: grazing scales by (1-diet), hunting by diet.
 # -----------------------------------------------------------------------------
 energy:
-  prey:
-    base_cost: 0.015         # Energy drain per second just for existing (metabolism)
-    move_cost: 0.120         # Additional cost multiplier for movement (4x increase)
-                             # Actual cost = move_cost * (speed/max_speed)^2 * dt
-    forage_rate: 0.045       # Energy gain per second at resource=1.0
-    accel_cost: 0.03         # Energy cost multiplier for thrust (acceleration penalty)
-  predator:
-    base_cost: 0.008         # Low base metabolism allows survival while learning to hunt
-    move_cost: 0.025         # Reduced movement cost for chasing
-    bite_cost: 0.003         # Energy cost per bite attempt
-    bite_reward: 0.50        # Base energy transferred per successful bite
-    transfer_efficiency: 0.85 # Fraction of taken energy predator actually receives
-    detritus_fraction: 0.0   # Fraction of removed energy deposited as detritus ("messy kills")
-    digest_time: 0.8         # Seconds after a kill before predator can bite again
-    accel_cost: 0.010        # Energy cost multiplier for thrust (acceleration penalty)
-  # Diet-based interpolation between prey/predator energy economics
-  # Costs and abilities scale smoothly with diet instead of binary switching
-  interpolation:
-    grazing_diet_cap: 0.3    # Diet above this = no grazing benefit (0.0-1.0)
-                             # At diet=0: full grazing, at diet=0.3+: no grazing
-    hunting_diet_floor: 0.7  # Diet below this = no hunting benefit (0.0-1.0)
-                             # At diet=0.7-: no hunting, at diet=1.0: full hunting
+  # Base costs (multiplied by metabolic_rate)
+  base_cost: 0.007           # Energy drain per second for existing (metabolism)
+  move_cost: 0.035           # Movement cost multiplier: move_cost * (speed/max_speed)^2 * dt
+  accel_cost: 0.012          # Acceleration cost multiplier: accel_cost * thrust^2 * dt
+
+  # Unified feeding (multiplied by metabolic_rate, scaled by diet)
+  feeding_rate: 0.06         # Base intake rate (grazing per sec, bite damage)
+  feeding_efficiency: 0.80   # Fraction of intake converted to energy
+  cooldown_factor: 1.5       # Digest cooldown = energy_gained * cooldown_factor / metabolic_rate
 
 # -----------------------------------------------------------------------------
 # Resource Field
-# Controls organism grazing behavior and resource regeneration
+# Controls resource regeneration dynamics
 # -----------------------------------------------------------------------------
 resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
-  forage_efficiency: 0.80    # Fraction of removed resource that becomes energy (eta_graze)
-                             # Remainder is lost to heat (digestion inefficiency)
   regen_rate: 0.430          # Regeneration rate when below capacity (per second)
-                             # Higher = faster recovery after grazing
   decay_rate: 0.169          # Decay rate when above capacity (per second)
-                             # Lower = resources linger after hotspot moves away
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation
@@ -302,20 +271,50 @@ detritus:
                                # Higher = faster recycling (0.02-0.08 typical)
   decay_efficiency: 0.50       # Fraction of decayed detritus converted to resource
                                # Remainder is lost to heat (0.40-0.70 typical)
-  carcass_fraction: 0.70       # Fraction of organism energy deposited as detritus on death
+  carcass_fraction: 0.70       # Fraction of organism total (Bio+Met) deposited as detritus on death
                                # Remainder is lost to heat (0.60-0.80 typical)
 
 # -----------------------------------------------------------------------------
+# Biomass (Two-Pool Energy Model)
+# Organisms have two energy pools:
+# - Met (metabolic): short-term fuel from eating, used for movement/costs
+# - Bio (biomass): structural body mass, grows from surplus Met
+# This creates "healthy prey are more rewarding" dynamics and proper nutrient cycling.
+# -----------------------------------------------------------------------------
+biomass:
+  met_per_bio: 1.0             # MaxMet = Bio * this (metabolic capacity per biomass)
+  growth_rate: 0.03            # Bio growth per second when surplus Met available
+  growth_threshold: 0.8        # Grow only when Met > MaxMet * this (buffer before growing)
+  min_bio: 0.3                 # Child starts with this biomass (must grow to BioCap)
+  birth_efficiency: 0.8        # Parent pays (childBio + childMet) / this
+                               # Inefficiency goes to heat
+  bio_cost: 0.003              # Base metabolic drain per Bio per second
+                               # Larger bodies cost more to maintain
+
+# -----------------------------------------------------------------------------
 # Archetypes (Founder Templates)
-# Define organism templates that determine initial diet and behavior tendencies.
-# Diet is a continuous heritable trait: 0 = pure herbivore, 1 = pure carnivore.
-# Archetypes are immutable; diet drifts through mutation.
+# Define organism templates with full capability sets.
+# Each archetype specifies diet, metabolic rate, energy capacity, and vision.
+# Diet determines food sources: grazing scales by (1-diet), hunting by diet.
+# Metabolic rate scales all costs and intake rates.
 # -----------------------------------------------------------------------------
 archetypes:
   - name: grazer
-    diet: 0.0                  # Pure herbivore (prey)
+    diet: 0.0                  # Pure herbivore - grazes only
+    metabolic_rate: 1.0        # Standard metabolism
+    energy_capacity: 1.5       # Good reserves for transit between patches
+    vision_range: 100.0        # Moderate detection range
+    # Vision weights: peripheral emphasis for threat detection
+    # Sector order: back, back-right, right, front-right, front, front-left, left, back-left
+    vision_weights: [0.05, 0.6, 1.0, 0.6, 0.15, 0.6, 1.0, 0.6]
+
   - name: hunter
-    diet: 1.0                  # Pure carnivore (predator)
+    diet: 1.0                  # Pure carnivore - hunts only
+    metabolic_rate: 0.75       # Efficient metabolism (ambush predator)
+    energy_capacity: 1.2       # Less buffer needed (gets big meals)
+    vision_range: 140.0        # Longer range for hunting
+    # Vision weights: forward focus for tracking prey
+    vision_weights: [0.0, 0.0, 0.0, 0.6, 1.0, 0.6, 0.0, 0.0]
 
 # -----------------------------------------------------------------------------
 # Clade Tracking

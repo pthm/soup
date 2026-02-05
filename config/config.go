@@ -35,15 +35,31 @@ type Config struct {
 	Archetypes   []ArchetypeConfig  `yaml:"archetypes"`
 	Clades       CladeConfig        `yaml:"clades"`
 	Detritus     DetritusConfig     `yaml:"detritus"`
+	Biomass      BiomassConfig      `yaml:"biomass"`
 
 	// Derived values computed after loading
 	Derived DerivedConfig `yaml:"-"`
 }
 
+// BiomassConfig holds biomass/growth parameters for the two-pool energy model.
+type BiomassConfig struct {
+	MetPerBio       float64 `yaml:"met_per_bio"`       // MaxMet = Bio * this
+	GrowthRate      float64 `yaml:"growth_rate"`       // Bio growth per second from surplus Met
+	GrowthThreshold float64 `yaml:"growth_threshold"`  // Grow when Met > MaxMet * this
+	MinBio          float64 `yaml:"min_bio"`           // Child starts with this biomass
+	BirthEfficiency float64 `yaml:"birth_efficiency"`  // Parent pays (childBio + childMet) / this
+	BioCost         float64 `yaml:"bio_cost"`          // Metabolic drain per Bio per second
+}
+
 // ArchetypeConfig defines a founder template for organisms.
+// Each archetype specifies the full set of capabilities that define organism behavior.
 type ArchetypeConfig struct {
-	Name string  `yaml:"name"`
-	Diet float64 `yaml:"diet"` // 0=herbivore, 1=carnivore
+	Name           string    `yaml:"name"`
+	Diet           float64   `yaml:"diet"`            // 0=herbivore, 1=carnivore (determines food sources)
+	MetabolicRate  float64   `yaml:"metabolic_rate"`  // Scales all energy costs and intake rates (default 1.0)
+	EnergyCapacity float64   `yaml:"energy_capacity"` // Maximum energy storage (default from entity.max_energy)
+	VisionRange    float64   `yaml:"vision_range"`    // Perception distance
+	VisionWeights  []float64 `yaml:"vision_weights"`  // Per-sector sensitivity (NumSectors elements)
 }
 
 // CladeConfig holds clade split parameters.
@@ -80,31 +96,16 @@ type EntityConfig struct {
 	MaxEnergy     float64 `yaml:"max_energy"`
 }
 
-// PreyCapabilitiesConfig holds prey-specific capability parameters.
-type PreyCapabilitiesConfig struct {
-	VisionRange   float64      `yaml:"vision_range"`
-	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
-}
-
-// PredatorCapabilitiesConfig holds predator-specific capability parameters.
-type PredatorCapabilitiesConfig struct {
-	VisionRange   float64      `yaml:"vision_range"`
-	VisionWeights []float64    `yaml:"vision_weights"` // Per-sector weights (NumSectors)
-}
-
-// CapabilitiesConfig holds entity capability defaults.
-// All entities have 360° vision; effectiveness varies by angle and kind.
+// CapabilitiesConfig holds shared entity capability defaults.
+// Vision range and weights are now per-archetype (see ArchetypeConfig).
 type CapabilitiesConfig struct {
-	Prey             PreyCapabilitiesConfig     `yaml:"prey"`
-	Predator         PredatorCapabilitiesConfig `yaml:"predator"`
-	MinEffectiveness float64                    `yaml:"min_effectiveness"`
-	MaxSpeed         float64                    `yaml:"max_speed"`
-	MaxAccel         float64                    `yaml:"max_accel"`
-	MaxTurnRate      float64                    `yaml:"max_turn_rate"`
-	Drag             float64                    `yaml:"drag"`
-	BiteRange        float64                    `yaml:"bite_range"`
-	BiteCost         float64                    `yaml:"bite_cost"`
-	ThrustDeadzone   float64                    `yaml:"thrust_deadzone"` // Thrust below this = 0
+	MinEffectiveness float64 `yaml:"min_effectiveness"` // Minimum vision weight floor
+	MaxSpeed         float64 `yaml:"max_speed"`
+	MaxAccel         float64 `yaml:"max_accel"`
+	MaxTurnRate      float64 `yaml:"max_turn_rate"`
+	Drag             float64 `yaml:"drag"`
+	BiteRange        float64 `yaml:"bite_range"`
+	ThrustDeadzone   float64 `yaml:"thrust_deadzone"` // Thrust below this = 0
 }
 
 // PopulationConfig holds population management parameters.
@@ -128,7 +129,6 @@ type ReproductionConfig struct {
 	PredCooldown         float64 `yaml:"pred_cooldown"`
 	CooldownJitter       float64 `yaml:"cooldown_jitter"`
 	ParentEnergySplit    float64 `yaml:"parent_energy_split"`
-	ChildEnergy          float64 `yaml:"child_energy"`
 	SpawnOffset          float64 `yaml:"spawn_offset"`
 	HeadingJitter        float64 `yaml:"heading_jitter"`
 	PredDensityK         float64 `yaml:"pred_density_k"`          // Density-dependent reproduction: p = prey / (prey + K)
@@ -147,10 +147,9 @@ type MutationConfig struct {
 
 // ResourceConfig holds resource field parameters.
 type ResourceConfig struct {
-	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
-	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
-	RegenRate        float64 `yaml:"regen_rate"`        // Regeneration rate when below capacity (per second)
-	DecayRate        float64 `yaml:"decay_rate"`        // Decay rate when above capacity (per second)
+	GrazeRadius int     `yaml:"graze_radius"` // Grazing kernel radius in cells (1=3x3, 2=5x5)
+	RegenRate   float64 `yaml:"regen_rate"`   // Regeneration rate when below capacity (per second)
+	DecayRate   float64 `yaml:"decay_rate"`   // Decay rate when above capacity (per second)
 }
 
 // PotentialConfig holds potential field generation parameters.
@@ -164,37 +163,19 @@ type PotentialConfig struct {
 	UpdateInterval float64 `yaml:"update_interval"` // Seconds between capacity field updates
 }
 
-// EnergyConfig holds energy economics parameters.
+// EnergyConfig holds unified energy economics parameters.
+// All costs are base values multiplied by the organism's metabolic_rate.
+// Diet determines food source access: grazing scales by (1-diet), hunting by diet.
 type EnergyConfig struct {
-	Prey          PreyEnergyConfig          `yaml:"prey"`
-	Predator      PredatorEnergyConfig      `yaml:"predator"`
-	Interpolation EnergyInterpolationConfig `yaml:"interpolation"`
-}
+	// Base costs (multiplied by metabolic_rate)
+	BaseCost  float64 `yaml:"base_cost"`  // Energy drain per second for existing
+	MoveCost  float64 `yaml:"move_cost"`  // Movement cost multiplier
+	AccelCost float64 `yaml:"accel_cost"` // Acceleration cost multiplier
 
-// EnergyInterpolationConfig holds diet-based energy interpolation parameters.
-type EnergyInterpolationConfig struct {
-	GrazingDietCap   float64 `yaml:"grazing_diet_cap"`   // Diet above this = no grazing benefit (default 0.3)
-	HuntingDietFloor float64 `yaml:"hunting_diet_floor"` // Diet below this = no hunting benefit (default 0.7)
-}
-
-// PreyEnergyConfig holds prey energy parameters.
-type PreyEnergyConfig struct {
-	BaseCost   float64 `yaml:"base_cost"`
-	MoveCost   float64 `yaml:"move_cost"`
-	ForageRate float64 `yaml:"forage_rate"`
-	AccelCost  float64 `yaml:"accel_cost"` // Energy penalty for thrust
-}
-
-// PredatorEnergyConfig holds predator energy parameters.
-type PredatorEnergyConfig struct {
-	BaseCost           float64 `yaml:"base_cost"`
-	MoveCost           float64 `yaml:"move_cost"`
-	BiteCost           float64 `yaml:"bite_cost"`
-	BiteReward         float64 `yaml:"bite_reward"`
-	TransferEfficiency float64 `yaml:"transfer_efficiency"`
-	DetritusFraction   float64 `yaml:"detritus_fraction"` // Fraction of removed energy to detritus ("messy kills")
-	DigestTime         float64 `yaml:"digest_time"`
-	AccelCost          float64 `yaml:"accel_cost"` // Energy penalty for thrust
+	// Unified feeding
+	FeedingRate       float64 `yaml:"feeding_rate"`       // Base intake rate (grazing per sec, bite damage)
+	FeedingEfficiency float64 `yaml:"feeding_efficiency"` // Fraction of intake converted to energy
+	CooldownFactor    float64 `yaml:"cooldown_factor"`    // Cooldown = energy_gained * cooldown_factor / metabolic_rate
 }
 
 // RefugiaConfig holds refugia mechanics parameters.
@@ -375,7 +356,7 @@ func Load(path string) (*Config, error) {
 // computeDerived calculates values derived from loaded config.
 func (c *Config) computeDerived() {
 	c.Derived.DT32 = float32(c.Physics.DT)
-	c.Derived.NumInputs = c.Sensors.NumSectors*3 + 3 // food, threat, kin + energy, speed, diet
+	c.Derived.NumInputs = c.Sensors.NumSectors*3 + 4 // food, threat, kin + energy, speed, diet, metabolic_rate
 	c.Derived.ScreenW32 = float32(c.Screen.Width)
 	c.Derived.ScreenH32 = float32(c.Screen.Height)
 
@@ -394,8 +375,43 @@ func (c *Config) computeDerived() {
 	// Synthesize default archetypes if none specified
 	if len(c.Archetypes) == 0 {
 		c.Archetypes = []ArchetypeConfig{
-			{Name: "grazer", Diet: 0.0},
-			{Name: "hunter", Diet: 1.0},
+			{
+				Name:           "grazer",
+				Diet:           0.0,
+				MetabolicRate:  1.0,
+				EnergyCapacity: c.Entity.MaxEnergy,
+				VisionRange:    100.0,
+				VisionWeights:  []float64{0.05, 0.6, 1.0, 0.6, 0.15, 0.6, 1.0, 0.6},
+			},
+			{
+				Name:           "hunter",
+				Diet:           1.0,
+				MetabolicRate:  0.75,
+				EnergyCapacity: c.Entity.MaxEnergy * 0.8,
+				VisionRange:    140.0,
+				VisionWeights:  []float64{0.0, 0.0, 0.0, 0.6, 1.0, 0.6, 0.0, 0.0},
+			},
+		}
+	}
+
+	// Apply defaults to archetypes that don't specify all fields
+	for i := range c.Archetypes {
+		arch := &c.Archetypes[i]
+		if arch.MetabolicRate == 0 {
+			arch.MetabolicRate = 1.0
+		}
+		if arch.EnergyCapacity == 0 {
+			arch.EnergyCapacity = c.Entity.MaxEnergy
+		}
+		if arch.VisionRange == 0 {
+			arch.VisionRange = 100.0
+		}
+		if len(arch.VisionWeights) == 0 {
+			// Default to uniform weights
+			arch.VisionWeights = make([]float64, c.Sensors.NumSectors)
+			for j := range arch.VisionWeights {
+				arch.VisionWeights[j] = 1.0
+			}
 		}
 	}
 

@@ -16,7 +16,8 @@ type ResourceSampler interface {
 	Graze(x, y float32, rate, dt float32, radiusCells int) float32
 
 	// Step advances the resource field by dt seconds.
-	Step(dt float32, evolve bool)
+	// Returns energy accounting: heat loss and net energy input from regeneration.
+	Step(dt float32, evolve bool) StepResult
 
 	// ResData returns the current resource grid for visualization/serialization.
 	ResData() []float32

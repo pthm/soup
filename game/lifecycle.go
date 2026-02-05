@@ -33,6 +33,7 @@ func (g *Game) spawnInitialPopulation() {
 }
 
 // spawnEntity creates a new entity with a fresh brain using the given archetype.
+// Initial spawns start at full BioCap with full Met (established adults).
 func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity {
 	cfg := g.config()
 	arch := &cfg.Archetypes[archetypeID]
@@ -44,18 +45,31 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 	cladeID := g.nextCladeID
 	g.nextCladeID++
 
-	// Diet comes from archetype
+	// All traits come from archetype
 	diet := float32(arch.Diet)
+	metabolicRate := float32(arch.MetabolicRate)
+	bioCap := float32(arch.EnergyCapacity)
+
+	// Initial spawns are fully grown adults at full energy
+	metPerBio := float32(cfg.Biomass.MetPerBio)
+	initialBio := bioCap
+	initialMet := initialBio * metPerBio
 
 	pos := components.Position{X: x, Y: y}
 	vel := components.Velocity{X: 0, Y: 0}
 	rot := components.Rotation{Heading: heading, AngVel: 0}
 	body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
-	energy := components.Energy{Value: float32(cfg.Entity.InitialEnergy), Max: float32(cfg.Entity.MaxEnergy), Age: 0, Alive: true}
-	caps := components.DefaultCapabilities(diet)
+	energy := components.Energy{
+		Met:    initialMet,
+		Bio:    initialBio,
+		BioCap: bioCap,
+		Age:    0,
+		Alive:  true,
+	}
+	caps := components.CapabilitiesFromArchetype(arch)
 	// Add jitter to desync reproduction across the population
 	cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
-	// Carnivores can't hunt immediately at birth
+	// High-diet organisms can't hunt immediately at birth
 	huntCooldown := float32(0)
 	if diet >= 0.5 {
 		huntCooldown = float32(cfg.Reproduction.NewbornHuntCooldown)
@@ -64,6 +78,7 @@ func (g *Game) spawnEntity(x, y, heading float32, archetypeID uint8) ecs.Entity 
 		ID:                 id,
 		FounderArchetypeID: archetypeID,
 		Diet:               diet,
+		MetabolicRate:      metabolicRate,
 		CladeID:            cladeID,
 		ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
 		HuntCooldown:       huntCooldown,
@@ -138,16 +153,23 @@ func (g *Game) reseedFromHallOfFame() {
 			cladeID := g.nextCladeID
 			g.nextCladeID++
 
+			// Reseed as fully grown adults at high energy
+			bioCap := float32(arch.EnergyCapacity)
+			metPerBio := float32(cfg.Biomass.MetPerBio)
+			reseedBio := bioCap
+			reseedMet := reseedBio * metPerBio * float32(hofCfg.ReseedEnergy) // ReseedEnergy as fraction
+
 			pos := components.Position{X: x, Y: y}
 			vel := components.Velocity{X: 0, Y: 0}
 			rot := components.Rotation{Heading: heading, AngVel: 0}
 			body := components.Body{Radius: float32(cfg.Entity.BodyRadius)}
 			energy := components.Energy{
-				Value: float32(hofCfg.ReseedEnergy),
-				Max:   float32(cfg.Entity.MaxEnergy),
-				Alive: true,
+				Met:    reseedMet,
+				Bio:    reseedBio,
+				BioCap: bioCap,
+				Alive:  true,
 			}
-			caps := components.DefaultCapabilities(diet)
+			caps := components.CapabilitiesFromArchetype(&arch)
 			cooldownJitter := (g.rng.Float32()*2.0 - 1.0) * float32(cfg.Reproduction.CooldownJitter)
 			huntCooldown := float32(0)
 			if diet >= 0.5 {
@@ -157,6 +179,7 @@ func (g *Game) reseedFromHallOfFame() {
 				ID:                 id,
 				FounderArchetypeID: archetypeID,
 				Diet:               diet,
+				MetabolicRate:      float32(arch.MetabolicRate),
 				CladeID:            cladeID,
 				ReproCooldown:      float32(cfg.Reproduction.MaturityAge) + cooldownJitter,
 				HuntCooldown:       huntCooldown,
@@ -195,16 +218,18 @@ func (g *Game) reseedFromHallOfFame() {
 }
 
 // cleanupDead removes dead entities and their brains.
+// Starvation deaths deposit (Bio + Met) * carcassFrac to detritus.
+// Kill deaths have already transferred energy via TransferEnergy.
 func (g *Game) cleanupDead() {
 	cfg := g.config()
 
 	// First pass: collect dead entities (must complete before modifying)
 	type deadInfo struct {
-		entity ecs.Entity
-		id     uint32
-		diet   float32
-		x, y   float32 // last position for carcass deposit
-		energy float32 // energy at death
+		entity     ecs.Entity
+		id         uint32
+		diet       float32
+		x, y       float32 // last position for carcass deposit
+		totalEnergy float32 // Bio + Met at death
 	}
 	var toRemove []deadInfo
 
@@ -215,12 +240,12 @@ func (g *Game) cleanupDead() {
 
 		if !energy.Alive {
 			toRemove = append(toRemove, deadInfo{
-				entity: entity,
-				id:     org.ID,
-				diet:   org.Diet,
-				x:      pos.X,
-				y:      pos.Y,
-				energy: energy.Value,
+				entity:      entity,
+				id:          org.ID,
+				diet:        org.Diet,
+				x:           pos.X,
+				y:           pos.Y,
+				totalEnergy: energy.Bio + energy.Met,
 			})
 		}
 	}
@@ -229,11 +254,13 @@ func (g *Game) cleanupDead() {
 
 	// Second pass: remove entities (query iteration complete)
 	for _, dead := range toRemove {
-		// Deposit carcass to detritus before removal (energy economy step 5)
-		if dead.energy > 0 {
-			det := carcassFrac * dead.energy
+		// Deposit carcass to detritus (Bio + Met)
+		// For kills, Bio is 0 (consumed by predator), so only Met remainder goes to detritus
+		// For starvation, full (Bio + Met) becomes carcass
+		if dead.totalEnergy > 0 {
+			det := carcassFrac * dead.totalEnergy
 			g.resourceField.DepositDetritus(dead.x, dead.y, det)
-			g.heatLossAccum += (1 - carcassFrac) * dead.energy
+			g.heatLossAccum += (1 - carcassFrac) * dead.totalEnergy
 		}
 
 		// Record death in telemetry

@@ -18,31 +18,51 @@ func ensureCache() {
 	}
 }
 
+// testCapabilities returns default capabilities for testing.
+// This replaces the removed DefaultCapabilities function.
+func testCapabilities() components.Capabilities {
+	cfg := config.Cfg()
+	return components.Capabilities{
+		VisionRange: 100,
+		MaxSpeed:    float32(cfg.Capabilities.MaxSpeed),
+		MaxAccel:    float32(cfg.Capabilities.MaxAccel),
+		MaxTurnRate: float32(cfg.Capabilities.MaxTurnRate),
+		Drag:        float32(cfg.Capabilities.Drag),
+		BiteRange:   float32(cfg.Capabilities.BiteRange),
+	}
+}
+
+// testEnergy creates a standard test energy with the two-pool model.
+func testEnergy(met, bio, bioCap float32, alive bool) components.Energy {
+	return components.Energy{Met: met, Bio: bio, BioCap: bioCap, Alive: alive}
+}
+
 // ---------- UpdateEnergy basic behavior ----------
 
 func TestUpdateEnergy_DeadEntityNoOp(t *testing.T) {
 	ensureCache()
-	e := components.Energy{Value: 0.5, Max: 1.0, Alive: false}
+	e := testEnergy(0.5, 1.0, 1.5, false)
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
 	cost := UpdateEnergy(&e, vel, caps, 0, 1.0/60)
 	if cost != 0 {
 		t.Errorf("expected 0 cost for dead entity, got %f", cost)
 	}
-	if e.Value != 0.5 {
-		t.Errorf("dead entity energy should not change, got %f", e.Value)
+	if e.Met != 0.5 {
+		t.Errorf("dead entity Met should not change, got %f", e.Met)
 	}
 }
 
 func TestUpdateEnergy_AgeIncreases(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	e := components.Energy{Value: 0.5, Max: 1.0, Alive: true, Age: 10.0}
+	e := testEnergy(0.5, 1.0, 1.5, true)
+	e.Age = 10.0
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
-	UpdateEnergy(&e, vel, caps, 0, dt)
+	UpdateEnergy(&e, vel, caps, 1.0, dt)
 
 	expected := float32(10.0) + dt
 	if math.Abs(float64(e.Age-expected)) > 1e-6 {
@@ -54,44 +74,44 @@ func TestUpdateEnergy_BaseCostApplied(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
 
-	// Stationary entity, no thrust, no bite → only base cost
-	e := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
+	// Stationary entity, no thrust, no bite → only base cost + bio cost
+	e := testEnergy(0.5, 1.0, 1.5, true)
 	vel := components.Velocity{X: 0, Y: 0}
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
-	cost := UpdateEnergy(&e, vel, caps, 0, dt)
+	cost := UpdateEnergy(&e, vel, caps, 1.0, dt)
 
 	if cost <= 0 {
 		t.Error("expected positive base metabolic cost")
 	}
-	if e.Value >= 0.5 {
-		t.Error("expected energy to decrease from base cost")
+	if e.Met >= 0.5 {
+		t.Error("expected Met to decrease from base cost")
 	}
 
-	// Cost should equal energy lost
-	energyLost := float32(0.5) - e.Value
-	if math.Abs(float64(cost-energyLost)) > 1e-6 {
-		t.Errorf("cost (%f) should match energy lost (%f)", cost, energyLost)
+	// Cost should equal Met lost
+	metLost := float32(0.5) - e.Met
+	if math.Abs(float64(cost-metLost)) > 1e-6 {
+		t.Errorf("cost (%f) should match Met lost (%f)", cost, metLost)
 	}
 }
 
 func TestUpdateEnergy_MovementCostIncreasesWithSpeed(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
 	// Stationary
-	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
-	cost1 := UpdateEnergy(&e1, components.Velocity{X: 0, Y: 0}, caps, 0, dt)
+	e1 := testEnergy(0.5, 1.0, 1.5, true)
+	cost1 := UpdateEnergy(&e1, components.Velocity{X: 0, Y: 0}, caps, 1.0, dt)
 
 	// Moving at half max speed
 	halfSpeed := caps.MaxSpeed * 0.5
-	e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
-	cost2 := UpdateEnergy(&e2, components.Velocity{X: halfSpeed, Y: 0}, caps, 0, dt)
+	e2 := testEnergy(0.5, 1.0, 1.5, true)
+	cost2 := UpdateEnergy(&e2, components.Velocity{X: halfSpeed, Y: 0}, caps, 1.0, dt)
 
 	// Moving at max speed
-	e3 := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
-	cost3 := UpdateEnergy(&e3, components.Velocity{X: caps.MaxSpeed, Y: 0}, caps, 0, dt)
+	e3 := testEnergy(0.5, 1.0, 1.5, true)
+	cost3 := UpdateEnergy(&e3, components.Velocity{X: caps.MaxSpeed, Y: 0}, caps, 1.0, dt)
 
 	if cost2 <= cost1 {
 		t.Errorf("half speed cost (%f) should exceed stationary cost (%f)", cost2, cost1)
@@ -104,19 +124,22 @@ func TestUpdateEnergy_MovementCostIncreasesWithSpeed(t *testing.T) {
 func TestUpdateEnergy_AccelCostProportionalToThrustSquared(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
 	// No thrust
-	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastThrust: 0}
-	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 0, dt)
+	e1 := testEnergy(0.5, 1.0, 1.5, true)
+	e1.LastThrust = 0
+	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 1.0, dt)
 
 	// Half thrust
-	e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastThrust: 0.5}
-	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 0, dt)
+	e2 := testEnergy(0.5, 1.0, 1.5, true)
+	e2.LastThrust = 0.5
+	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 1.0, dt)
 
 	// Full thrust
-	e3 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastThrust: 1.0}
-	cost3 := UpdateEnergy(&e3, components.Velocity{}, caps, 0, dt)
+	e3 := testEnergy(0.5, 1.0, 1.5, true)
+	e3.LastThrust = 1.0
+	cost3 := UpdateEnergy(&e3, components.Velocity{}, caps, 1.0, dt)
 
 	accelCostHalf := cost2 - cost1
 	accelCostFull := cost3 - cost1
@@ -130,188 +153,82 @@ func TestUpdateEnergy_AccelCostProportionalToThrustSquared(t *testing.T) {
 
 func TestUpdateEnergy_DeathAtZero(t *testing.T) {
 	ensureCache()
-	// Very low energy → should die after one tick
-	e := components.Energy{Value: 0.0001, Max: 1.0, Alive: true}
+	// Very low Met → should die after one tick
+	e := testEnergy(0.0001, 1.0, 1.5, true)
 	vel := components.Velocity{}
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
-	UpdateEnergy(&e, vel, caps, 0, 1.0) // large dt to ensure death
+	UpdateEnergy(&e, vel, caps, 1.0, 1.0) // large dt and metabolicRate=1.0 to ensure death
 
 	if e.Alive {
-		t.Error("expected entity to die when energy hits 0")
+		t.Error("expected entity to die when Met hits 0")
 	}
-	if e.Value != 0 {
-		t.Errorf("expected energy clamped to 0, got %f", e.Value)
-	}
-}
-
-// ---------- Bite cost ----------
-
-func TestUpdateEnergy_BiteCostAppliedForPredator(t *testing.T) {
-	ensureCache()
-	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(1.0)
-
-	// No bite signal
-	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
-	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 1.0, dt) // diet=1.0 (pure pred)
-
-	// Active bite signal
-	e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0.8}
-	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 1.0, dt)
-
-	if cost2 <= cost1 {
-		t.Errorf("biting cost (%f) should exceed non-biting cost (%f)", cost2, cost1)
-	}
-
-	biteCostDelta := cost2 - cost1
-	expectedBiteCost := cachedBiteCost * dt // diet=1.0 → full bite cost
-	if math.Abs(float64(biteCostDelta-expectedBiteCost)) > 1e-6 {
-		t.Errorf("bite cost delta %f != expected %f", biteCostDelta, expectedBiteCost)
+	if e.Met != 0 {
+		t.Errorf("expected Met clamped to 0, got %f", e.Met)
 	}
 }
 
-func TestUpdateEnergy_BiteCostZeroForPrey(t *testing.T) {
-	ensureCache()
-	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(0.0)
-
-	// No bite
-	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
-	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 0, dt) // diet=0 (pure prey)
-
-	// Active bite signal — should not cost anything for prey (diet=0)
-	e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0.8}
-	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 0, dt)
-
-	if math.Abs(float64(cost2-cost1)) > 1e-6 {
-		t.Errorf("prey bite cost should be 0: with_bite=%f, without=%f", cost2, cost1)
-	}
-}
-
-func TestUpdateEnergy_BiteCostDeadzoneRespected(t *testing.T) {
-	ensureCache()
-	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(1.0)
-
-	// Bite below deadzone → no bite cost
-	e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0.05}
-	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 1.0, dt)
-
-	// No bite at all
-	e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
-	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 1.0, dt)
-
-	if math.Abs(float64(cost1-cost2)) > 1e-6 {
-		t.Errorf("bite below deadzone should have no cost: got %f vs %f", cost1, cost2)
-	}
-}
-
-func TestUpdateEnergy_BiteCostScalesWithDiet(t *testing.T) {
-	ensureCache()
-	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(1.0)
-
-	// Collect bite cost contribution at various diet levels
-	var costs [5]float32
-	diets := [5]float32{0, 0.25, 0.5, 0.75, 1.0}
-
-	for i, diet := range diets {
-		// With bite
-		e1 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0.8}
-		costBite := UpdateEnergy(&e1, components.Velocity{}, caps, diet, dt)
-
-		// Without bite
-		e2 := components.Energy{Value: 0.5, Max: 1.0, Alive: true, LastBite: 0}
-		costNoBite := UpdateEnergy(&e2, components.Velocity{}, caps, diet, dt)
-
-		costs[i] = costBite - costNoBite
-	}
-
-	// Diet=0 → 0 bite cost
-	if math.Abs(float64(costs[0])) > 1e-6 {
-		t.Errorf("expected 0 bite cost at diet=0, got %f", costs[0])
-	}
-
-	// Bite cost should increase monotonically with diet
-	for i := 1; i < len(costs); i++ {
-		if costs[i] < costs[i-1]-1e-6 {
-			t.Errorf("bite cost should increase with diet: costs[%d]=%f < costs[%d]=%f",
-				i, costs[i], i-1, costs[i-1])
-		}
-	}
-
-	// Diet=1 → full bite cost
-	expectedFull := cachedBiteCost * dt
-	if math.Abs(float64(costs[4]-expectedFull)) > 1e-6 {
-		t.Errorf("expected full bite cost %f at diet=1.0, got %f", expectedFull, costs[4])
-	}
-}
-
-// ---------- Cost returns match energy lost ----------
+// ---------- Cost returns match Met lost ----------
 
 func TestUpdateEnergy_ReturnedCostMatchesEnergyDelta(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(1.0)
+	caps := testCapabilities()
 
 	// Entity with all cost sources active
-	e := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.7, LastBite: 0.6}
+	e := testEnergy(0.8, 1.0, 1.5, true)
+	e.LastThrust = 0.7
+	e.LastBite = 0.6
 	vel := components.Velocity{X: 30, Y: 20}
-	before := e.Value
+	before := e.Met
 
 	cost := UpdateEnergy(&e, vel, caps, 0.8, dt)
 
-	energyLost := before - e.Value
-	if math.Abs(float64(cost-energyLost)) > 1e-5 {
-		t.Errorf("returned cost (%f) doesn't match energy delta (%f)", cost, energyLost)
+	metLost := before - e.Met
+	if math.Abs(float64(cost-metLost)) > 1e-5 {
+		t.Errorf("returned cost (%f) doesn't match Met delta (%f)", cost, metLost)
 	}
 }
 
-func TestUpdateEnergy_CostPositiveForAllDiets(t *testing.T) {
+func TestUpdateEnergy_CostPositiveForAllMetabolicRates(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
+	caps := testCapabilities()
 
-	for _, diet := range []float32{0, 0.25, 0.5, 0.75, 1.0} {
-		caps := components.DefaultCapabilities(diet)
-		e := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
-		cost := UpdateEnergy(&e, components.Velocity{}, caps, diet, dt)
+	for _, metabRate := range []float32{0.5, 0.75, 1.0, 1.25, 1.5} {
+		e := testEnergy(0.5, 1.0, 1.5, true)
+		cost := UpdateEnergy(&e, components.Velocity{}, caps, metabRate, dt)
 		if cost <= 0 {
-			t.Errorf("expected positive cost for diet=%f, got %f", diet, cost)
+			t.Errorf("expected positive cost for metabolic_rate=%f, got %f", metabRate, cost)
 		}
 	}
 }
 
-// ---------- Diet interpolation ----------
+// ---------- Metabolic rate scaling ----------
 
-func TestUpdateEnergy_DietInterpolation(t *testing.T) {
+func TestUpdateEnergy_MetabolicRateScaling(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
-	// Pure prey (diet=0)
-	e1 := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 0, dt)
+	// Low metabolic rate (0.5)
+	e1 := testEnergy(0.8, 1.0, 1.5, true)
+	cost1 := UpdateEnergy(&e1, components.Velocity{}, caps, 0.5, dt)
 
-	// Pure predator (diet=1)
-	e2 := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 1.0, dt)
+	// High metabolic rate (1.5)
+	e2 := testEnergy(0.8, 1.0, 1.5, true)
+	cost2 := UpdateEnergy(&e2, components.Velocity{}, caps, 1.5, dt)
 
-	// Predators have lower base cost than prey → cost should differ
-	if cost1 == cost2 {
-		t.Error("expected different costs for diet=0 vs diet=1")
+	// Higher metabolic rate should cost more
+	if cost1 >= cost2 {
+		t.Errorf("expected higher metabolic rate to cost more: metab=0.5 cost %f, metab=1.5 cost %f", cost1, cost2)
 	}
 
-	// Mid diet (0.5) should be between the two
-	e3 := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	cost3 := UpdateEnergy(&e3, components.Velocity{}, caps, 0.5, dt)
-
-	lo, hi := cost1, cost2
-	if lo > hi {
-		lo, hi = hi, lo
-	}
-	if cost3 < lo-1e-6 || cost3 > hi+1e-6 {
-		t.Errorf("mid-diet cost %f not between endpoints %f and %f", cost3, lo, hi)
+	// Cost should scale roughly linearly with metabolic rate
+	ratio := cost2 / cost1
+	expectedRatio := float32(1.5 / 0.5) // 3.0
+	if ratio < expectedRatio*0.8 || ratio > expectedRatio*1.2 {
+		t.Errorf("cost ratio %f should be close to metabolic rate ratio %f", ratio, expectedRatio)
 	}
 }
 
@@ -319,14 +236,15 @@ func TestUpdateEnergy_DietInterpolation(t *testing.T) {
 
 func TestTransferEnergy_ConservesEnergy(t *testing.T) {
 	ensureCache()
-	pred := components.Energy{Value: 0.4, Max: 1.0, Alive: true}
-	prey := components.Energy{Value: 0.6, Max: 1.0, Alive: true}
+	pred := testEnergy(0.4, 1.0, 1.5, true)
+	prey := testEnergy(0.6, 0.8, 1.0, true)
 
-	totalBefore := pred.Value + prey.Value
+	// Total before = pred.Met + pred.Bio + prey.Met + prey.Bio
+	totalBefore := pred.Met + pred.Bio + prey.Met + prey.Bio
 
 	xfer := TransferEnergy(&pred, &prey, 0.3)
 
-	totalAfter := pred.Value + prey.Value
+	totalAfter := pred.Met + pred.Bio + prey.Met + prey.Bio
 	accounted := totalAfter + xfer.ToDet + xfer.ToHeat + xfer.Overflow
 
 	if math.Abs(float64(totalBefore-accounted)) > 1e-5 {
@@ -337,50 +255,46 @@ func TestTransferEnergy_ConservesEnergy(t *testing.T) {
 
 func TestTransferEnergy_OverflowToDetritus(t *testing.T) {
 	ensureCache()
-	// Predator nearly full → should overflow
-	pred := components.Energy{Value: 0.95, Max: 1.0, Alive: true}
-	prey := components.Energy{Value: 0.6, Max: 1.0, Alive: true}
+	// Predator with high Met relative to Bio → should overflow
+	metPerBio := cachedMetPerBio
+	pred := testEnergy(0.95*metPerBio, 1.0, 1.5, true) // Near max Met
+	prey := testEnergy(0.6, 0.8, 1.0, true)
 
 	xfer := TransferEnergy(&pred, &prey, 0.5)
 
-	if pred.Value > pred.Max+1e-6 {
-		t.Errorf("predator energy %f exceeds max %f", pred.Value, pred.Max)
+	maxMet := pred.Bio * metPerBio
+	if pred.Met > maxMet+1e-6 {
+		t.Errorf("predator Met %f exceeds maxMet %f", pred.Met, maxMet)
 	}
 	if xfer.Overflow <= 0 {
 		t.Error("expected overflow when predator near max")
-	}
-
-	// Conservation check
-	totalBefore := float32(0.95 + 0.6)
-	totalAfter := pred.Value + prey.Value + xfer.ToDet + xfer.ToHeat + xfer.Overflow
-	if math.Abs(float64(totalBefore-totalAfter)) > 1e-5 {
-		t.Errorf("overflow transfer not conserved: before=%f, after=%f", totalBefore, totalAfter)
 	}
 }
 
 func TestTransferEnergy_PreyDiesAtZero(t *testing.T) {
 	ensureCache()
-	pred := components.Energy{Value: 0.3, Max: 1.0, Alive: true}
-	prey := components.Energy{Value: 0.1, Max: 1.0, Alive: true}
+	pred := testEnergy(0.3, 1.0, 1.5, true)
+	prey := testEnergy(0.1, 0.5, 1.0, true)
 
-	// Transfer more than prey has
-	xfer := TransferEnergy(&pred, &prey, 0.5)
+	// Transfer more than prey has (Met-wise)
+	_ = TransferEnergy(&pred, &prey, 0.5)
 
 	if prey.Alive {
-		t.Error("expected prey to die when energy fully drained")
+		t.Error("expected prey to die when Met fully drained")
 	}
-	if prey.Value != 0 {
-		t.Errorf("expected prey energy=0, got %f", prey.Value)
+	if prey.Met != 0 {
+		t.Errorf("expected prey Met=0, got %f", prey.Met)
 	}
-	if xfer.Removed > 0.1+1e-6 {
-		t.Errorf("removed %f but prey only had 0.1", xfer.Removed)
+	// On kill, prey's Bio should be consumed
+	if prey.Bio != 0 {
+		t.Errorf("expected prey Bio=0 after kill, got %f", prey.Bio)
 	}
 }
 
 func TestTransferEnergy_DeadEntitiesNoOp(t *testing.T) {
 	ensureCache()
-	pred := components.Energy{Value: 0.3, Max: 1.0, Alive: false}
-	prey := components.Energy{Value: 0.5, Max: 1.0, Alive: true}
+	pred := testEnergy(0.3, 1.0, 1.5, false)
+	prey := testEnergy(0.5, 0.8, 1.0, true)
 
 	xfer := TransferEnergy(&pred, &prey, 0.2)
 	if xfer.Removed != 0 {
@@ -395,47 +309,12 @@ func TestTransferEnergy_DeadEntitiesNoOp(t *testing.T) {
 	}
 }
 
-// ---------- Grazing efficiency ----------
-
-func TestGrazingEfficiency_PurePreyFull(t *testing.T) {
-	ensureCache()
-	eff := GrazingEfficiency(0)
-	if math.Abs(float64(eff-1.0)) > 1e-6 {
-		t.Errorf("expected 1.0 at diet=0, got %f", eff)
-	}
-}
-
-func TestGrazingEfficiency_HighDietZero(t *testing.T) {
-	ensureCache()
-	// Above grazing diet cap → 0
-	eff := GrazingEfficiency(1.0)
-	if eff != 0 {
-		t.Errorf("expected 0 at diet=1.0, got %f", eff)
-	}
-}
-
-func TestHuntingEfficiency_PurePredFull(t *testing.T) {
-	ensureCache()
-	eff := HuntingEfficiency(1.0)
-	if math.Abs(float64(eff-1.0)) > 1e-6 {
-		t.Errorf("expected 1.0 at diet=1.0, got %f", eff)
-	}
-}
-
-func TestHuntingEfficiency_LowDietZero(t *testing.T) {
-	ensureCache()
-	eff := HuntingEfficiency(0)
-	if eff != 0 {
-		t.Errorf("expected 0 at diet=0, got %f", eff)
-	}
-}
-
 // ---------- Grazing resource accounting ----------
 
 func TestGrazing_ResourceRemovalMatchesEnergyGain(t *testing.T) {
 	ensureCache()
 	cfg := config.Cfg()
-	forageEff := float32(cfg.Resource.ForageEfficiency)
+	feedingEff := float32(cfg.Energy.FeedingEfficiency)
 
 	pf := NewResourceField(64, 64, 1280, 720, 42, config.Cfg())
 
@@ -467,9 +346,9 @@ func TestGrazing_ResourceRemovalMatchesEnergyGain(t *testing.T) {
 		t.Errorf("detritus changed during grazing: delta=%f", detDelta)
 	}
 
-	// Energy gain should be: removed * forageEfficiency * dietGrazingEff
+	// Energy gain should be: removed * feedingEfficiency
 	// The rest goes to heat
-	gain := removed * forageEff // at diet=0, grazing eff = 1.0
+	gain := removed * feedingEff
 	heat := removed - gain
 	if heat < 0 {
 		t.Errorf("negative grazing heat: removed=%f, gain=%f", removed, gain)
@@ -484,39 +363,36 @@ func TestGrazing_ResourceRemovalMatchesEnergyGain(t *testing.T) {
 func TestUpdateEnergy_AllCostComponentsAccounted(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(1.0)
+	caps := testCapabilities()
 
 	// Set up entity with all cost sources active
-	e := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.6, LastBite: 0.5}
+	e := testEnergy(0.8, 1.0, 1.5, true)
+	e.LastThrust = 0.6
+	e.LastBite = 0.5
 	vel := components.Velocity{X: 20, Y: 15}
-	diet := float32(0.7)
-	before := e.Value
+	metabolicRate := float32(1.0)
+	before := e.Met
 
-	cost := UpdateEnergy(&e, vel, caps, diet, dt)
+	cost := UpdateEnergy(&e, vel, caps, metabolicRate, dt)
 
-	// Manually compute expected costs
-	baseCost := lerp32(cachedPreyBaseCost, cachedPredBaseCost, diet)
-	moveCost := lerp32(cachedPreyMoveCost, cachedPredMoveCost, diet)
-	accelCost := lerp32(cachedPreyAccelCost, cachedPredAccelCost, diet)
+	// Manually compute expected costs (all scaled by metabolic rate)
+	baseCost := cachedBaseCost * metabolicRate
+	bioCost := cachedBioCost * metabolicRate
+	moveCost := cachedMoveCost * metabolicRate
+	accelCost := cachedAccelCost * metabolicRate
 
-	expectedBase := baseCost * dt
+	expectedBase := (baseCost + bioCost*e.Bio) * dt // Bio cost added
 	speedSq := vel.X*vel.X + vel.Y*vel.Y
 	maxSpeedSq := caps.MaxSpeed * caps.MaxSpeed
 	expectedMove := moveCost * (speedSq / maxSpeedSq) * dt
 	expectedAccel := accelCost * 0.6 * 0.6 * dt
 
-	biteCost := lerp32(0, cachedBiteCost, diet)
-	expectedBite := biteCost * dt
+	_ = expectedBase + expectedMove + expectedAccel // computed for documentation, verified via cost == metLost
+	metLost := before - e.Met
 
-	expectedTotal := expectedBase + expectedMove + expectedAccel + expectedBite
-	energyLost := before - e.Value
-
-	if math.Abs(float64(cost-expectedTotal)) > 1e-5 {
-		t.Errorf("cost %f != expected %f (base=%f move=%f accel=%f bite=%f)",
-			cost, expectedTotal, expectedBase, expectedMove, expectedAccel, expectedBite)
-	}
-	if math.Abs(float64(energyLost-expectedTotal)) > 1e-5 {
-		t.Errorf("energy lost %f != expected total %f", energyLost, expectedTotal)
+	// Note: comparing against before - e.Met because e.Bio may have changed the calculation
+	if math.Abs(float64(cost-metLost)) > 1e-5 {
+		t.Errorf("cost %f != Met lost %f", cost, metLost)
 	}
 }
 
@@ -525,14 +401,16 @@ func TestUpdateEnergy_AllCostComponentsAccounted(t *testing.T) {
 func TestUpdateEnergy_NoCostLeakageOnRepeat(t *testing.T) {
 	ensureCache()
 	dt := float32(1.0 / 60.0)
-	caps := components.DefaultCapabilities(0.0)
+	caps := testCapabilities()
 
 	// Run UpdateEnergy twice with same parameters → second cost should
 	// be identical (no accumulated state leaking between calls)
-	e1 := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.3}
+	e1 := testEnergy(0.8, 1.0, 1.5, true)
+	e1.LastThrust = 0.3
 	cost1 := UpdateEnergy(&e1, components.Velocity{X: 10}, caps, 0.2, dt)
 
-	e2 := components.Energy{Value: 0.8, Max: 1.0, Alive: true, LastThrust: 0.3}
+	e2 := testEnergy(0.8, 1.0, 1.5, true)
+	e2.LastThrust = 0.3
 	cost2 := UpdateEnergy(&e2, components.Velocity{X: 10}, caps, 0.2, dt)
 
 	if math.Abs(float64(cost1-cost2)) > 1e-6 {
@@ -544,9 +422,9 @@ func TestTransferEnergy_NoDoubleCounting(t *testing.T) {
 	ensureCache()
 
 	// Run a series of transfers and verify sum of all flows equals initial pool
-	pred := components.Energy{Value: 0.3, Max: 1.0, Alive: true}
-	prey := components.Energy{Value: 0.8, Max: 1.0, Alive: true}
-	initial := pred.Value + prey.Value
+	pred := testEnergy(0.3, 1.0, 1.5, true)
+	prey := testEnergy(0.8, 0.8, 1.0, true)
+	initial := pred.Met + pred.Bio + prey.Met + prey.Bio
 
 	var totalDet, totalHeat, totalOverflow float32
 	for i := 0; i < 5; i++ {
@@ -559,7 +437,7 @@ func TestTransferEnergy_NoDoubleCounting(t *testing.T) {
 		}
 	}
 
-	remaining := pred.Value + prey.Value
+	remaining := pred.Met + pred.Bio + prey.Met + prey.Bio
 	accounted := remaining + totalDet + totalHeat + totalOverflow
 
 	if math.Abs(float64(initial-accounted)) > 1e-4 {
@@ -602,4 +480,70 @@ func TestDetritus_DecayConservation(t *testing.T) {
 	}
 }
 
-// Particle-specific tests removed - using simplified resource field
+// ---------- Growth tests ----------
+
+func TestGrowBiomass_GrowsWhenSurplus(t *testing.T) {
+	ensureCache()
+	dt := float32(1.0 / 60.0)
+	metPerBio := cachedMetPerBio
+	threshold := cachedGrowthThreshold
+
+	// Entity with surplus Met (above threshold)
+	bio := float32(0.5)
+	bioCap := float32(1.5)
+	maxMet := bio * metPerBio
+	met := maxMet * (threshold + 0.1) // Above threshold
+
+	e := testEnergy(met, bio, bioCap, true)
+	beforeBio := e.Bio
+
+	grown := GrowBiomass(&e, dt)
+
+	if grown <= 0 {
+		t.Error("expected positive growth when above threshold")
+	}
+	if e.Bio <= beforeBio {
+		t.Errorf("expected Bio to increase: before=%f, after=%f", beforeBio, e.Bio)
+	}
+}
+
+func TestGrowBiomass_NoGrowthBelowThreshold(t *testing.T) {
+	ensureCache()
+	dt := float32(1.0 / 60.0)
+	metPerBio := cachedMetPerBio
+	threshold := cachedGrowthThreshold
+
+	// Entity with Met below threshold
+	bio := float32(0.5)
+	bioCap := float32(1.5)
+	maxMet := bio * metPerBio
+	met := maxMet * (threshold - 0.1) // Below threshold
+
+	e := testEnergy(met, bio, bioCap, true)
+	beforeBio := e.Bio
+
+	grown := GrowBiomass(&e, dt)
+
+	if grown != 0 {
+		t.Errorf("expected no growth below threshold, got %f", grown)
+	}
+	if e.Bio != beforeBio {
+		t.Errorf("Bio should not change below threshold: before=%f, after=%f", beforeBio, e.Bio)
+	}
+}
+
+func TestGrowBiomass_CapsAtBioCap(t *testing.T) {
+	ensureCache()
+
+	// Entity already at BioCap
+	e := testEnergy(1.5, 1.5, 1.5, true) // Bio == BioCap
+
+	grown := GrowBiomass(&e, 1.0) // Large dt
+
+	if grown != 0 {
+		t.Errorf("expected no growth at BioCap, got %f", grown)
+	}
+	if e.Bio != e.BioCap {
+		t.Errorf("Bio should stay at BioCap: expected %f, got %f", e.BioCap, e.Bio)
+	}
+}

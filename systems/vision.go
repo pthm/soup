@@ -36,14 +36,34 @@ func sectorIndexFromAngle(angle float32) int {
 	return idx
 }
 
+// VisionEffectivenessForSector returns the vision effectiveness for a sector.
+// Uses diet to interpolate between default herbivore (diet=0) and carnivore (diet=1) weights.
+// For archetype-specific weights, use VisionEffectivenessForArchetype.
 func VisionEffectivenessForSector(sectorIdx int, diet float32) float32 {
 	if sectorIdx < 0 || sectorIdx >= NumSectors {
 		return cachedMinEffectiveness
 	}
-	preyW := cachedPreyVisionWeights[sectorIdx]
-	predW := cachedPredVisionWeights[sectorIdx]
+	// Fall back to archetype 0 and 1 weights for interpolation
+	if len(cachedArchetypeVisionWeights) < 2 {
+		return cachedMinEffectiveness
+	}
+	preyW := cachedArchetypeVisionWeights[0][sectorIdx]
+	predW := cachedArchetypeVisionWeights[1][sectorIdx]
 	weight := preyW + (predW-preyW)*diet
 	return cachedMinEffectiveness + (1-cachedMinEffectiveness)*weight
+}
+
+// VisionEffectivenessForArchetype returns the vision effectiveness for a sector
+// using the specific archetype's vision weights.
+func VisionEffectivenessForArchetype(sectorIdx int, archetypeID uint8) float32 {
+	if sectorIdx < 0 || sectorIdx >= NumSectors {
+		return cachedMinEffectiveness
+	}
+	weights := GetArchetypeVisionWeights(archetypeID)
+	if weights == nil {
+		return cachedMinEffectiveness
+	}
+	return cachedMinEffectiveness + (1-cachedMinEffectiveness)*weights[sectorIdx]
 }
 
 // loadVisionWeights resolves per-sector weights from config, falling back to zones if provided.

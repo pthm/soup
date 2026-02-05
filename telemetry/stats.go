@@ -49,9 +49,9 @@ type WindowStats struct {
 	TotalRes       float64 `csv:"total_res"`        // Total resource grid energy
 	TotalDet       float64 `csv:"total_det"`        // Total detritus grid energy
 	TotalOrganisms float64 `csv:"total_organisms"`  // Total energy in living organisms
-	InTransit      float64 `csv:"in_transit"`       // Energy carried by in-transit particles
+	InTransit      float64 `csv:"in_transit"`       // Energy carried by in-transit particles (unused)
 	HeatLossAccum  float64 `csv:"heat_loss_accum"`  // Cumulative energy lost to heat
-	ParticleInput  float64 `csv:"particle_input"`   // Cumulative energy injected by particles
+	EnergyInput    float64 `csv:"energy_input"`     // Cumulative energy input from regeneration
 
 	// Diet distribution
 	DietMean float64 `csv:"diet_mean"`
@@ -183,7 +183,7 @@ func (s WindowStats) LogValue() slog.Value {
 		slog.Float64("total_organisms", s.TotalOrganisms),
 		slog.Float64("in_transit", s.InTransit),
 		slog.Float64("heat_loss_accum", s.HeatLossAccum),
-		slog.Float64("particle_input", s.ParticleInput),
+		slog.Float64("energy_input", s.EnergyInput),
 		slog.Float64("diet_mean", s.DietMean),
 		slog.Float64("diet_std", s.DietStd),
 		slog.Float64("diet_p10", s.DietP10),
@@ -225,7 +225,7 @@ func (s WindowStats) LogStats() {
 		"total_organisms", s.TotalOrganisms,
 		"in_transit", s.InTransit,
 		"heat_loss_accum", s.HeatLossAccum,
-		"particle_input", s.ParticleInput,
+		"energy_input", s.EnergyInput,
 		"diet_mean", s.DietMean,
 		"diet_std", s.DietStd,
 		"diet_p10", s.DietP10,

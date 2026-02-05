@@ -91,9 +91,9 @@ type EnergyPools struct {
 	TotalRes       float64 // Total resource grid energy
 	TotalDet       float64 // Total detritus grid energy
 	TotalOrganisms float64 // Total energy in living organisms
-	InTransit      float64 // Energy carried by in-transit particles
+	InTransit      float64 // Energy carried by in-transit particles (unused)
 	HeatLossAccum  float64 // Cumulative energy lost to heat
-	ParticleInput  float64 // Cumulative energy injected by particles
+	EnergyInput    float64 // Cumulative energy input from resource regeneration
 }
 
 // Flush produces a WindowStats and resets counters for the next window.
@@ -167,7 +167,7 @@ func (c *Collector) Flush(
 		TotalOrganisms: pools.TotalOrganisms,
 		InTransit:      pools.InTransit,
 		HeatLossAccum:  pools.HeatLossAccum,
-		ParticleInput:  pools.ParticleInput,
+		EnergyInput:    pools.EnergyInput,
 
 		DietMean: dietMean,
 		DietStd:  dietStd,

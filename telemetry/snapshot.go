@@ -48,10 +48,11 @@ type EntityState struct {
 	VelY    float32 `json:"vel_y"`
 	Heading float32 `json:"heading"`
 
-	// Organism state
-	Energy         float32 `json:"energy"`
-	MaxEnergy      float32 `json:"max_energy"`
-	Age            float32 `json:"age"`
+	// Organism state (two-pool biomass model)
+	Met    float32 `json:"met"`     // Metabolic energy
+	Bio    float32 `json:"bio"`     // Biomass
+	BioCap float32 `json:"bio_cap"` // Max biomass from archetype
+	Age    float32 `json:"age"`
 	ReproCooldown  float32 `json:"repro_cooldown"`
 	DigestCooldown float32 `json:"digest_cooldown"`
 	HuntCooldown   float32 `json:"hunt_cooldown"`

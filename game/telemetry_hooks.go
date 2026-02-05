@@ -19,7 +19,7 @@ func (g *Game) flushTelemetry() {
 	activeClades := g.lifetimeTracker.ActiveCladeCount()
 
 	// Sample energy pools for conservation tracking
-	pools := g.sampleEnergyPools(preyEnergies, predEnergies)
+	pools := g.sampleEnergyPools()
 
 	// Flush the stats window
 	stats := g.collector.Flush(g.tick, g.numHerb, g.numCarn, preyEnergies, predEnergies, diets, meanResource, activeClades, pools)
@@ -83,15 +83,15 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies, diets []
 		diets = append(diets, float64(org.Diet))
 
 		if org.Diet < 0.5 {
-			preyEnergies = append(preyEnergies, float64(energy.Value))
+			preyEnergies = append(preyEnergies, float64(energy.Met))
 			resourceSum += float64(g.resourceField.Sample(pos.X, pos.Y))
 			preyCount++
 		} else {
-			predEnergies = append(predEnergies, float64(energy.Value))
+			predEnergies = append(predEnergies, float64(energy.Met))
 		}
 
-		// Update lifetime peak energy
-		g.lifetimeTracker.UpdateEnergy(org.ID, energy.Value)
+		// Update lifetime peak energy (track total: Bio + Met)
+		g.lifetimeTracker.UpdateEnergy(org.ID, energy.Bio+energy.Met)
 	}
 
 	if preyCount > 0 {
@@ -102,23 +102,24 @@ func (g *Game) sampleEnergyDistributions() (preyEnergies, predEnergies, diets []
 }
 
 // sampleEnergyPools computes current energy pool totals for conservation tracking.
-func (g *Game) sampleEnergyPools(preyEnergies, predEnergies []float64) telemetry.EnergyPools {
-	// Sum organism energy (already collected during sampleEnergyDistributions)
+func (g *Game) sampleEnergyPools() telemetry.EnergyPools {
+	// Sum total organism energy (Bio + Met) for conservation tracking
 	var totalOrganisms float64
-	for _, e := range preyEnergies {
-		totalOrganisms += e
-	}
-	for _, e := range predEnergies {
-		totalOrganisms += e
+	query := g.entityFilter.Query()
+	for query.Next() {
+		_, _, _, _, energy, _, _ := query.Get()
+		if energy.Alive {
+			totalOrganisms += float64(energy.Bio + energy.Met)
+		}
 	}
 
 	return telemetry.EnergyPools{
 		TotalRes:       float64(g.resourceField.TotalResMass()),
 		TotalDet:       float64(g.resourceField.TotalDetMass()),
 		TotalOrganisms: totalOrganisms,
-		InTransit:      0, // No particles in simplified resource system
+		InTransit:      0, // unused
 		HeatLossAccum:  float64(g.heatLossAccum),
-		ParticleInput:  0, // No particles in simplified resource system
+		EnergyInput:    float64(g.energyInputAccum),
 	}
 }
 
@@ -189,8 +190,9 @@ func (g *Game) createSnapshot(bookmark *telemetry.Bookmark) *telemetry.Snapshot 
 			VelX:               vel.X,
 			VelY:               vel.Y,
 			Heading:            rot.Heading,
-			Energy:             energy.Value,
-			MaxEnergy:          energy.Max,
+			Met:                energy.Met,
+			Bio:                energy.Bio,
+			BioCap:             energy.BioCap,
 			Age:                energy.Age,
 			ReproCooldown:      org.ReproCooldown,
 			DigestCooldown:     org.DigestCooldown,

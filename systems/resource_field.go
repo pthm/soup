@@ -112,7 +112,15 @@ func (rf *ResourceField) Graze(x, y float32, rate, dt float32, radiusCells int) 
 	return rf.grazeFromGrid(x, y, rate, dt, radiusCells)
 }
 
-func (rf *ResourceField) Step(dt float32, _ bool) {
+// StepResult holds energy accounting from a resource field step.
+type StepResult struct {
+	HeatLoss    float32 // Energy lost to heat (detritus decay inefficiency)
+	EnergyInput float32 // Net energy created by regeneration (positive) or lost to decay (negative)
+}
+
+// Step advances the resource field by dt seconds.
+// Returns energy accounting: heat loss from detritus decay, and net energy input from regeneration.
+func (rf *ResourceField) Step(dt float32, _ bool) StepResult {
 	// Advance time
 	if rf.TimeSpeed > 0 {
 		rf.time += float64(dt) * rf.TimeSpeed
@@ -135,6 +143,9 @@ func (rf *ResourceField) Step(dt float32, _ bool) {
 
 	detRate := rf.DetDecayRate * dt
 	detEff := rf.DetDecayEff
+	heatFactor := 1 - detEff
+	var heatLoss float32
+	var energyInput float32
 
 	// Update all cells: regenerate towards capacity, decay detritus
 	for i := range rf.Res {
@@ -142,24 +153,30 @@ func (rf *ResourceField) Step(dt float32, _ bool) {
 		res := rf.Res[i]
 		det := rf.Det[i]
 
-		// Decay detritus
+		// Decay detritus: efficiency fraction becomes resource, remainder is heat
 		if det > 0 {
 			decayed := detRate * det
 			rf.Det[i] = det - decayed
 			res += detEff * decayed
+			heatLoss += heatFactor * decayed
 		}
 
 		// Regenerate or decay towards capacity (different rates)
+		resBefore := res
 		if res < cap {
-			// Below capacity: regenerate
+			// Below capacity: regenerate (creates energy from "sun")
 			res = res + (cap-res)*regenRate
+			energyInput += res - resBefore // positive: energy created
 		} else if res > cap {
-			// Above capacity: decay (when hotspot moves away)
+			// Above capacity: decay to heat (hotspot moved away)
 			res = res + (cap-res)*decayRate
+			heatLoss += resBefore - res // energy dissipates as heat
 		}
 
 		rf.Res[i] = res
 	}
+
+	return StepResult{HeatLoss: heatLoss, EnergyInput: energyInput}
 }
 
 func (rf *ResourceField) ResData() []float32 {
