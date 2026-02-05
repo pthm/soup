@@ -27,7 +27,6 @@ type Config struct {
 	Potential    PotentialConfig    `yaml:"potential"`
 	Neural       NeuralConfig       `yaml:"neural"`
 	Sensors      SensorsConfig      `yaml:"sensors"`
-	GPU          GPUConfig          `yaml:"gpu"`
 	Telemetry    TelemetryConfig    `yaml:"telemetry"`
 	Bookmarks    BookmarksConfig    `yaml:"bookmarks"`
 	Refugia      RefugiaConfig      `yaml:"refugia"`
@@ -147,6 +146,7 @@ type MutationConfig struct {
 
 // ResourceConfig holds resource field parameters.
 type ResourceConfig struct {
+	CellSize    float64 `yaml:"cell_size"`    // Grid cell size in world units (determines resolution)
 	GrazeRadius int     `yaml:"graze_radius"` // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	RegenRate   float64 `yaml:"regen_rate"`   // Regeneration rate when below capacity (per second)
 	DecayRate   float64 `yaml:"decay_rate"`   // Decay rate when above capacity (per second)
@@ -195,11 +195,6 @@ type SensorsConfig struct {
 	ResourceSampleDistance float64 `yaml:"resource_sample_distance"`
 	DietThreshold          float64 `yaml:"diet_threshold"` // Min diet difference to register as food/threat
 	KinRange               float64 `yaml:"kin_range"`      // Diet range for kin detection
-}
-
-// GPUConfig holds GPU rendering parameters.
-type GPUConfig struct {
-	ResourceTextureSize int `yaml:"resource_texture_size"`
 }
 
 // TelemetryConfig holds telemetry parameters.

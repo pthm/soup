@@ -237,7 +237,6 @@ func (fe *FitnessEvaluator) copyConfig() *config.Config {
 	cfg.Potential = fe.baseConfig.Potential
 	cfg.Neural = fe.baseConfig.Neural
 	cfg.Sensors = fe.baseConfig.Sensors
-	cfg.GPU = fe.baseConfig.GPU
 	cfg.Telemetry = fe.baseConfig.Telemetry
 	cfg.Bookmarks = fe.baseConfig.Bookmarks
 	cfg.Refugia = fe.baseConfig.Refugia

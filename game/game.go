@@ -225,17 +225,15 @@ func NewGameWithOptions(opts Options) *Game {
 	g.parallel = newParallelState()
 
 	// Resource field (particle-based with mass transport)
-	// Compute grid dimensions to maintain square cells matching world aspect ratio
-	baseGridSize := cfg.GPU.ResourceTextureSize
-	var gridW, gridH int
-	if g.worldWidth >= g.worldHeight {
-		// Landscape: scale width up
-		gridH = baseGridSize
-		gridW = int(float32(baseGridSize) * g.worldWidth / g.worldHeight)
-	} else {
-		// Portrait: scale height up
-		gridW = baseGridSize
-		gridH = int(float32(baseGridSize) * g.worldHeight / g.worldWidth)
+	// Compute grid dimensions based on cell size (constant resolution regardless of world size)
+	cellSize := float32(cfg.Resource.CellSize)
+	gridW := int(g.worldWidth / cellSize)
+	gridH := int(g.worldHeight / cellSize)
+	if gridW < 1 {
+		gridW = 1
+	}
+	if gridH < 1 {
+		gridH = 1
 	}
 	g.resourceField = systems.NewResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed, cfg)
 

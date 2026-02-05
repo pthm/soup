@@ -130,6 +130,8 @@ energy:
 # Controls resource regeneration dynamics
 # -----------------------------------------------------------------------------
 resource:
+  cell_size: 12.0            # Grid cell size in world units (determines resolution)
+                             # Smaller = finer detail but more computation
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   regen_rate: 0.230          # Regeneration rate when below capacity (per second)
   decay_rate: 0.069          # Decay rate when above capacity (per second)
@@ -180,12 +182,6 @@ sensors:
                              # are seen as food, and 0.2+ higher as threat
   kin_range: 0.2             # Diet range for kin detection (similar diet organisms)
                              # Organisms within this diet difference are seen as kin
-
-# -----------------------------------------------------------------------------
-# GPU Rendering
-# -----------------------------------------------------------------------------
-gpu:
-  resource_texture_size: 128 # Resolution of resource field texture (pixels)
 
 # -----------------------------------------------------------------------------
 # Telemetry & Logging
