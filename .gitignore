@@ -1,3 +1,43 @@
+# Compiled binaries
 soup
-.ck/
 /potentialpreview
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Code search index
+.ck/
+
+# IDE/Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Debug output
+/tmp/
+debug*.png
+
+# Coverage
+coverage.html
+coverage.out
+
+# Profiling
+*.prof
+*.pprof
