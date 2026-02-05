@@ -277,21 +277,10 @@ func (g *Game) updateEnergy() {
 		// Grazing: diet determines grazing ability (diet=0 full grazer, diet>=cap no grazing)
 		dietGrazeEff := systems.GrazingEfficiency(org.Diet)
 		if dietGrazeEff > 0 {
-			// Compute grazing efficiency based on speed
-			speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
-			speedRatio := speed / caps.MaxSpeed
-			if speedRatio > 1 {
-				speedRatio = 1
-			}
-			grazingPeak := float32(cfg.Energy.Prey.GrazingPeak)
-			speedEff := 1.0 - 2.0*absf(speedRatio-grazingPeak)
-			if speedEff < 0 {
-				speedEff = 0
-			}
-
 			// Get resource level at position for grazing rate scaling
+			// No speed penalty - organisms can graze while moving (required for static resources)
 			resourceHere := g.resourceField.Sample(pos.X, pos.Y)
-			grazeRate := resourceHere * forageRate * speedEff * dietGrazeEff
+			grazeRate := resourceHere * forageRate * dietGrazeEff
 
 			// Graze: remove resource and get actual removed amount
 			removed := g.resourceField.Graze(pos.X, pos.Y, grazeRate, dt, grazeRadius)

@@ -182,8 +182,8 @@ Unspecified values use embedded defaults.
 | `telemetry` | Stats window, bookmark history |
 | `bookmarks` | Detection thresholds for evolutionary events |
 | `refugia` | Bite success reduction in resource-rich areas |
-| `potential` | FBM noise generation for resource hotspots (scale, octaves, drift, update interval) |
-| `particles` | Particle spawn rate, mass exchange rates, flow field parameters |
+| `potential` | FBM noise generation for resource hotspots (scale, octaves, contrast) |
+| `resource` | Grazing radius, forage efficiency, regeneration rate |
 
 ### Accessing Config in Code
 
@@ -291,45 +291,34 @@ GPU-accelerated visuals using raylib:
 | File | Purpose |
 |------|---------|
 | `light.go` | Renders potential field as dappled sunlight with caustics |
-| `particles.go` | GPU-rendered floating particles with glow/twinkling |
-| `flowfield_gpu.go` | GPU-computed flow field texture for visual effects |
+| `resource_fog.go` | Renders resource field as soft green fog overlay |
 
-### Particle Resource Field (`systems/particle_resource.go`)
+### Resource Field (`systems/resource_field.go`)
 
-Mass-conserving resource system with particle transport:
+Simple static resource system with regeneration:
 
 | Layer | Description |
 |-------|-------------|
-| **Potential field P** | Slow-evolving FBM that determines where new mass enters |
-| **Flow field (U,V)** | Curl noise creating divergence-free currents |
+| **Potential field P** | Static FBM generated at startup (determines hotspot distribution) |
 | **Resource grid R** | Mass density that organisms consume from |
-| **Particles** | Mass-carrying packets that drift with flow and exchange mass with grid |
+| **Detritus grid D** | Dead biomass that decays back into resource |
 
 | Feature | Description |
 |---------|-------------|
-| **Mass conservation** | Mass enters via spawn, moves via deposit/pickup, exits via consumption |
-| **Curl noise flow** | Divergence-free flow field from curl of scalar FBM |
-| **RK2 advection** | Particles use midpoint integration for smooth trajectories |
-| **Deposit/pickup** | Particles gradually deposit mass to grid and entrain mass from dense regions |
+| **Static potential** | FBM-based hotspot distribution generated once at startup |
+| **Regeneration** | Resource regenerates towards potential over time |
 | **True depletion** | Prey grazing removes resource from grid cells |
+| **Detritus decay** | Dead organism energy decays back to resource over time |
 
 Key config parameters (`potential:` section):
 - `scale`: Base noise frequency (higher = smaller hotspots)
 - `octaves`: FBM detail level (more = finer features)
-- `drift_x`, `drift_y`: Horizontal/vertical drift rates for slow evolution
-- `update_sec`: Rebuild interval in seconds (visual blending syncs with this)
-
-Key config parameters (`particles:` section):
-- `spawn_rate`: Base particles/sec (scaled by potential)
-- `deposit_rate`: Fraction of particle mass deposited to grid per sec
-- `pickup_rate`: Mass pickup rate from grid per sec
-- `flow_strength`: Flow velocity scale (world units/sec)
-- `flow_evolution`: Temporal drift rate for flow field
+- `contrast`: FBM contrast exponent (higher = sparser patches)
 
 Key config parameters (`resource:` section):
 - `graze_radius`: Kernel size for grazing (1 = 3×3 cells)
 - `forage_efficiency`: Fraction of removed resource that becomes energy
-- `contrast`: FBM contrast exponent (higher = sparser patches)
+- `regen_rate`: Regeneration rate towards potential per second
 
 ## World Space
 
@@ -468,7 +457,7 @@ The simulation tick is instrumented into phases for profiling:
 
 | Phase | What it measures |
 |-------|-----------------|
-| `flow_field` | GPU flow field update |
+| `resource_field` | Resource regeneration and detritus decay |
 | `spatial_grid` | Rebuild spatial index |
 | `behavior_physics` | Sensors + neural nets + movement |
 | `feeding` | Predator bite resolution |

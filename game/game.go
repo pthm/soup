@@ -10,7 +10,6 @@ import (
 	"github.com/pthm-cable/soup/config"
 	"github.com/pthm-cable/soup/inspector"
 	"github.com/pthm-cable/soup/neural"
-	"github.com/pthm-cable/soup/renderer"
 	"github.com/pthm-cable/soup/systems"
 	"github.com/pthm-cable/soup/telemetry"
 )
@@ -61,8 +60,8 @@ type Game struct {
 	// Spatial index
 	spatialGrid *systems.SpatialGrid
 
-	// Resource field (particle-based with mass transport)
-	resourceField *systems.ParticleResourceField
+	// Resource field (static with regeneration)
+	resourceField *systems.ResourceField
 
 	// Reusable buffers to avoid per-entity allocations
 	neighborBuf []systems.Neighbor         // reused each entity in behavior loop
@@ -72,11 +71,7 @@ type Game struct {
 	parallel *parallelState
 
 	// Rendering
-	backgroundRenderer  *renderer.BackgroundRenderer
-	lightRenderer       *renderer.LightRenderer
-	resourceFogRenderer *renderer.ResourceFogRenderer
-	particleRenderer    *renderer.ParticleRenderer
-	inspector          *inspector.Inspector
+	inspector *inspector.Inspector
 
 	// State
 	tick           int32
@@ -90,14 +85,12 @@ type Game struct {
 	stepsPerUpdate int // simulation ticks per update call
 
 	// Energy accounting
-	heatLossAccum      float32 // cumulative energy lost to heat (metabolism, inefficiency, decay)
-	particleInputAccum float32 // cumulative energy injected by particle spawning
+	heatLossAccum float32 // cumulative energy lost to heat (metabolism, inefficiency, decay)
 
 	// Debug state
 	debugMode          bool
 	debugShowResource  bool
 	debugShowPotential bool
-	debugShowFlow      bool
 
 	// Dimensions
 	screenWidth, screenHeight float32 // Viewport (window) size
@@ -259,24 +252,10 @@ func NewGameWithOptions(opts Options) *Game {
 		gridW = baseGridSize
 		gridH = int(float32(baseGridSize) * g.worldHeight / g.worldWidth)
 	}
-	g.resourceField = systems.NewParticleResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed, cfg)
+	g.resourceField = systems.NewResourceField(gridW, gridH, g.worldWidth, g.worldHeight, opts.Seed, cfg)
 
 	// Only initialize visual rendering if not headless
 	if !opts.Headless {
-		// Background noise texture (teal sea color with soft noise)
-		g.backgroundRenderer = renderer.NewBackgroundRenderer(int32(g.screenWidth), int32(g.screenHeight), 8, 45, 60)
-
-		// Light background (renders potential field as sunlight)
-		// Blend speed is derived from potential update interval for smooth transitions
-		potUpdateSec := float32(cfg.Potential.UpdateSec)
-		g.lightRenderer = renderer.NewLightRenderer(int32(g.screenWidth), int32(g.screenHeight), potUpdateSec)
-
-		// Resource fog renderer (soft green fog showing resource field)
-		g.resourceFogRenderer = renderer.NewResourceFogRenderer(int32(g.screenWidth), int32(g.screenHeight))
-
-		// Particle renderer for floating resource particles
-		g.particleRenderer = renderer.NewParticleRenderer(int32(g.screenWidth), int32(g.screenHeight))
-
 		// Inspector
 		g.inspector = inspector.NewInspector(int32(g.screenWidth), int32(g.screenHeight))
 
@@ -324,11 +303,9 @@ func (g *Game) simulationStep() {
 	g.perfCollector.StartTick()
 	cfg := g.config()
 
-	// 0. Update resource field (regrowth, diffusion, capacity evolution / particle dynamics)
+	// 0. Update resource field (regeneration, detritus decay)
 	g.perfCollector.StartPhase(telemetry.PhaseResourceField)
 	g.resourceField.Step(cfg.Derived.DT32, true)
-	g.particleInputAccum += g.resourceField.ParticleInputThisTick
-	g.heatLossAccum += g.resourceField.DetritusHeatThisTick
 
 	// 1. Update spatial grid
 	g.perfCollector.StartPhase(telemetry.PhaseSpatialGrid)
@@ -373,16 +350,6 @@ func (g *Game) simulationStep() {
 func (g *Game) Unload() {
 	// Stop parallel workers first
 	g.stopParallelWorkers()
-
-	if g.backgroundRenderer != nil {
-		g.backgroundRenderer.Unload()
-	}
-	if g.lightRenderer != nil {
-		g.lightRenderer.Unload()
-	}
-	if g.particleRenderer != nil {
-		g.particleRenderer.Unload()
-	}
 
 	// Write hall of fame and close output manager
 	if g.outputManager != nil {
@@ -446,6 +413,7 @@ func (g *Game) HeatLossAccum() float32 {
 }
 
 // ParticleInputAccum returns the cumulative energy injected by particle spawning.
+// Returns 0 since the simplified resource system doesn't use particles.
 func (g *Game) ParticleInputAccum() float32 {
-	return g.particleInputAccum
+	return 0
 }

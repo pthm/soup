@@ -1,0 +1,11 @@
+# mise.toml - Local development environment configuration
+[settings]
+gpg_verify = false
+experimental = true
+auto_install = true
+
+[env]
+GOTOOLCHAIN = "auto"
+
+[tools]
+go = "1.25"

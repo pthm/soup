@@ -12,13 +12,7 @@ func (g *Game) Draw() {
 	g.perfCollector.RecordFrame()
 
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{R: 15, G: 30, B: 60, A: 255}) // Deep blue background
-
-	// Layer 2: Particles
-	g.drawParticles()
-
-	// Layer 2.5: Resource fog (soft green algae overlay)
-	g.drawResourceFog()
+	rl.ClearBackground(rl.Color{R: 230, G: 195, B: 150, A: 255}) // Dusty desert background
 
 	// Debug overlays (drawn before entities so entities appear on top)
 	if g.debugMode && g.debugShowResource {
@@ -27,18 +21,9 @@ func (g *Game) Draw() {
 	if g.debugMode && g.debugShowPotential {
 		g.drawPotentialHeatmap(180)
 	}
-	if g.debugMode && g.debugShowFlow {
-		g.drawFlowField()
-	}
 
 	// Layer 3: Entities
 	g.drawEntities()
-
-	// Layer 4: Shadow (darkens everything underneath including particles and entities)
-	g.drawShadow()
-
-	// Layer 5: Caustics (lights up everything underneath)
-	g.drawCaustics()
 
 	// Draw selection highlight and vision cone
 	g.inspector.DrawSelectionHighlight(g.posMap, g.bodyMap, g.rotMap, g.capsMap, g.orgMap, g.camera)
@@ -135,15 +120,6 @@ func (g *Game) drawDebugMenu() {
 	}
 	rl.DrawText(fmt.Sprintf("[P] Potential: %s", potentialStatus), panelX+10, panelY+48, 14, potentialColor)
 
-	// Flow field overlay toggle
-	flowStatus := "OFF"
-	flowColor := rl.Gray
-	if g.debugShowFlow {
-		flowStatus = "ON"
-		flowColor = rl.Green
-	}
-	rl.DrawText(fmt.Sprintf("[F] Flow: %s", flowStatus), panelX+10, panelY+66, 14, flowColor)
-
 	// Performance stats
 	stats := g.perfCollector.Stats()
 	rl.DrawText(fmt.Sprintf("Tick: %v  TPS: %.0f", stats.AvgTickDuration, stats.TicksPerSecond), panelX+10, panelY+95, 12, rl.White)
@@ -201,15 +177,15 @@ func (g *Game) drawResourceHeatmap(alpha uint8) {
 	}
 }
 
-// drawPotentialHeatmap renders the potential field as a colored overlay.
+// drawPotentialHeatmap renders the capacity field as a colored overlay.
 func (g *Game) drawPotentialHeatmap(alpha uint8) {
 	cam := g.camera
 	pf := g.resourceField
-	cellW := g.worldWidth / float32(pf.PotW)
-	cellH := g.worldHeight / float32(pf.PotH)
+	cellW := g.worldWidth / float32(pf.W)
+	cellH := g.worldHeight / float32(pf.H)
 
-	for y := 0; y < pf.PotH; y++ {
-		for x := 0; x < pf.PotW; x++ {
+	for y := 0; y < pf.H; y++ {
+		for x := 0; x < pf.W; x++ {
 			worldX0 := float32(x) * cellW
 			worldY0 := float32(y) * cellH
 			worldX1 := float32(x+1) * cellW
@@ -239,92 +215,9 @@ func (g *Game) drawPotentialHeatmap(alpha uint8) {
 				h = 1
 			}
 
-			val := pf.Pot[y*pf.PotW+x]
+			val := pf.Cap[y*pf.W+x]
 			color := resourceToColor(val, alpha)
 			rl.DrawRectangle(left, top, w, h, color)
-		}
-	}
-}
-
-// drawFlowField renders the flow field as short oriented lines ("hairs").
-// All hairs have uniform length; color indicates magnitude (viridis scale).
-func (g *Game) drawFlowField() {
-	cam := g.camera
-	pf := g.resourceField
-	cellW := g.worldWidth / float32(pf.FlowW)
-	cellH := g.worldHeight / float32(pf.FlowH)
-
-	// Get current flow data for rendering
-	flowU, flowV := pf.FlowData()
-
-	// Hair length scales with grid cell size (use smaller dimension)
-	cellSize := cellW
-	if cellH < cellW {
-		cellSize = cellH
-	}
-	hairLen := cellSize * cam.Zoom * 0.8 // 80% of cell size in screen pixels
-
-	for y := 0; y < pf.FlowH; y++ {
-		for x := 0; x < pf.FlowW; x++ {
-			// Cell center in world coords
-			worldCX := (float32(x) + 0.5) * cellW
-			worldCY := (float32(y) + 0.5) * cellH
-
-			if !cam.IsVisible(worldCX, worldCY, cellW) {
-				continue
-			}
-
-			idx := y*pf.FlowW + x
-			u := flowU[idx]
-			v := flowV[idx]
-
-			// Compute magnitude for coloring
-			mag := float32(math.Sqrt(float64(u*u + v*v)))
-			if mag < 0.001 {
-				continue
-			}
-
-			// Normalize direction
-			nx := u / mag
-			ny := v / mag
-
-			// Screen center of this cell
-			sx, sy := cam.WorldToScreen(worldCX, worldCY)
-
-			// Hair endpoints in screen space (fixed length, centered)
-			halfLen := hairLen / 2
-			x0 := sx - nx*halfLen
-			y0 := sy - ny*halfLen
-			x1 := sx + nx*halfLen
-			y1 := sy + ny*halfLen
-
-			// Color by magnitude using viridis (normalize mag to ~[0,1])
-			normMag := mag * 2 // Adjust scaling as needed
-			if normMag > 1 {
-				normMag = 1
-			}
-			color := resourceToColor(normMag, 220)
-
-			rl.DrawLineEx(
-				rl.Vector2{X: x0, Y: y0},
-				rl.Vector2{X: x1, Y: y1},
-				1.5,
-				color,
-			)
-
-			// Small arrowhead at the tip
-			arrowSize := float32(3)
-			angle := float32(math.Atan2(float64(ny), float64(nx)))
-			ax1 := x1 - arrowSize*float32(math.Cos(float64(angle-0.5)))
-			ay1 := y1 - arrowSize*float32(math.Sin(float64(angle-0.5)))
-			ax2 := x1 - arrowSize*float32(math.Cos(float64(angle+0.5)))
-			ay2 := y1 - arrowSize*float32(math.Sin(float64(angle+0.5)))
-			rl.DrawTriangle(
-				rl.Vector2{X: x1, Y: y1},
-				rl.Vector2{X: ax2, Y: ay2},
-				rl.Vector2{X: ax1, Y: ay1},
-				color,
-			)
 		}
 	}
 }
@@ -366,135 +259,6 @@ func resourceToColor(val float32, alpha uint8) rl.Color {
 	b := uint8(float32(c0.b) + t*(float32(c1.b)-float32(c0.b)))
 
 	return rl.Color{R: r, G: g, B: b, A: alpha}
-}
-
-// drawBackground renders the soft noise texture background.
-func (g *Game) drawBackground() {
-	if g.backgroundRenderer == nil {
-		return
-	}
-
-	cam := g.camera
-	g.backgroundRenderer.Draw(
-		float32(g.tick)*0.03,
-		cam.X, cam.Y,
-		cam.Zoom,
-		g.worldWidth, g.worldHeight,
-	)
-}
-
-// updateLightRenderer updates the light renderer state (potential texture, blend progress).
-func (g *Game) updateLightRenderer() {
-	if g.lightRenderer == nil {
-		return
-	}
-
-	// Update potential texture periodically (synced with potential.update_sec config)
-	cfg := g.config()
-	updateIntervalTicks := int32(cfg.Potential.UpdateSec / cfg.Physics.DT)
-	if updateIntervalTicks < 1 {
-		updateIntervalTicks = 1
-	}
-	if g.tick%updateIntervalTicks == 0 {
-		pf := g.resourceField
-		g.lightRenderer.UpdatePotential(pf.Pot, pf.PotW, pf.PotH)
-	}
-
-	// Update blend progress
-	dt := float32(cfg.Physics.DT)
-	g.lightRenderer.Update(dt)
-}
-
-// drawShadow renders the shadow layer (darkens low-potential areas).
-func (g *Game) drawShadow() {
-	if g.lightRenderer == nil {
-		return
-	}
-
-	g.updateLightRenderer()
-
-	cam := g.camera
-	g.lightRenderer.DrawShadow(
-		cam.X, cam.Y,
-		cam.Zoom,
-		g.worldWidth, g.worldHeight,
-	)
-}
-
-// drawCaustics renders the caustic light layer (additive glow on top of everything).
-func (g *Game) drawCaustics() {
-	if g.lightRenderer == nil {
-		return
-	}
-
-	cam := g.camera
-	g.lightRenderer.DrawCaustics(
-		float32(g.tick)*0.03,
-		cam.X, cam.Y,
-		cam.Zoom,
-		g.worldWidth, g.worldHeight,
-	)
-}
-
-// drawParticles renders the floating resource particles with glow effect.
-func (g *Game) drawParticles() {
-	if g.particleRenderer == nil {
-		return
-	}
-
-	cam := g.camera
-	pf := g.resourceField
-
-	// Begin rendering particles to texture
-	g.particleRenderer.BeginParticles()
-
-	// Draw each active particle
-	for i := 0; i < pf.MaxCount; i++ {
-		if !pf.Active[i] {
-			continue
-		}
-
-		// Check if particle is visible
-		if !cam.IsVisible(pf.X[i], pf.Y[i], 10) {
-			continue
-		}
-
-		// Transform to screen coordinates
-		sx, sy := cam.WorldToScreen(pf.X[i], pf.Y[i])
-		g.particleRenderer.DrawParticleScaled(sx, sy, pf.Mass[i], cam.Zoom)
-
-		// Draw ghost copies for particles near world edges
-		ghosts := cam.GhostPositions(pf.X[i], pf.Y[i], 10)
-		for _, ghost := range ghosts {
-			g.particleRenderer.DrawParticleScaled(ghost.X, ghost.Y, pf.Mass[i], cam.Zoom)
-		}
-	}
-
-	g.particleRenderer.EndParticles()
-
-	// Draw the particle texture with glow shader
-	g.particleRenderer.Draw(float32(g.tick) * 0.05)
-}
-
-// drawResourceFog renders the resource field as a soft green fog.
-func (g *Game) drawResourceFog() {
-	if g.resourceFogRenderer == nil {
-		return
-	}
-
-	pf := g.resourceField
-	gridW, gridH := pf.GridSize()
-
-	// Update resource texture (lazy init happens here)
-	g.resourceFogRenderer.UpdateResource(pf.ResData(), gridW, gridH)
-
-	cam := g.camera
-	g.resourceFogRenderer.Draw(
-		float32(g.tick)*0.016,
-		cam.X, cam.Y,
-		cam.Zoom,
-		g.worldWidth, g.worldHeight,
-	)
 }
 
 // dietColor returns a color interpolated from purple (diet=0) to burnt orange (diet=1).

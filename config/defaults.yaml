@@ -155,17 +155,19 @@ energy:
 
 # -----------------------------------------------------------------------------
 # Resource Field
-# Controls organism grazing behavior
+# Controls organism grazing behavior and resource regeneration
 # -----------------------------------------------------------------------------
 resource:
   graze_radius: 1            # Grazing kernel radius in cells (1=3x3 kernel, 2=5x5)
   forage_efficiency: 0.80    # Fraction of removed resource that becomes energy (eta_graze)
                              # Remainder is lost to heat (digestion inefficiency)
+  regen_rate: 0.05           # Regeneration rate towards potential per second
+                             # Higher = faster recovery after grazing
 
 # -----------------------------------------------------------------------------
 # Potential Field Generation
-# Controls the underlying FBM that determines resource hotspots and spawn rates.
-# The potential field evolves slowly over time, creating shifting oases.
+# Controls the underlying FBM that determines resource hotspot distribution.
+# Generated once at startup; resource regenerates towards this baseline.
 # -----------------------------------------------------------------------------
 potential:
   scale: 2.0                 # Base noise frequency (lower = larger hotspots)
@@ -174,9 +176,6 @@ potential:
   gain: 0.63                 # Amplitude multiplier per octave (higher = brighter peaks)
   contrast: 4.69             # FBM contrast exponent (higher = sharper edges, sparser hotspots)
                              # 1.5 = lush, 2.0 = moderate, 3.0 = sparse, 4.0+ = very sparse
-  drift_x: 0.0004            # Horizontal drift rate (glacial evolution)
-  drift_y: 0.0006            # Vertical drift rate (glacial evolution)
-  update_sec: 3.0            # Rebuild interval in seconds (affects visual smoothness)
 
 # -----------------------------------------------------------------------------
 # Refugia Mechanics
@@ -292,26 +291,6 @@ hall_of_fame:
     min_survival_sec: 60.0   # Secondary: minimum survival time
     min_foraging: 0.5        # Secondary (prey): minimum total foraged
     min_kills: 1             # Secondary (predator): minimum kills
-
-# -----------------------------------------------------------------------------
-# Particle-Based Resource System
-# Mass-conserving resource transport with particles drifting in a flow field
-# -----------------------------------------------------------------------------
-particles:
-  max_count: 8000            # Maximum particle pool size
-  spawn_rate: 100            # Base particles/sec (scaled by potential field)
-  initial_mass: 0.01         # Mass of newly spawned particle
-  deposit_rate: 2.0          # Fraction of particle mass deposited to grid per sec
-  pickup_rate: 0.5           # Mass pickup rate from grid per sec
-  cell_capacity: 1.0         # Max resource per cell (particles keep mass if cell is full)
-                             # 0 = unlimited; 1.0 = cells cap at 1.0 resource
-  flow_strength: 40.0        # Flow velocity scale (world units/sec)
-  flow_grid_size: 32         # Flow field resolution (independent of resource grid)
-                             # Lower = larger features, less computation
-  flow_update_sec: 30.0      # Flow field transition interval (seconds)
-  flow_scale: 2.0            # Curl noise frequency (lower = larger features)
-  flow_octaves: 2            # FBM detail level (fewer = smoother currents)
-  flow_evolution: 0.03       # Temporal drift rate for flow field (lower = slower change)
 
 # -----------------------------------------------------------------------------
 # Detritus (Nutrient Recycling)

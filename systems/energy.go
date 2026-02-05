@@ -110,21 +110,12 @@ func UpdatePreyForage(
 		return
 	}
 
-	// Compute speed ratio [0, 1] (use fast sqrt)
-	speed := fastSqrt(vel.X*vel.X + vel.Y*vel.Y)
-	speedRatio := speed / caps.MaxSpeed
-	if speedRatio > 1 {
-		speedRatio = 1
-	}
-
-	// Peak efficiency at grazing speed, drops toward 0 and max speed
-	// eff = 1 - 2*|speedRatio - grazingPeak|, clamped to [0, 1]
-	eff := 1.0 - 2.0*absf(speedRatio-cachedGrazingPeak)
-	if eff < 0 {
-		eff = 0
-	}
+	// Grazing efficiency is constant - organisms can graze while moving
+	// (required for static depleting resources)
+	_ = vel  // unused, kept for API stability
+	_ = caps // unused, kept for API stability
 	forageRate := cachedForageRate
-	gain := resourceHere * forageRate * eff * dt
+	gain := resourceHere * forageRate * dt
 	energy.Value += gain
 
 	// Clamp to max

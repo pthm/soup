@@ -18,7 +18,6 @@ var (
 	cachedForageRate         float32
 	cachedTransferEfficiency float32
 	cachedDetritusFraction   float32
-	cachedGrazingPeak        float32
 	cachedPreyAccelCost      float32
 	cachedPredAccelCost      float32
 	// Diet interpolation config
@@ -54,7 +53,6 @@ func InitSensorCacheFrom(cfg *config.Config) {
 	cachedForageRate = float32(cfg.Energy.Prey.ForageRate)
 	cachedTransferEfficiency = float32(cfg.Energy.Predator.TransferEfficiency)
 	cachedDetritusFraction = float32(cfg.Energy.Predator.DetritusFraction)
-	cachedGrazingPeak = float32(cfg.Energy.Prey.GrazingPeak)
 	cachedPreyAccelCost = float32(cfg.Energy.Prey.AccelCost)
 	cachedPredAccelCost = float32(cfg.Energy.Predator.AccelCost)
 	// Diet interpolation

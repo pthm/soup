@@ -49,19 +49,11 @@ func NewFFNN(rng *rand.Rand, diet float32) *FFNN {
 		nn.B2[i] = 0
 	}
 
-	// Bias thrust and bite outputs toward zero.
+	// Bias bite output toward zero (bite rarely needed).
+	// Thrust bias is neutral - organisms need to move to find resources.
 	// The output activation is saturate01(raw*0.5 + 0.5), so raw=0 maps to 0.5.
-	// Negative bias shifts the default toward 0 (inert).
-	if diet < 0.5 {
-		// Herbivores: strong bias toward inertia. ~0% have thrust > deadzone.
-		nn.B2[1] = -2.0 // thrust
-		nn.B2[2] = -2.0 // bite
-	} else {
-		// Predators: weaker bias. ~25% have non-trivial thrust/bite from
-		// random Xavier weights, giving selection material to work with.
-		nn.B2[1] = -1.0 // thrust
-		nn.B2[2] = -1.0 // bite
-	}
+	nn.B2[1] = 0.0  // thrust: neutral, outputs ~0.5 by default
+	nn.B2[2] = -2.0 // bite: biased toward 0
 
 	return nn
 }

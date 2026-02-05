@@ -40,9 +40,6 @@ func (g *Game) handleInput() {
 		if rl.IsKeyPressed(rl.KeyP) {
 			g.debugShowPotential = !g.debugShowPotential
 		}
-		if rl.IsKeyPressed(rl.KeyF) {
-			g.debugShowFlow = !g.debugShowFlow
-		}
 	}
 
 	// Camera controls
@@ -70,18 +67,6 @@ func (g *Game) handleResize() {
 
 	if g.camera != nil {
 		g.camera.Resize(w, h)
-	}
-	if g.backgroundRenderer != nil {
-		g.backgroundRenderer.Resize(w, h)
-	}
-	if g.lightRenderer != nil {
-		g.lightRenderer.Resize(w, h)
-	}
-	if g.resourceFogRenderer != nil {
-		g.resourceFogRenderer.Resize(w, h)
-	}
-	if g.particleRenderer != nil {
-		g.particleRenderer.Resize(int32(w), int32(h))
 	}
 	if g.inspector != nil {
 		g.inspector.Resize(int32(w), int32(h))

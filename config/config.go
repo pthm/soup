@@ -150,6 +150,7 @@ type MutationConfig struct {
 type ResourceConfig struct {
 	GrazeRadius      int     `yaml:"graze_radius"`      // Grazing kernel radius in cells (1=3x3, 2=5x5)
 	ForageEfficiency float64 `yaml:"forage_efficiency"` // Fraction of removed resource that becomes energy
+	RegenRate        float64 `yaml:"regen_rate"`        // Regeneration rate towards potential per second
 }
 
 // PotentialConfig holds potential field generation parameters.

@@ -1,7 +1,7 @@
 package systems
 
 // ResourceSampler provides resource field access for the simulation.
-// Implemented by ParticleResourceField.
+// Implemented by ResourceField.
 type ResourceSampler interface {
 	// Sample returns the resource density at world coordinates.
 	Sample(x, y float32) float32
